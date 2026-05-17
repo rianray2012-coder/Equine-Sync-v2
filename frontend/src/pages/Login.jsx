@@ -1,0 +1,109 @@
+import React, { useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import { useNavigate, Navigate } from "react-router-dom";
+import { Logo } from "../components/Logo";
+
+const DEMO = [
+  { email: "admin@equinesync.com", role: "Stable Owner" },
+  { email: "trainer@equinesync.com", role: "Trainer" },
+  { email: "groom@equinesync.com", role: "Groom" },
+  { email: "owner@equinesync.com", role: "Horse Owner" },
+  { email: "vet@equinesync.com", role: "Veterinarian" },
+];
+
+export default function Login() {
+  const { login, user } = useAuth();
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("admin@equinesync.com");
+  const [password, setPassword] = useState("demo1234");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  if (user) return <Navigate to="/" replace />;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr(""); setLoading(true);
+    try { await login(email, password); navigate("/"); }
+    catch (e) { setErr(e?.response?.data?.detail || "Sign in failed"); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="min-h-screen w-full grid lg:grid-cols-2 bg-equine-black">
+      {/* Left visual */}
+      <div className="relative hidden lg:block">
+        <img
+          src="https://static.prod-images.emergentagent.com/jobs/137f7c6b-a2e1-41c0-9c38-96d2409d644a/images/3ca3908290d52bc07be0b5f45e2f358fac3cee0e8034aa339d3b62ddac3b3403.png"
+          alt="Luxury equestrian arena"
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-br from-equine-black/85 via-equine-black/55 to-equine-black/90" />
+        <div className="relative z-10 h-full flex flex-col justify-between p-12">
+          <Logo />
+          <div className="max-w-md">
+            <div className="label-eyebrow mb-5">An operating system for the modern barn</div>
+            <h2 className="font-display text-5xl xl:text-6xl leading-[1.05] text-equine-ivory">
+              Quiet precision.<br/>Operational mastery.
+            </h2>
+            <p className="mt-6 text-equine-silver/80 text-[15px] leading-relaxed">
+              EquineSync unites horse care, training, billing, and owner communication in one elegant platform — built for elite show barns, rehab facilities, and luxury private operations.
+            </p>
+          </div>
+          <div className="text-[11px] tracking-[0.22em] uppercase text-equine-platinum/40">© EquineSync · Crafted for elite equestrian operations</div>
+        </div>
+      </div>
+
+      {/* Right form */}
+      <div className="flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-md">
+          <div className="lg:hidden mb-10"><Logo /></div>
+          <div className="label-eyebrow mb-4">Sign in</div>
+          <h1 className="font-display text-4xl text-equine-ivory leading-none">Welcome back</h1>
+          <p className="mt-3 text-equine-silver/70">Access your stable operations dashboard.</p>
+
+          <form onSubmit={submit} className="mt-8 space-y-5" data-testid="login-form">
+            <div>
+              <label className="label-eyebrow block mb-2">Email</label>
+              <input
+                type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
+                data-testid="login-email"
+                className="w-full bg-equine-soft border border-equine-graphite/60 rounded-xl px-4 py-3 text-equine-ivory focus:outline-none focus:border-equine-champagne transition-colors"
+              />
+            </div>
+            <div>
+              <label className="label-eyebrow block mb-2">Password</label>
+              <input
+                type="password" value={password} onChange={(e) => setPassword(e.target.value)} required
+                data-testid="login-password"
+                className="w-full bg-equine-soft border border-equine-graphite/60 rounded-xl px-4 py-3 text-equine-ivory focus:outline-none focus:border-equine-champagne transition-colors"
+              />
+            </div>
+            {err && <div className="text-equine-clay text-sm" data-testid="login-error">{err}</div>}
+            <button type="submit" disabled={loading} data-testid="login-submit"
+              className="btn-primary w-full disabled:opacity-60">
+              {loading ? "Signing in…" : "Enter the barn"}
+            </button>
+          </form>
+
+          <div className="mt-10 pt-6 border-t border-equine-graphite/30">
+            <div className="label-eyebrow mb-3">Demo accounts (password: demo1234)</div>
+            <div className="grid grid-cols-1 gap-2">
+              {DEMO.map((d) => (
+                <button
+                  key={d.email}
+                  onClick={() => { setEmail(d.email); setPassword("demo1234"); }}
+                  data-testid={`demo-${d.role.toLowerCase().replace(/\s/g, '-')}`}
+                  className="text-left px-4 py-2.5 rounded-lg border border-equine-graphite/50 hover:border-equine-champagne hover:bg-equine-soft transition-all flex items-center justify-between"
+                >
+                  <span className="text-[13px] text-equine-silver">{d.email}</span>
+                  <span className="text-[11px] tracking-[0.16em] uppercase text-equine-platinum/60">{d.role}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

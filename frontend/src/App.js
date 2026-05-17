@@ -1,51 +1,74 @@
-import { useEffect } from "react";
-import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import React from "react";
+import "./App.css";
+import "./index.css";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import { Toaster } from "sonner";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+import AppShell from "./components/AppShell";
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import BarnBoard from "./pages/BarnBoard";
+import Horses from "./pages/Horses";
+import HorseProfile from "./pages/HorseProfile";
+import Riders from "./pages/Riders";
+import Owners from "./pages/Owners";
+import Lessons from "./pages/Lessons";
+import Training from "./pages/Training";
+import Health from "./pages/Health";
+import Medications from "./pages/Medications";
+import Feed from "./pages/Feed";
+import Billing from "./pages/Billing";
+import Messaging from "./pages/Messaging";
+import OwnerPortal from "./pages/OwnerPortal";
+import Incidents from "./pages/Incidents";
+import Settings from "./pages/Settings";
+import Placeholder from "./pages/Placeholder";
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
+const Protected = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-equine-platinum/60">Loading…</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
 };
 
 function App() {
   return (
     <div className="App">
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
+        <AuthProvider>
+          <Toaster position="top-right" theme="dark" />
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route element={<Protected><AppShell /></Protected>}>
+              <Route index element={<Dashboard />} />
+              <Route path="/barn-board" element={<BarnBoard />} />
+              <Route path="/horses" element={<Horses />} />
+              <Route path="/horses/:id" element={<HorseProfile />} />
+              <Route path="/riders" element={<Riders />} />
+              <Route path="/owners" element={<Owners />} />
+              <Route path="/lessons" element={<Lessons />} />
+              <Route path="/training" element={<Training />} />
+              <Route path="/health" element={<Health />} />
+              <Route path="/stall-rest" element={<Placeholder title="Stall Rest & Rehab" description="Hand-walking schedules, icing, and daily rehab logs." />} />
+              <Route path="/medications" element={<Medications />} />
+              <Route path="/turnout" element={<Placeholder title="Turnout & Pastures" description="Herd compatibility, mud levels and rotation schedules." />} />
+              <Route path="/feed" element={<Feed />} />
+              <Route path="/inventory" element={<Placeholder title="Inventory" description="Grain, hay, bedding, supplements with reorder alerts." />} />
+              <Route path="/shows" element={<Placeholder title="Shows & Competitions" description="Show calendars, entries, stabling and packing lists." />} />
+              <Route path="/billing" element={<Billing />} />
+              <Route path="/documents" element={<Placeholder title="Documents" description="Secure document vault for vaccines, insurance and contracts." />} />
+              <Route path="/incidents" element={<Incidents />} />
+              <Route path="/maintenance" element={<Placeholder title="Maintenance" description="Tickets for fences, gates, waterers and arenas." />} />
+              <Route path="/staff" element={<Placeholder title="Staff Management" description="Workloads, certifications and shift scheduling." />} />
+              <Route path="/messaging" element={<Messaging />} />
+              <Route path="/reports" element={<Placeholder title="Reports" description="Profitability and operational insights." />} />
+              <Route path="/owner-portal" element={<OwnerPortal />} />
+              <Route path="/settings" element={<Settings />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </div>
   );

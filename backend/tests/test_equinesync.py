@@ -1,0 +1,133 @@
+"""EquineSync backend regression tests."""
+import os
+import requests
+import pytest
+
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://herd-hub-19.preview.emergentagent.com").rstrip("/")
+API = f"{BASE_URL}/api"
+
+ADMIN = {"email": "admin@equinesync.com", "password": "demo1234"}
+
+
+@pytest.fixture(scope="module")
+def token():
+    r = requests.post(f"{API}/auth/login", json=ADMIN, timeout=30)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert "token" in data and data["user"]["email"] == ADMIN["email"]
+    return data["token"]
+
+
+@pytest.fixture(scope="module")
+def H(token):
+    return {"Authorization": f"Bearer {token}"}
+
+
+# ---- Auth ----
+def test_auth_me(H):
+    r = requests.get(f"{API}/auth/me", headers=H, timeout=30)
+    assert r.status_code == 200
+    assert r.json()["role"] == "admin"
+
+
+def test_auth_invalid():
+    r = requests.post(f"{API}/auth/login", json={"email": "admin@equinesync.com", "password": "wrong"}, timeout=30)
+    assert r.status_code == 401
+
+
+# ---- Dashboard ----
+def test_dashboard_summary(H):
+    r = requests.get(f"{API}/dashboard/summary", headers=H, timeout=30)
+    assert r.status_code == 200
+    d = r.json()
+    for k in ["total_horses", "meds_due", "overdue_invoices", "avg_wellness"]:
+        assert k in d
+    assert d["total_horses"] >= 6
+
+
+def test_dashboard_barn_board(H):
+    r = requests.get(f"{API}/dashboard/barn-board", headers=H, timeout=30)
+    assert r.status_code == 200
+    d = r.json()
+    for k in ["feed", "medications", "lessons", "stall_rest", "weather"]:
+        assert k in d
+
+
+# ---- Horses ----
+def test_horses_list_and_detail(H):
+    r = requests.get(f"{API}/horses", headers=H, timeout=30)
+    assert r.status_code == 200
+    horses = r.json()
+    assert len(horses) >= 6
+    hid = horses[0]["id"]
+    r2 = requests.get(f"{API}/horses/{hid}", headers=H, timeout=30)
+    assert r2.status_code == 200
+    assert r2.json()["id"] == hid
+
+
+# ---- Seeded lists ----
+@pytest.mark.parametrize("path", [
+    "medications", "vet-records", "injuries", "wellness", "lessons",
+    "training", "invoices", "messages", "owners", "riders",
+])
+def test_seeded_lists(H, path):
+    r = requests.get(f"{API}/{path}", headers=H, timeout=30)
+    assert r.status_code == 200, f"{path} -> {r.status_code}"
+    assert isinstance(r.json(), list)
+    assert len(r.json()) >= 1, f"{path} empty"
+
+
+# ---- Feed complete ----
+def test_feed_complete(H):
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).date().isoformat()
+    r = requests.get(f"{API}/feed-tasks", headers=H, params={"date_str": today}, timeout=30)
+    assert r.status_code == 200
+    tasks = r.json()
+    pending = [t for t in tasks if not t.get("completed")]
+    assert pending, "No incomplete feed tasks"
+    tid = pending[0]["id"]
+    r2 = requests.post(f"{API}/feed-tasks/{tid}/complete", headers=H, timeout=30)
+    assert r2.status_code == 200
+    assert r2.json()["completed"] is True
+
+
+# ---- Invoice pay ----
+def test_invoice_pay(H):
+    r = requests.get(f"{API}/invoices", headers=H, timeout=30)
+    open_inv = [i for i in r.json() if i["status"] != "paid"]
+    assert open_inv
+    iid = open_inv[0]["id"]
+    r2 = requests.post(f"{API}/invoices/{iid}/pay", headers=H, timeout=30)
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "paid"
+
+
+# ---- Service request create + approve ----
+def test_service_request_flow(H):
+    horses = requests.get(f"{API}/horses", headers=H, timeout=30).json()
+    payload = {"horse_id": horses[0]["id"], "type": "extra_ride", "details": "TEST_ extra ride"}
+    r = requests.post(f"{API}/service-requests", json=payload, headers=H, timeout=30)
+    assert r.status_code == 200
+    sr_id = r.json()["id"]
+    assert r.json()["status"] == "pending"
+    r2 = requests.post(f"{API}/service-requests/{sr_id}/approve", headers=H, timeout=30)
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "approved"
+
+
+# ---- Message create ----
+def test_message_create(H):
+    payload = {"to_role": "trainer", "subject": "TEST_ msg", "body": "Hello", "visibility": "staff_only"}
+    r = requests.post(f"{API}/messages", json=payload, headers=H, timeout=30)
+    assert r.status_code == 200
+    assert r.json()["subject"] == "TEST_ msg"
+    assert r.json()["from_name"]
+
+
+# ---- AI generate ----
+def test_ai_generate_owner_update(H):
+    body = {"kind": "owner_update", "context": {"horse": "Valentino", "session": "Light flatwork; sharp"}}
+    r = requests.post(f"{API}/ai/generate", json=body, headers=H, timeout=90)
+    assert r.status_code == 200, r.text
+    assert isinstance(r.json().get("text"), str) and len(r.json()["text"]) > 10
