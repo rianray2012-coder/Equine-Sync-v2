@@ -80,7 +80,7 @@ export default function Login() {
               />
             </div>
             {err && <div className="text-equine-clay text-sm" data-testid="login-error">{err}</div>}
-            <button type="submit" disabled={loading} data-testid="login-submit"
+            <button type="submit" onClick={submit} disabled={loading} data-testid="login-submit"
               className="btn-primary w-full disabled:opacity-60">
               {loading ? "Signing in…" : "Enter the barn"}
             </button>
