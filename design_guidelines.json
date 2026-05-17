@@ -1,0 +1,113 @@
+{
+  "project_name": "EquineSync",
+  "theme": "dark",
+  "archetype": "Archetype 5: Jewel & Luxury",
+  "brand_personality": "Sophisticated, quiet luxury, trustworthy, professional, modern, organized, high-end equestrian, operationally intelligent",
+  "typography": {
+    "heading_font": "Cormorant Garamond",
+    "body_font": "Inter",
+    "rules": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight leading-none text-[#F5F2EC] font-light",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight leading-tight text-[#F5F2EC] font-light",
+      "h3": "text-xl sm:text-2xl tracking-normal text-[#C0C0C0] font-medium",
+      "body": "text-base leading-relaxed text-[#D9D9D9] font-normal",
+      "labels": "text-xs tracking-[0.2em] uppercase text-[#4D4D4D] font-semibold",
+      "notes": "E1 ANTI-DEFAULT RULE: Headings must use Cormorant Garamond to establish equestrian heritage. Body uses Inter for modern software clarity."
+    }
+  },
+  "colors": {
+    "background": {
+      "primary": "#111111", 
+      "secondary": "#1E1E1E",
+      "tertiary": "#2A2A2A"
+    },
+    "text": {
+      "primary": "#F5F2EC",
+      "secondary": "#D9D9D9",
+      "muted": "#C0C0C0"
+    },
+    "border": {
+      "default": "#4D4D4D",
+      "subtle": "#2A2A2A"
+    },
+    "accent": {
+      "primary": "#BFC5CC",
+      "secondary": "#52667A",
+      "hover": "#D9D9D9"
+    },
+    "status": {
+      "success": "#6E8B74",
+      "warning": "#C6924B",
+      "critical": "#A85C4B",
+      "info": "#708090"
+    },
+    "rules": "Avoid neon or bright saturations. All colors must remain matte and restrained. Backgrounds should feel deep and architectural."
+  },
+  "layout_and_spacing": {
+    "grid_system": "The Control Room Grid",
+    "dashboard_rules": {
+      "desktop": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+      "tablet": "grid-cols-1 md:grid-cols-2 gap-4 (For 'Today's Barn Board')",
+      "mobile": "grid-cols-1 gap-4"
+    },
+    "spacing_scale": "Use generous internal padding. Cards must use p-6 or p-8 to allow data to breathe.",
+    "alignment": "Strict left-alignment for data and lists. Optical alignment for icons inside buttons."
+  },
+  "components": {
+    "cards": {
+      "style": "Rounded modern cards (rounded-2xl). Background bg-[#1E1E1E]. Border 1px solid border-[#4D4D4D]. Soft ambient shadow.",
+      "glassmorphism": "Used only for sticky headers and modals: backdrop-blur-xl bg-[#111111]/70 border-b border-[#4D4D4D]/50."
+    },
+    "buttons": {
+      "primary": "bg-[#BFC5CC] text-[#111111] font-medium rounded-full px-6 py-2.5 hover:bg-[#F5F2EC] transition-colors",
+      "secondary": "bg-transparent border border-[#4D4D4D] text-[#F5F2EC] rounded-full px-6 py-2.5 hover:bg-[#1E1E1E] transition-colors",
+      "quick_action": "Large touch targets (min 44px height) for tablet usability in the barn."
+    },
+    "navigation": {
+      "sidebar": "Dark matte sidebar (bg-[#111111]) with thin right border. Icons should be highly legible line-art. Selected state uses steel-blue (#52667A) subtle background with soft-ivory (#F5F2EC) text."
+    },
+    "dividers": "Hairline dividers (1px bg-[#2A2A2A]) used to segment lists without visual clutter."
+  },
+  "motion_and_interactions": {
+    "hover_states": "Subtle brightness increase on cards (hover:bg-[#2A2A2A]).",
+    "transitions": "Smooth and deliberate. transition-all duration-300 ease-in-out.",
+    "microinteractions": "Buttons scale down slightly on active (active:scale-95). Tabs slide indicator."
+  },
+  "media": {
+    "image_urls": {
+      "logo": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/137f7c6b-a2e1-41c0-9c38-96d2409d644a/images/29b907cf4a080e1f325ad7b224ad58ab70ac92998a6b2464c96036a0fea55d7e.png",
+        "description": "EquineSync minimal luxury logo - ES monogram with horse head outline on black"
+      },
+      "login_background": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/137f7c6b-a2e1-41c0-9c38-96d2409d644a/images/3ca3908290d52bc07be0b5f45e2f358fac3cee0e8034aa339d3b62ddac3b3403.png",
+        "description": "Cinematic wide background of an immaculate luxury equestrian indoor riding arena at dawn"
+      },
+      "dashboard_hero": {
+        "url": "https://images.unsplash.com/photo-1639570830431-6c2d0100d37b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODB8MHwxfHNlYXJjaHwzfHxibGFjayUyMGhvcnNlJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc4OTk1NzgwfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Elegant black horse portrait for empty states or dashboard welcome headers"
+      },
+      "barn_profile": {
+        "url": "https://images.unsplash.com/photo-1694885143306-3dfea504b032?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHw0fHxsdXh1cnklMjBob3JzZSUyMHN0YWJsZXxlbnwwfHx8fDE3Nzg5OTU3ODB8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Luxury horse barn interior for stable settings and facility overviews"
+      }
+    },
+    "rules": "All images must be darkened or overlaid with black/50 when text is placed on top to maintain contrast and the moody luxury aesthetic."
+  },
+  "iconography": {
+    "library": "lucide-react",
+    "style": "Use thin stroke widths (strokeWidth={1.5}) to match the luxury minimalist aesthetic. Icons should feel like precision instruments."
+  },
+  "testing": {
+    "rules": "All interactive and key informational elements MUST include a data-testid attribute in kebab-case."
+  },
+  "instructions_to_main_agent": [
+    "Install lucide-react and configure Tailwind with the custom color palette provided.",
+    "Implement the 'Control Room Grid' for the dashboard with responsive adjustments for tablets.",
+    "Use 'Today's Barn Board' as the primary operational view with large touch-friendly cards.",
+    "Do NOT use pure white. Use the Soft Ivory and Light Silver for text.",
+    "Ensure all cards have a 1px #4D4D4D border and #1E1E1E background.",
+    "Override generic font families in Tailwind config: display uses Cormorant Garamond, sans uses Inter.",
+    "Never use placeholder image URLs. Rely entirely on the provided media URLs."
+  ]
+}
