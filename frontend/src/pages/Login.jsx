@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { useNavigate, Navigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Logo } from "../components/Logo";
 
 const DEMO = [
@@ -19,14 +19,21 @@ export default function Login() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
-  if (user) return <Navigate to="/" replace />;
+  useEffect(() => {
+    if (user) navigate("/", { replace: true });
+  }, [user, navigate]);
 
   const submit = async (e) => {
-    e.preventDefault();
+    if (e?.preventDefault) e.preventDefault();
     setErr(""); setLoading(true);
-    try { await login(email, password); navigate("/"); }
-    catch (e) { setErr(e?.response?.data?.detail || "Sign in failed"); }
-    finally { setLoading(false); }
+    try {
+      await login(email, password);
+      navigate("/", { replace: true });
+    } catch (err2) {
+      setErr(err2?.response?.data?.detail || "Sign in failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

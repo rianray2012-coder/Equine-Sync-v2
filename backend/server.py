@@ -269,12 +269,12 @@ def clean(doc):
     doc.pop("_id", None)
     return doc
 
-async def list_collection(coll, query=None, sort_field=None):
+async def list_collection(coll, query=None, sort_field=None, limit=500):
     q = query or {}
     cursor = db[coll].find(q, {"_id": 0})
     if sort_field:
         cursor = cursor.sort(sort_field, -1)
-    return await cursor.to_list(2000)
+    return await cursor.to_list(limit)
 
 # ---------------- Horses ----------------
 @api_router.get("/horses")
@@ -502,54 +502,54 @@ async def create_incident(body: IncidentIn, user=Depends(get_current_user)):
 # ---------------- Dashboard summary ----------------
 @api_router.get("/dashboard/summary")
 async def dashboard(user=Depends(get_current_user)):
-    horses = await list_collection("horses")
-    meds = await list_collection("medications")
-    med_logs = await list_collection("medication_logs")
-    feed = await list_collection("feed_tasks")
-    invoices = await list_collection("invoices")
-    incidents = await list_collection("incidents")
-    sr = await list_collection("service_requests")
-    injuries = await list_collection("injuries")
-    lessons = await list_collection("lessons")
-
     today_str = now_utc().date().isoformat()
-    feed_today = [f for f in feed if f.get("date") == today_str]
-    feed_pending = [f for f in feed_today if not f.get("completed")]
-    meds_today_logs = [l for l in med_logs if l.get("scheduled_time", "").startswith(today_str)]
-    meds_missed = [l for l in meds_today_logs if l.get("status") == "missed"]
-    meds_due = [l for l in meds_today_logs if l.get("status") not in ("given", "missed", "skipped")]
-    stall_rest = [h for h in horses if h.get("status") in ("stall_rest", "rehab")]
-    active_injuries = [i for i in injuries if i.get("status") in ("active", "monitoring", "improving")]
-    overdue_invoices = [i for i in invoices if i.get("status") in ("open", "overdue")]
-    pending_sr = [s for s in sr if s.get("status") == "pending"]
-    open_incidents = [i for i in incidents if i.get("status", "open") != "closed"]
-    lessons_today = [l for l in lessons if l.get("start_time", "").startswith(today_str)]
+    today_prefix = today_str  # ISO date prefix
+    # parallel-ish counts using projections + filters
+    total_horses = await db.horses.count_documents({})
+    stall_rest = await db.horses.count_documents({"status": {"$in": ["stall_rest", "rehab"]}})
+    active_injuries = await db.injuries.count_documents({"status": {"$in": ["active", "monitoring", "improving"]}})
+    feed_today_total = await db.feed_tasks.count_documents({"date": today_str})
+    feed_pending = await db.feed_tasks.count_documents({"date": today_str, "completed": {"$ne": True}})
+    meds_missed = await db.medication_logs.count_documents({"scheduled_time": {"$regex": f"^{today_prefix}"}, "status": "missed"})
+    meds_due = await db.medication_logs.count_documents({"scheduled_time": {"$regex": f"^{today_prefix}"}, "status": {"$nin": ["given", "missed", "skipped"]}})
+    pending_sr = await db.service_requests.count_documents({"status": "pending"})
+    open_incidents = await db.incidents.count_documents({"status": {"$ne": "closed"}})
+    lessons_today = await db.lessons.count_documents({"start_time": {"$regex": f"^{today_prefix}"}})
+
+    overdue_cursor = db.invoices.find({"status": {"$in": ["open", "overdue"]}}, {"_id": 0, "total": 1})
+    overdue_list = await overdue_cursor.to_list(1000)
+    overdue_invoices = len(overdue_list)
+    overdue_amount = sum(i.get("total", 0) for i in overdue_list)
+
+    wellness_cursor = db.horses.find({}, {"_id": 0, "wellness_score": 1})
+    wellness_list = await wellness_cursor.to_list(1000)
+    avg_wellness = round(sum(h.get("wellness_score", 0) for h in wellness_list) / max(1, len(wellness_list))) if wellness_list else 0
 
     return {
-        "total_horses": len(horses),
-        "feed_pending": len(feed_pending),
-        "feed_today_total": len(feed_today),
-        "meds_due": len(meds_due),
-        "meds_missed": len(meds_missed),
-        "stall_rest": len(stall_rest),
-        "active_injuries": len(active_injuries),
-        "overdue_invoices": len(overdue_invoices),
-        "overdue_amount": sum(i.get("total", 0) for i in overdue_invoices),
-        "pending_service_requests": len(pending_sr),
-        "open_incidents": len(open_incidents),
-        "lessons_today": len(lessons_today),
-        "avg_wellness": round(sum(h.get("wellness_score", 0) for h in horses) / max(1, len(horses))),
+        "total_horses": total_horses,
+        "feed_pending": feed_pending,
+        "feed_today_total": feed_today_total,
+        "meds_due": meds_due,
+        "meds_missed": meds_missed,
+        "stall_rest": stall_rest,
+        "active_injuries": active_injuries,
+        "overdue_invoices": overdue_invoices,
+        "overdue_amount": overdue_amount,
+        "pending_service_requests": pending_sr,
+        "open_incidents": open_incidents,
+        "lessons_today": lessons_today,
+        "avg_wellness": avg_wellness,
     }
 
 @api_router.get("/dashboard/barn-board")
 async def barn_board(user=Depends(get_current_user)):
     today_str = now_utc().date().isoformat()
-    feed = [f for f in await list_collection("feed_tasks") if f.get("date") == today_str]
-    med_logs = [l for l in await list_collection("medication_logs") if l.get("scheduled_time", "").startswith(today_str)]
-    lessons = [l for l in await list_collection("lessons") if l.get("start_time", "").startswith(today_str)]
-    horses = await list_collection("horses")
-    stall_rest = [h for h in horses if h.get("status") in ("stall_rest", "rehab")]
-    incidents = sorted(await list_collection("incidents"), key=lambda x: x.get("occurred_at", ""), reverse=True)[:5]
+    today_prefix = today_str
+    feed = await db.feed_tasks.find({"date": today_str}, {"_id": 0}).to_list(200)
+    med_logs = await db.medication_logs.find({"scheduled_time": {"$regex": f"^{today_prefix}"}}, {"_id": 0}).to_list(200)
+    lessons = await db.lessons.find({"start_time": {"$regex": f"^{today_prefix}"}}, {"_id": 0}).to_list(200)
+    stall_rest = await db.horses.find({"status": {"$in": ["stall_rest", "rehab"]}}, {"_id": 0}).to_list(100)
+    incidents = await db.incidents.find({}, {"_id": 0}).sort("occurred_at", -1).to_list(5)
     return {
         "date": today_str,
         "feed": feed,
@@ -642,22 +642,22 @@ async def seed():
     # Horses
     horse_seed = [
         ("Valentino", "Hanoverian", 11, "Bay", 16.3, "Show Jumping", "active", "Stall 1",
-         "https://images.unsplash.com/photo-1553284965-5dc02f396399?w=800",
+         "https://images.unsplash.com/photo-1553284965-5dc02f396399?w=900&auto=format&fit=crop",
          "Sweet itch", "Premier Equine 2.5M", 92, "Aim for 1.20m by April."),
         ("Saint-Cloud", "Selle Français", 9, "Grey", 17.0, "Show Jumping", "active", "Stall 3",
-         "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=800",
+         "https://images.unsplash.com/photo-1534773728080-33d31da27ae5?w=900&auto=format&fit=crop",
          "", "Hartwell Insurance 1.8M", 88, "Maintain fitness through indoor season."),
         ("Belle Étoile", "Dutch Warmblood", 14, "Chestnut", 16.2, "Dressage", "active", "Stall 5",
-         "https://images.unsplash.com/photo-1614068387543-91dd6fbabb56?w=800",
+         "https://images.unsplash.com/photo-1605713704694-f59ae1ca8efb?w=900&auto=format&fit=crop",
          "Bee stings", "Beaumont Coverage 1.2M", 90, "Confirm flying changes in 4-tempi."),
         ("Whisper", "Thoroughbred", 16, "Black", 16.0, "Hunters", "stall_rest", "Stall 7",
-         "https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=800",
+         "https://images.unsplash.com/photo-1639570830431-6c2d0100d37b?w=900&auto=format&fit=crop",
          "Penicillin", "Vance Premier 800K", 64, "Rehab from soft tissue."),
         ("Mercury", "KWPN", 7, "Dark Bay", 16.1, "Show Jumping", "active", "Stall 9",
-         "https://images.unsplash.com/photo-1598974357801-cbca100e65d3?w=800",
+         "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=900&auto=format&fit=crop",
          "", "Working Insurance", 86, "Build canter strength."),
         ("Iolani", "Lusitano", 12, "Grey", 15.3, "Dressage", "rehab", "Stall 11",
-         "https://images.unsplash.com/photo-1572947650440-e8a97ef053b2?w=800",
+         "https://images.unsplash.com/photo-1598974357801-cbca100e65d3?w=900&auto=format&fit=crop",
          "", "Beaumont 1.2M", 71, "Return to controlled work."),
     ]
     horses = []

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, Navigate } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import { Menu, Bell, Search } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -7,9 +7,8 @@ import { useAuth } from "../context/AuthContext";
 export default function AppShell() {
   const [open, setOpen] = useState(false);
   const { user } = useAuth();
-  const navigate = useNavigate();
 
-  if (!user) { navigate("/login"); return null; }
+  if (!user) return <Navigate to="/login" replace />;
 
   return (
     <div className="flex h-screen bg-equine-black text-equine-ivory">
