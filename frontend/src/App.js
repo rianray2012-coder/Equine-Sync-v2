@@ -24,6 +24,7 @@ import OwnerPortal from "./pages/OwnerPortal";
 import Incidents from "./pages/Incidents";
 import Settings from "./pages/Settings";
 import Placeholder from "./pages/Placeholder";
+import Onboarding from "./pages/Onboarding";
 
 const Protected = ({ children }) => {
   const { user, loading } = useAuth();
@@ -42,6 +43,7 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route element={<Protected><AppShell /></Protected>}>
               <Route index element={<Dashboard />} />
+              <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/barn-board" element={<BarnBoard />} />
               <Route path="/horses" element={<Horses />} />
               <Route path="/horses/:id" element={<HorseProfile />} />

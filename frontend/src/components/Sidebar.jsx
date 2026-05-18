@@ -4,13 +4,14 @@ import {
   LayoutDashboard, Tablet, Cat, UserCircle2, Users, GraduationCap, Dumbbell,
   Stethoscope, BedDouble, Pill, Trees, UtensilsCrossed, Package, Trophy, Receipt,
   FileText, AlertTriangle, Wrench, ClipboardList, MessageSquare, BarChart3, Settings,
-  LogOut, Crown
+  LogOut, Crown, Sparkles
 } from "lucide-react";
 import { Logo } from "./Logo";
 import { useAuth } from "../context/AuthContext";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/onboarding", label: "Barn Setup", icon: Sparkles },
   { to: "/barn-board", label: "Barn Board", icon: Tablet },
   { to: "/horses", label: "Horses", icon: Cat },
   { to: "/riders", label: "Riders", icon: UserCircle2 },

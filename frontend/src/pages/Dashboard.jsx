@@ -1,18 +1,23 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, money } from "../lib/api";
 import { Card, PageHeader, Stat, StatusPill } from "../components/Primitives";
-import { Pill, AlertTriangle, BedDouble, Receipt, CloudRain, GraduationCap, ClipboardCheck, Stethoscope, Heart, UtensilsCrossed } from "lucide-react";
+import { Pill, AlertTriangle, BedDouble, Receipt, CloudRain, GraduationCap, ClipboardCheck, Stethoscope, Heart, UtensilsCrossed, Sparkles, ChevronRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 export default function Dashboard() {
   const { user } = useAuth();
   const [summary, setSummary] = useState(null);
   const [board, setBoard] = useState(null);
+  const [progress, setProgress] = useState(null);
 
   useEffect(() => {
     api.get("/dashboard/summary").then((r) => setSummary(r.data));
     api.get("/dashboard/barn-board").then((r) => setBoard(r.data));
+    api.get("/onboarding/progress").then((r) => setProgress(r.data)).catch(() => {});
   }, []);
+
+  const showSetupCard = progress && !progress.completed && (progress.percent ?? 0) < 100;
 
   return (
     <div data-testid="dashboard-page">
@@ -21,6 +26,27 @@ export default function Dashboard() {
         title="Stable Command"
         subtitle="A live overview of horses, health, operations and revenue across your facility."
       />
+
+      {showSetupCard && (
+        <Link to="/onboarding" data-testid="setup-progress-card" className="block mb-8 group">
+          <div className="equine-card equine-card-hover p-6 flex items-center gap-5 border-equine-steel/40">
+            <div className="w-14 h-14 rounded-2xl bg-equine-steel/30 border border-equine-steel/50 flex items-center justify-center">
+              <Sparkles strokeWidth={1.4} className="text-equine-champagne" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="label-eyebrow">Setup concierge</div>
+              <div className="font-display text-2xl text-equine-ivory mt-1">Finish setting up your barn</div>
+              <div className="mt-2 flex items-center gap-4">
+                <div className="flex-1 h-1.5 bg-equine-soft rounded-full overflow-hidden max-w-md">
+                  <div className="h-full bg-equine-champagne transition-all duration-500" style={{ width: `${progress.percent}%` }} />
+                </div>
+                <span className="text-equine-platinum/70 text-[12.5px]">{progress.percent}% complete</span>
+              </div>
+            </div>
+            <ChevronRight className="text-equine-champagne group-hover:translate-x-0.5 transition-transform" />
+          </div>
+        </Link>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5 mb-10">
         <Stat testid="stat-horses" label="Horses in Barn" value={summary?.total_horses ?? "—"} caption="Active in operations" />

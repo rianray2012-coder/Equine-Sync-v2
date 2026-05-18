@@ -850,6 +850,336 @@ async def seed():
 
     return {"ok": True, "seeded": True}
 
+# ---------------- Onboarding ----------------
+ONBOARDING_STEPS = [
+    {"id": "barn", "label": "Barn Profile", "required": True},
+    {"id": "locations", "label": "Locations", "required": True},
+    {"id": "owners", "label": "Owners & Clients", "required": True},
+    {"id": "horses", "label": "Horse Profiles", "required": True},
+    {"id": "riders", "label": "Riders", "required": False},
+    {"id": "feed_templates", "label": "Feed Templates", "required": True},
+    {"id": "inventory", "label": "Inventory", "required": False},
+    {"id": "staff", "label": "Team & Staff", "required": False},
+    {"id": "schedules", "label": "Recurring Schedules", "required": False},
+    {"id": "review", "label": "Review & Launch", "required": True},
+]
+
+class BarnSettings(BaseModel):
+    name: Optional[str] = None
+    facility_type: Optional[str] = None  # private, boarding, lesson, training, show, rescue
+    disciplines: Optional[List[str]] = []
+    address: Optional[str] = None
+    timezone: Optional[str] = "America/New_York"
+    contact_email: Optional[EmailStr] = None
+    contact_phone: Optional[str] = None
+    logo_url: Optional[str] = None
+    banner_url: Optional[str] = None
+
+class LocationIn(BaseModel):
+    type: str  # stall, paddock, pasture, arena, tack_room, feed_room, wash_rack
+    name: str
+    capacity: Optional[int] = 1
+    notes: Optional[str] = None
+
+class FeedTemplateIn(BaseModel):
+    meal: str  # morning, midday, evening
+    hay_type: Optional[str] = None
+    hay_lbs: Optional[float] = 0
+    grain_type: Optional[str] = None
+    grain_lbs: Optional[float] = 0
+    supplements: Optional[str] = None
+    med_timing: Optional[str] = None
+    instructions: Optional[str] = None
+
+class InventoryIn(BaseModel):
+    category: str  # grain, hay, bedding, supplements, medical, blankets, tack, other
+    name: str
+    unit: str = "lbs"
+    quantity: float = 0
+    reorder_at: Optional[float] = 0
+    vendor: Optional[str] = None
+    cost_per_unit: Optional[float] = 0
+    notes: Optional[str] = None
+
+class RecurringScheduleIn(BaseModel):
+    type: str  # turnout, feed, medication, blanketing, lesson_block, training_ride
+    name: str
+    days_of_week: Optional[List[str]] = []  # mon, tue...
+    time: Optional[str] = None  # "08:00"
+    location_id: Optional[str] = None
+    notes: Optional[str] = None
+
+class StaffInviteIn(BaseModel):
+    email: EmailStr
+    full_name: Optional[str] = None
+    role: str
+    permissions: Optional[List[str]] = []
+
+class ProgressPatch(BaseModel):
+    step_id: Optional[str] = None
+    status: Optional[str] = None  # complete, in_progress, skipped, pending
+    current_step: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None  # autosave bag
+
+class CsvPreviewBody(BaseModel):
+    kind: str  # horses, owners
+    csv_text: str
+
+class CsvCommitBody(BaseModel):
+    kind: str
+    rows: List[Dict[str, Any]]
+
+@api_router.get("/onboarding/steps")
+async def get_steps():
+    return {"steps": ONBOARDING_STEPS}
+
+@api_router.get("/onboarding/progress")
+async def get_progress(user=Depends(get_current_user)):
+    doc = await db.onboarding_progress.find_one({"user_id": user["id"]}, {"_id": 0})
+    if not doc:
+        doc = {
+            "user_id": user["id"],
+            "steps": {s["id"]: "pending" for s in ONBOARDING_STEPS},
+            "current_step": ONBOARDING_STEPS[0]["id"],
+            "data": {},
+            "completed": False,
+            "created_at": iso(now_utc()),
+            "updated_at": iso(now_utc()),
+        }
+        await db.onboarding_progress.insert_one(doc)
+        doc.pop("_id", None)
+    # Compute percent complete
+    completed = sum(1 for v in doc.get("steps", {}).values() if v == "complete")
+    doc["percent"] = round(100 * completed / len(ONBOARDING_STEPS))
+    return doc
+
+@api_router.patch("/onboarding/progress")
+async def patch_progress(body: ProgressPatch, user=Depends(get_current_user)):
+    doc = await db.onboarding_progress.find_one({"user_id": user["id"]})
+    if not doc:
+        await get_progress(user)
+        doc = await db.onboarding_progress.find_one({"user_id": user["id"]})
+    update = {"updated_at": iso(now_utc())}
+    if body.step_id and body.status:
+        update[f"steps.{body.step_id}"] = body.status
+    if body.current_step:
+        update["current_step"] = body.current_step
+    if body.data:
+        # merge data bag
+        existing = doc.get("data", {}) or {}
+        existing.update(body.data)
+        update["data"] = existing
+    await db.onboarding_progress.update_one({"user_id": user["id"]}, {"$set": update})
+    fresh = await db.onboarding_progress.find_one({"user_id": user["id"]}, {"_id": 0})
+    completed_steps = sum(1 for v in fresh.get("steps", {}).values() if v == "complete")
+    fresh["percent"] = round(100 * completed_steps / len(ONBOARDING_STEPS))
+    return fresh
+
+@api_router.post("/onboarding/complete")
+async def complete_onboarding(user=Depends(get_current_user)):
+    await db.onboarding_progress.update_one(
+        {"user_id": user["id"]},
+        {"$set": {"completed": True, "completed_at": iso(now_utc())}}
+    )
+    return {"ok": True}
+
+# ---------- Barn settings ----------
+@api_router.get("/barn")
+async def get_barn(user=Depends(get_current_user)):
+    doc = await db.barn.find_one({"id": "primary"}, {"_id": 0})
+    if not doc:
+        doc = {"id": "primary", "name": "", "facility_type": "boarding",
+               "disciplines": [], "address": "", "timezone": "America/New_York",
+               "contact_email": "", "contact_phone": "", "logo_url": "", "banner_url": ""}
+    return doc
+
+@api_router.put("/barn")
+async def update_barn(body: BarnSettings, user=Depends(get_current_user)):
+    doc = body.model_dump()
+    doc["id"] = "primary"
+    doc["updated_at"] = iso(now_utc())
+    await db.barn.update_one({"id": "primary"}, {"$set": doc}, upsert=True)
+    saved = await db.barn.find_one({"id": "primary"}, {"_id": 0})
+    return saved
+
+# ---------- Locations ----------
+@api_router.get("/locations")
+async def list_locations(user=Depends(get_current_user)):
+    return await list_collection("locations")
+
+@api_router.post("/locations")
+async def create_location(body: LocationIn, user=Depends(get_current_user)):
+    doc = body.model_dump()
+    doc.update({"id": new_id(), "created_at": iso(now_utc())})
+    await db.locations.insert_one(doc)
+    return clean(doc)
+
+@api_router.delete("/locations/{loc_id}")
+async def delete_location(loc_id: str, user=Depends(get_current_user)):
+    await db.locations.delete_one({"id": loc_id})
+    return {"ok": True}
+
+# ---------- Feed templates ----------
+@api_router.get("/feed-templates")
+async def list_feed_templates(user=Depends(get_current_user)):
+    return await list_collection("feed_templates")
+
+@api_router.post("/feed-templates")
+async def create_feed_template(body: FeedTemplateIn, user=Depends(get_current_user)):
+    doc = body.model_dump()
+    doc.update({"id": new_id(), "created_at": iso(now_utc())})
+    await db.feed_templates.insert_one(doc)
+    return clean(doc)
+
+@api_router.delete("/feed-templates/{tid}")
+async def delete_feed_template(tid: str, user=Depends(get_current_user)):
+    await db.feed_templates.delete_one({"id": tid})
+    return {"ok": True}
+
+# ---------- Inventory ----------
+@api_router.get("/inventory")
+async def list_inventory(user=Depends(get_current_user)):
+    items = await list_collection("inventory")
+    for it in items:
+        it["low_stock"] = (it.get("reorder_at") or 0) > 0 and (it.get("quantity") or 0) <= (it.get("reorder_at") or 0)
+    return items
+
+@api_router.post("/inventory")
+async def create_inventory(body: InventoryIn, user=Depends(get_current_user)):
+    doc = body.model_dump()
+    doc.update({"id": new_id(), "created_at": iso(now_utc())})
+    await db.inventory.insert_one(doc)
+    return clean(doc)
+
+@api_router.delete("/inventory/{iid}")
+async def delete_inventory(iid: str, user=Depends(get_current_user)):
+    await db.inventory.delete_one({"id": iid})
+    return {"ok": True}
+
+# ---------- Recurring Schedules ----------
+@api_router.get("/recurring-schedules")
+async def list_rs(user=Depends(get_current_user)):
+    return await list_collection("recurring_schedules")
+
+@api_router.post("/recurring-schedules")
+async def create_rs(body: RecurringScheduleIn, user=Depends(get_current_user)):
+    doc = body.model_dump()
+    doc.update({"id": new_id(), "created_at": iso(now_utc())})
+    await db.recurring_schedules.insert_one(doc)
+    return clean(doc)
+
+@api_router.delete("/recurring-schedules/{sid}")
+async def delete_rs(sid: str, user=Depends(get_current_user)):
+    await db.recurring_schedules.delete_one({"id": sid})
+    return {"ok": True}
+
+# ---------- Staff Invites ----------
+@api_router.get("/staff-invites")
+async def list_invites(user=Depends(get_current_user)):
+    return await list_collection("staff_invites")
+
+@api_router.post("/staff-invites")
+async def create_invite(body: StaffInviteIn, user=Depends(get_current_user)):
+    if body.role not in ROLES:
+        raise HTTPException(400, "Invalid role")
+    doc = body.model_dump()
+    doc.update({"id": new_id(), "status": "pending",
+                "invited_by": user["full_name"], "created_at": iso(now_utc())})
+    await db.staff_invites.insert_one(doc)
+    return clean(doc)
+
+@api_router.delete("/staff-invites/{sid}")
+async def delete_invite(sid: str, user=Depends(get_current_user)):
+    await db.staff_invites.delete_one({"id": sid})
+    return {"ok": True}
+
+# ---------- CSV import ----------
+def _parse_csv(text: str) -> List[Dict[str, str]]:
+    import csv, io
+    reader = csv.DictReader(io.StringIO(text.strip()))
+    return [{(k or "").strip().lower(): (v or "").strip() for k, v in row.items()} for row in reader]
+
+@api_router.post("/onboarding/csv-preview")
+async def csv_preview(body: CsvPreviewBody, user=Depends(get_current_user)):
+    try:
+        rows = _parse_csv(body.csv_text)
+    except Exception as e:
+        raise HTTPException(400, f"Invalid CSV: {e}")
+    if not rows:
+        return {"rows": [], "duplicates": [], "count": 0}
+
+    duplicates = []
+    if body.kind == "horses":
+        existing_names = {h["name"].lower() for h in await db.horses.find({}, {"_id": 0, "name": 1}).to_list(1000)}
+        for r in rows:
+            if (r.get("name") or "").lower() in existing_names:
+                duplicates.append(r.get("name"))
+    elif body.kind == "owners":
+        existing = {o.get("email", "").lower() for o in await db.owners.find({}, {"_id": 0, "email": 1}).to_list(1000)}
+        for r in rows:
+            if (r.get("email") or "").lower() in existing:
+                duplicates.append(r.get("email"))
+    return {"rows": rows, "duplicates": duplicates, "count": len(rows)}
+
+@api_router.post("/onboarding/csv-commit")
+async def csv_commit(body: CsvCommitBody, user=Depends(get_current_user)):
+    created = 0
+    if body.kind == "horses":
+        # need owner_id; let import allow owner_name resolution
+        owners_map = {o.get("full_name", "").lower(): o["id"] for o in await db.owners.find({}, {"_id": 0}).to_list(2000)}
+        for r in body.rows:
+            doc = {
+                "id": new_id(),
+                "name": r.get("name"),
+                "barn_name": r.get("barn_name") or r.get("name"),
+                "breed": r.get("breed"),
+                "age": int(r["age"]) if r.get("age", "").isdigit() else None,
+                "color": r.get("color"),
+                "height_hands": float(r["height_hands"]) if r.get("height_hands") else None,
+                "discipline": r.get("discipline"),
+                "stall": r.get("stall"),
+                "owner_id": owners_map.get((r.get("owner") or "").lower()) or owners_map.get((r.get("owner_name") or "").lower()),
+                "status": r.get("status") or "active",
+                "wellness_score": int(r["wellness_score"]) if r.get("wellness_score", "").isdigit() else 85,
+                "allergies": [a.strip() for a in (r.get("allergies") or "").split(";") if a.strip()],
+                "feed_plan": r.get("feed_plan"),
+                "turnout_group": r.get("turnout_group"),
+                "behavior_flags": [b.strip() for b in (r.get("behavior_flags") or "").split(";") if b.strip()],
+                "photo_url": r.get("photo_url"),
+                "created_at": iso(now_utc()),
+            }
+            if doc["name"]:
+                await db.horses.insert_one(doc); created += 1
+    elif body.kind == "owners":
+        for r in body.rows:
+            doc = {
+                "id": new_id(),
+                "full_name": r.get("full_name") or r.get("name"),
+                "email": r.get("email"),
+                "phone": r.get("phone"),
+                "horses": [],
+                "billing_preferences": r.get("billing_preferences"),
+                "emergency_contact": r.get("emergency_contact"),
+                "waiver_signed": (r.get("waiver_signed") or "").lower() in ("yes", "true", "1"),
+                "created_at": iso(now_utc()),
+            }
+            if doc["full_name"]:
+                await db.owners.insert_one(doc); created += 1
+    else:
+        raise HTTPException(400, "Unsupported kind")
+    return {"created": created}
+
+@api_router.get("/onboarding/csv-template")
+async def csv_template(kind: str):
+    templates = {
+        "horses": "name,breed,age,color,height_hands,discipline,stall,owner,status,wellness_score,allergies,feed_plan,turnout_group,behavior_flags,photo_url\nValentino,Hanoverian,11,Bay,16.3,Show Jumping,Stall 1,Charlotte Vance,active,92,Sweet itch,2lb grain + 6lb hay,Geldings A,Solo turnout,https://example.com/photo.jpg",
+        "owners": "full_name,email,phone,emergency_contact,billing_preferences,waiver_signed\nCharlotte Vance,charlotte@example.com,+1 555 0142,Edward Vance +1 555 0143,monthly_card,yes",
+    }
+    text = templates.get(kind)
+    if not text:
+        raise HTTPException(400, "Unknown template")
+    return {"text": text, "filename": f"equinesync_{kind}_template.csv"}
+
 # ---------------- Health ----------------
 @api_router.get("/")
 async def root():
