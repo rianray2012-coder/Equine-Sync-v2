@@ -67,6 +67,11 @@ async def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depen
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
+def require_setup_role(user):
+    """Stable Owner / Admin / Barn Manager can edit barn-level setup."""
+    if user.get("role") not in ("admin", "barn_manager"):
+        raise HTTPException(status_code=403, detail="Owner / Barn Manager access required")
+
 # ---------------- Models ----------------
 ROLES = ["admin", "barn_manager", "trainer", "groom", "working_student",
          "horse_owner", "rider", "parent", "veterinarian", "farrier"]
@@ -870,7 +875,7 @@ class BarnSettings(BaseModel):
     disciplines: Optional[List[str]] = []
     address: Optional[str] = None
     timezone: Optional[str] = "America/New_York"
-    contact_email: Optional[EmailStr] = None
+    contact_email: Optional[str] = None  # plain str to allow empty
     contact_phone: Optional[str] = None
     logo_url: Optional[str] = None
     banner_url: Optional[str] = None
@@ -983,6 +988,22 @@ async def complete_onboarding(user=Depends(get_current_user)):
     )
     return {"ok": True}
 
+@api_router.post("/onboarding/reset")
+async def reset_onboarding(user=Depends(get_current_user)):
+    """Re-open the wizard for the current user (resets steps to pending)."""
+    await db.onboarding_progress.update_one(
+        {"user_id": user["id"]},
+        {"$set": {
+            "completed": False,
+            "completed_at": None,
+            "steps": {s["id"]: "pending" for s in ONBOARDING_STEPS},
+            "current_step": ONBOARDING_STEPS[0]["id"],
+            "updated_at": iso(now_utc()),
+        }},
+        upsert=True,
+    )
+    return {"ok": True}
+
 # ---------- Barn settings ----------
 @api_router.get("/barn")
 async def get_barn(user=Depends(get_current_user)):
@@ -995,6 +1016,7 @@ async def get_barn(user=Depends(get_current_user)):
 
 @api_router.put("/barn")
 async def update_barn(body: BarnSettings, user=Depends(get_current_user)):
+    require_setup_role(user)
     doc = body.model_dump()
     doc["id"] = "primary"
     doc["updated_at"] = iso(now_utc())
@@ -1080,9 +1102,17 @@ async def list_invites(user=Depends(get_current_user)):
 
 @api_router.post("/staff-invites")
 async def create_invite(body: StaffInviteIn, user=Depends(get_current_user)):
+    require_setup_role(user)
     if body.role not in ROLES:
         raise HTTPException(400, "Invalid role")
+    # de-dupe by email (already invited or already a user)
+    existing = await db.staff_invites.find_one({"email": body.email.lower()})
+    if existing:
+        raise HTTPException(409, "Already invited")
+    if await db.users.find_one({"email": body.email.lower()}):
+        raise HTTPException(409, "User already exists")
     doc = body.model_dump()
+    doc["email"] = doc["email"].lower()
     doc.update({"id": new_id(), "status": "pending",
                 "invited_by": user["full_name"], "created_at": iso(now_utc())})
     await db.staff_invites.insert_one(doc)
@@ -1124,23 +1154,37 @@ async def csv_preview(body: CsvPreviewBody, user=Depends(get_current_user)):
 @api_router.post("/onboarding/csv-commit")
 async def csv_commit(body: CsvCommitBody, user=Depends(get_current_user)):
     created = 0
+    skipped = 0
     if body.kind == "horses":
-        # need owner_id; let import allow owner_name resolution
+        existing_names = {h["name"].lower() for h in await db.horses.find({}, {"_id": 0, "name": 1}).to_list(2000)}
         owners_map = {o.get("full_name", "").lower(): o["id"] for o in await db.owners.find({}, {"_id": 0}).to_list(2000)}
         for r in body.rows:
+            name = (r.get("name") or "").strip()
+            if not name:
+                continue
+            if name.lower() in existing_names:
+                skipped += 1
+                continue
+            existing_names.add(name.lower())
+            def _maybe_int(v):
+                try: return int(float(v)) if v not in (None, "") else None
+                except Exception: return None
+            def _maybe_float(v):
+                try: return float(v) if v not in (None, "") else None
+                except Exception: return None
             doc = {
                 "id": new_id(),
-                "name": r.get("name"),
-                "barn_name": r.get("barn_name") or r.get("name"),
+                "name": name,
+                "barn_name": r.get("barn_name") or name,
                 "breed": r.get("breed"),
-                "age": int(r["age"]) if r.get("age", "").isdigit() else None,
+                "age": _maybe_int(r.get("age")),
                 "color": r.get("color"),
-                "height_hands": float(r["height_hands"]) if r.get("height_hands") else None,
+                "height_hands": _maybe_float(r.get("height_hands")),
                 "discipline": r.get("discipline"),
                 "stall": r.get("stall"),
                 "owner_id": owners_map.get((r.get("owner") or "").lower()) or owners_map.get((r.get("owner_name") or "").lower()),
                 "status": r.get("status") or "active",
-                "wellness_score": int(r["wellness_score"]) if r.get("wellness_score", "").isdigit() else 85,
+                "wellness_score": _maybe_int(r.get("wellness_score")) or 85,
                 "allergies": [a.strip() for a in (r.get("allergies") or "").split(";") if a.strip()],
                 "feed_plan": r.get("feed_plan"),
                 "turnout_group": r.get("turnout_group"),
@@ -1148,14 +1192,23 @@ async def csv_commit(body: CsvCommitBody, user=Depends(get_current_user)):
                 "photo_url": r.get("photo_url"),
                 "created_at": iso(now_utc()),
             }
-            if doc["name"]:
-                await db.horses.insert_one(doc); created += 1
+            await db.horses.insert_one(doc); created += 1
     elif body.kind == "owners":
+        existing_emails = {o.get("email", "").lower() for o in await db.owners.find({}, {"_id": 0, "email": 1}).to_list(2000) if o.get("email")}
         for r in body.rows:
+            name = (r.get("full_name") or r.get("name") or "").strip()
+            email = (r.get("email") or "").strip().lower()
+            if not name:
+                continue
+            if email and email in existing_emails:
+                skipped += 1
+                continue
+            if email:
+                existing_emails.add(email)
             doc = {
                 "id": new_id(),
-                "full_name": r.get("full_name") or r.get("name"),
-                "email": r.get("email"),
+                "full_name": name,
+                "email": email or None,
                 "phone": r.get("phone"),
                 "horses": [],
                 "billing_preferences": r.get("billing_preferences"),
@@ -1163,11 +1216,10 @@ async def csv_commit(body: CsvCommitBody, user=Depends(get_current_user)):
                 "waiver_signed": (r.get("waiver_signed") or "").lower() in ("yes", "true", "1"),
                 "created_at": iso(now_utc()),
             }
-            if doc["full_name"]:
-                await db.owners.insert_one(doc); created += 1
+            await db.owners.insert_one(doc); created += 1
     else:
         raise HTTPException(400, "Unsupported kind")
-    return {"created": created}
+    return {"created": created, "skipped": skipped}
 
 @api_router.get("/onboarding/csv-template")
 async def csv_template(kind: str):

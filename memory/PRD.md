@@ -21,6 +21,18 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
+### Onboarding / Barn Setup Workflow (Feb 18 2026 — added)
+- 10-step guided wizard at `/onboarding` with sticky stepper, autosave, resume-where-you-left-off, percent progress
+- Steps: Barn Profile · Locations · Owners · Horses · Riders · Feed Templates · Inventory · Staff Invites · Recurring Schedules · Review & Launch
+- CSV bulk import for **owners** and **horses**: drag-drop + paste + downloadable template + preview with duplicate detection + commit with server-side dedupe
+- Backend models/endpoints: `/barn` (settings), `/locations`, `/feed-templates`, `/inventory` (with low_stock flag), `/recurring-schedules`, `/staff-invites` (de-duped by email), `/onboarding/{steps,progress,complete,reset,csv-preview,csv-commit,csv-template}`
+- Role gating: only `admin` / `barn_manager` can edit barn-level settings or invite staff
+- Sidebar: "Barn Setup" nav item with Sparkles icon
+- Dashboard "Setup Progress" card auto-shows percent bar until completion
+- Settings → "Re-open setup" button for admin recovery
+- Tests: 15/15 onboarding pytest cases pass
+
+
 ### Backend (/app/backend/server.py)
 - JWT auth: `/api/auth/register`, `/api/auth/login`, `/api/auth/me`
 - CRUD endpoints: horses, owners, riders, medications, medication-logs, feed-tasks, vet-records, injuries, wellness, lessons, training, invoices, messages, service-requests, incidents
