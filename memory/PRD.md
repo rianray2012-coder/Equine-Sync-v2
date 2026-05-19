@@ -29,13 +29,22 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 - Role gating: only `admin` / `barn_manager` can edit barn-level settings or invite staff
 
 ### Magic-Link Invites + Email Layer (Feb 19 2026 — added)
-- **Resend integration** (`mailer.py` abstraction) with dev-mode fallback (no key → logs warning, returns dev_accept_url to UI)
-- Branded HTML email templates: `_base.html` + `onboarding_invite.html` (luxury aesthetic, mobile-friendly tables)
-- Endpoints: `POST /invites` (create+send), `/invites/{id}/resend`, `/invites/{id}/revoke`, `GET /invites/verify?token=...`, `POST /invites/accept`
-- Magic tokens: sha256-hashed at rest, single-use, 7-day TTL (env-configurable)
-- AcceptInvite page `/accept-invite?token=...` with password set, auto-launches onboarding for `admin`/`barn_manager` roles
-- `APP_BASE_URL` env-driven with request-origin fallback for preview environments
-- `Resend` integration code-complete; emails activate the moment `RESEND_API_KEY` is added to `/app/backend/.env`
+- **Resend integration** (`mailer.py` abstraction) — **LIVE** with real API key as of Feb 19 2026.
+- Sandbox handling: when Resend rejects non-owner recipients, mailer returns `status='sandbox'`, dev_accept_url surfaced in UI for manual share until domain is verified
+- Branded HTML email templates: `_base.html` + `onboarding_invite.html` + `onboarding_nudge.html` (luxury aesthetic)
+- Endpoints: `POST /invites`, `/invites/{id}/resend`, `/invites/{id}/revoke`, `GET /invites/verify`, `POST /invites/accept`
+- Tokens: sha256-hashed at rest, single-use, 7-day TTL
+- AcceptInvite page `/accept-invite?token=...` with password set, auto-launches onboarding for `admin`/`barn_manager`
+- `APP_BASE_URL` env-driven with request-origin fallback
+
+### Setup Health Reports + Nudge Automation (Feb 19 2026 — added)
+- **`/reports` page** (admin/barn_manager only): 5 KPI cards (setups in progress, completed, completion rate, median time-to-launch, invite acceptance), 10-step funnel chart with status segmentation, invitation pipeline (total/accepted/pending/revoked/expired), low-acceptance amber coaching banner
+- **Manual nudge trigger** `POST /admin/send-nudges` with configurable `min_days`/`cooldown_hours` (cooldown only persists on successful send), candidate list preview, "Send reminders" button
+- **Daily automated scheduler** — asyncio task on backend startup runs every 24h after 6h warmup, controlled by `DISABLE_AUTO_NUDGES` env var
+- Branded nudge email template with personalised "Pick up where you left off — X% done, next step: Y" copy
+- Endpoints: `GET /reports/setup-health`, `GET /reports/nudge-candidates?min_days=N`, `POST /admin/send-nudges`
+- Analytics events: `onboarding.nudge_sent`, `admin.nudges_run` (with auto/manual trigger metadata)
+- Tests: 12/12 PASS (in addition to prior 75 passing tests)
 
 ### Polish + Analytics (Feb 19 2026)
 - Native `<select>` replaced with **shadcn Select** in all onboarding form controls

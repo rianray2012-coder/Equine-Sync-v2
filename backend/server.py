@@ -1637,6 +1637,7 @@ async def _send_nudges(request: Optional[Request], inviter_name: str, min_days: 
                 "ttl_days": 7,
             },
         )
+        sent_ok = mail.get("status") in ("sent", "sandbox", "dev_logged")
         if mail.get("status") == "sent":
             sent += 1
             detail.append({"email": c["email"], "result": "sent"})
@@ -1646,10 +1647,13 @@ async def _send_nudges(request: Optional[Request], inviter_name: str, min_days: 
         else:
             errors += 1
             detail.append({"email": c["email"], "result": "error", "error": mail.get("error", "")[:120]})
-        await db.onboarding_progress.update_one(
-            {"user_id": c["user_id"]},
-            {"$set": {"last_nudged_at": iso(now_utc())}, "$inc": {"nudges_sent": 1}}
-        )
+        # Only persist cooldown if the message was at least attempted successfully — transient
+        # errors should NOT lock the recipient out of nudges for 24h.
+        if sent_ok:
+            await db.onboarding_progress.update_one(
+                {"user_id": c["user_id"]},
+                {"$set": {"last_nudged_at": iso(now_utc())}, "$inc": {"nudges_sent": 1}}
+            )
         await _track("onboarding.nudge_sent", {"user_id": c["user_id"], "days_stalled": c["days_stalled"], "result": mail.get("status")}, None)
     return {"candidates": len(candidates), "sent": sent, "skipped": skipped, "errors": errors, "detail": detail}
 

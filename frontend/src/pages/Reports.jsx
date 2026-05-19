@@ -66,7 +66,7 @@ export default function Reports() {
             <Kpi label="Setups in progress" value={health.in_progress_setups} icon={Sparkles} accent="champagne" />
             <Kpi label="Completed setups" value={health.completed_setups} icon={CheckCircle2} accent="sage" />
             <Kpi label="Completion rate" value={`${health.completion_rate}%`} icon={TrendingUp} accent="ivory" />
-            <Kpi label="Median time to launch" value={health.median_days_to_launch ? `${health.median_days_to_launch}d` : "—"} icon={Clock} accent="ivory" caption={health.median_hours_to_launch ? `${health.median_hours_to_launch}h` : null} />
+            <Kpi label="Median time to launch" value={health.median_days_to_launch ? `${health.median_days_to_launch}d` : "—"} icon={Clock} accent="ivory" caption={health.median_days_to_launch ? `${health.median_hours_to_launch}h precise` : "No completed setups yet"} />
             <Kpi label="Invite acceptance" value={`${health.invites.acceptance_rate}%`} icon={Mail} accent="ivory" caption={`${health.invites.accepted}/${health.invites.total} accepted`} />
           </div>
 
