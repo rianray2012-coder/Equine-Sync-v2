@@ -194,8 +194,7 @@ def get_provider() -> StorageProvider:
     global _provider
     if _provider is not None:
         return _provider
-    kind = (os.environ.get("STORAGE_PROVIDER") or "").lower()
-    if kind in ("r2", "s3", "s3_compatible"):
+    kind = (os.environ.get("STORAGE_PROVIDER") or "").lower()    if kind in ("r2", "s3", "s3_compatible"):
         try:
             _provider = S3CompatibleStorage(
                 endpoint_url=os.environ["STORAGE_ENDPOINT_URL"],
@@ -212,6 +211,14 @@ def get_provider() -> StorageProvider:
     _provider = LocalDevStorage()
     logger.info("Storage provider: %s", _provider.name())
     return _provider
+
+
+def reset_provider_for_tests() -> None:
+    """Clear the cached provider so a fresh `get_provider()` re-reads env.
+    Production code should never call this.
+    """
+    global _provider
+    _provider = None
 
 
 # ---------- High-level helpers used by routes -------------------------------

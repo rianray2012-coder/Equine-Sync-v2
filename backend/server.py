@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -580,12 +580,16 @@ async def dashboard(user=Depends(get_current_user)):
 
 
 @api_router.get("/dashboard/barn-board")
-async def barn_board(user=Depends(get_current_user)):
+async def barn_board(response: Response, user=Depends(get_current_user)):
     """DEPRECATED Phase-A (Feb 19 2026): kept for backward compatibility while
     callers migrate to /tasks/today. New code should not use this endpoint.
 
     Now backed by the unified Task Engine instead of legacy collections.
     """
+    # RFC 8594 deprecation signaling for HTTP clients.
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = "Wed, 30 Apr 2026 00:00:00 GMT"
+    response.headers["Link"] = '</api/tasks/today>; rel="successor-version"'
     today_start = now_utc().replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = today_start + timedelta(days=1)
     today_str = now_utc().date().isoformat()

@@ -274,7 +274,7 @@ const CRUD_CONFIG = {
   schedules: {
     endpoint: "/recurring-schedules",
     title: "Recurring schedules",
-    desc: "Standing routines: turnout rotations, med rounds, blanketing, lesson blocks. These power the daily Barn Board.",
+    desc: "Standing routines: turnout rotations, med rounds, blanketing, lesson blocks. These power the daily Today view.",
     fields: [
       { key: "type", label: "Type", kind: "select", opts: ["turnout", "feed", "medication", "blanketing", "lesson_block", "training_ride"], required: true },
       { key: "name", label: "Name", placeholder: "Morning turnout — Geldings A", required: true },
