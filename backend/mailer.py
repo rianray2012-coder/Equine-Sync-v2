@@ -76,5 +76,9 @@ async def send(
         result = await asyncio.to_thread(resend.Emails.send, params)
         return {"status": "sent", "id": result.get("id"), "dev": False}
     except Exception as e:
-        logger.exception("Resend send failed")
-        return {"status": "error", "error": str(e), "dev": False}
+        msg = str(e)
+        logger.warning("Resend send failed: %s", msg)
+        # Sandbox mode: API works but recipient not allowed. Treat like dev mode so the
+        # caller surfaces the magic link to the inviter for manual sharing.
+        sandbox = "verify a domain" in msg.lower() or "testing emails" in msg.lower()
+        return {"status": "sandbox" if sandbox else "error", "error": msg, "dev": sandbox}

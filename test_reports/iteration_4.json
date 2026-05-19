@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 4 — Setup Health Reports + Nudge automation E2E verified. Backend: 12/12 PASS in /app/backend/tests/test_reports_and_nudges.py covering GET /reports/setup-health (shape, 10-step funnel, invites block, groom 403, no-auth 403), GET /reports/nudge-candidates (default shape + seeded stalled user surfaces with correct days_stalled & next_step), POST /admin/send-nudges (no-candidate noop, groom 403, seeded candidate flow with cooldown skip on 2nd call within 24h, last_nudged_at + nudges_sent counter incremented, admin.nudges_run analytics persisted), POST /invites real Resend delivery to rian.ray2012@gmail.com returns sends[-1].status='sent' with Resend message id, and non-owner email returns sends[-1].status='sandbox' with dev_accept_url surfaced. Frontend /reports: admin sees all 5 KPI cards, all 10 funnel rows (testids funnel-barn..funnel-review), nudge panel with nudge-days input, candidates list, run-nudges button correctly disabled with 0 candidates, refresh button works, low invite-acceptance amber banner shows at 33% (<50%). Groom hitting /reports gets 403 on both endpoints (4 console 403s observed) and renders no funnel/KPI — RBAC enforced consistently in frontend + backend.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /admin/send-nudges", "issue": "Cooldown check happens before send, but the last_nudged_at / nudges_sent update runs unconditionally even on send error (errors path). For an errored delivery, the cooldown will still suppress retries for 24h. Consider only updating last_nudged_at when mail.status in (sent, sandbox, dev_logged)."},
+      {"endpoint": "GET /reports/setup-health", "issue": "median_hours_to_launch uses simple even/odd median but does no rounding for round() when median is exactly 0. Also median_days_to_launch = round(median_hours/24, 1) — if median is None this short-circuits via `if median_hours else None`, which also treats 0.0 as None. Edge case only, but worth noting."},
+      {"endpoint": "_send_nudges (mailer integration)", "issue": "When request is None (auto-daily scheduler path), base_url falls back to env var or hardcoded prod URL. Same APP_BASE_URL caveat from iteration 3 applies — preview/staging nudge emails will link to prod /onboarding."},
+      {"endpoint": "POST /admin/send-nudges", "issue": "admin.nudges_run event records sent/skipped/errors but loses the 'detail' breakdown. Not a bug, but limits debugging when investigating which users received nudges. Consider storing first 20 emails in event payload."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/reports — Median time to launch KPI", "issues": ["When no completed setups exist (median_days_to_launch=null), the value is rendered as an em-dash '—' which sits left-aligned and looks like a divider; consider replacing with subtle 'No data yet' caption to match the empty-state pattern used in nudge panel."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_reports_and_nudges.py",
+    "/app/test_reports/pytest/reports_nudges_results.xml"
+  ],
+  "action_items": [
+    "(Minor) In _send_nudges, only persist last_nudged_at/nudges_sent when delivery did not error, so transient Resend failures don't get cooled-down for 24h.",
+    "(Minor) Persist 'detail' (or first N entries) inside admin.nudges_run event payload for audit trail.",
+    "(Nit) Empty-state copy for Median KPI when no completed setups exist.",
+    "(Carried from iter 3) Derive APP_BASE_URL from request origin or per-env so nudge resume_url links point at the correct host."
+  ],
+  "critical_code_review_comments": [
+    "Funnel construction correctly initialises all 10 ONBOARDING_STEPS with zero counts, then increments by status — labels stable & order deterministic. PASS.",
+    "_nudge_candidates correctly handles users whose progress doc updated_at is missing (falls back to created_at) and skips users without an email — robust.",
+    "require_setup_role applied on both /reports/setup-health AND /reports/nudge-candidates AND /admin/send-nudges — admin & barn_manager only; verified groom returns 403 on all three.",
+    "Cooldown is correctly enforced by comparing last_nudged_at to (now - cooldown_hours); seeded test exercised both paths.",
+    "_track('admin.nudges_run', ..., user['id']) for manual + (..., None) for auto_daily — distinguishes trigger via 'trigger' field, good for analytics segmentation.",
+    "Background _nudge_loop uses asyncio.sleep(6h warmup) + 24h cadence; controlled by DISABLE_AUTO_NUDGES env var — verified loop won't fire during test window (warmup>>test duration). Recommend wrapping the inner while-True loop body's await _track call in try/except so a single analytics failure can't break the daemon.",
+    "Resend mailer correctly maps 'testing emails / verify a domain' error → status='sandbox', dev=true; non-owner invites pass through this path and surface dev_accept_url in the API response — frontend (StaffSetup dev-link-banner) already consumes this contract.",
+    "Frontend Reports.jsx is 240 lines, single file, three small subcomponents — well within size guidelines. data-testids consistently applied (reports-page, reports-refresh, nudge-days, candidate-<id>, run-nudges, last-run, funnel-<step>) — fully automatable.",
+    "Reports.jsx renders nothing (no error toast text on page) for groom — load() catches and shows a sonner toast. Consider adding a permanent in-page empty state for non-admins to prevent confusion when toast disappears."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_reports_and_nudges.py (new, 12 tests, 11 pass + 1 pass after pre-clean of owner invite duplicates)"
+  ],
+  "success_rate": {"backend": "100% (12/12 reports + nudge tests)", "frontend": "100% (all review_request UI bullets verified: KPI strip, 10 funnel rows, nudge panel, day input, candidate list, disabled-when-empty button, last-run summary path exists, refresh reload, low-acceptance amber banner @ 33%, groom 403)"},
+  "test_credentials": "admin@equinesync.com / demo1234 ; groom@equinesync.com / demo1234 (per /app/memory/test_credentials.md)",
+  "seed_data_creation": "Pytest creates and tears down two stalled-candidate progress docs (TEST_nudge_*, TEST_nudge_send_*) per run. Pre-existing pending invite to rian.ray2012@gmail.com was deleted once during testing to exercise the live Resend send path — that invite was then re-created by test_invite_to_owner_returns_sent and left in db.invites (1 record) for future regression. To purge: db.invites.delete_many({email: 'rian.ray2012@gmail.com'}).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Resend is in LIVE sandbox mode — sending to rian.ray2012@gmail.com produces real emails. Do not loop the test for owner invite without cleanup, or you'll spam that inbox. The test file calls db.invites.delete_many before/after to keep the path idempotent. Background nudge scheduler has a 6h warmup so it never fires during a test run; only the manual /admin/send-nudges path is exercised.",
+  "rca_of_the_issue": "N/A — all features in review_request operate as designed. The only test failure during the run was a stale assertion in my own test (checking invite.status instead of sends[-1].status); fixed and re-passes."
+}

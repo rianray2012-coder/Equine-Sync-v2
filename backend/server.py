@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -14,6 +14,7 @@ import bcrypt
 import jwt as pyjwt
 import secrets
 import hashlib
+import asyncio
 from mailer import send as send_email, render as render_email
 
 ROOT_DIR = Path(__file__).parent
@@ -1286,8 +1287,21 @@ async def list_invites_full(user=Depends(get_current_user)):
     items = await db.invites.find({}, {"_id": 0, "token_hash": 0}).sort("created_at", -1).to_list(500)
     return items
 
+def _base_url(request: Optional[Request] = None) -> str:
+    env_url = (os.environ.get("APP_BASE_URL") or "").strip().rstrip("/")
+    if env_url:
+        return env_url
+    if request is not None:
+        # Honor x-forwarded-* set by ingress so the link points to the user-facing origin
+        proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+        host = request.headers.get("x-forwarded-host") or request.headers.get("origin", "").replace("https://", "").replace("http://", "") or request.url.netloc
+        host = host.split(",")[0].strip().rstrip("/")
+        if host:
+            return f"{proto}://{host}"
+    return "https://herd-hub-19.emergent.host"
+
 @api_router.post("/invites")
-async def create_invite_with_link(body: InviteCreate, user=Depends(get_current_user)):
+async def create_invite_with_link(body: InviteCreate, request: Request, user=Depends(get_current_user)):
     require_setup_role(user)
     if body.role not in ROLES:
         raise HTTPException(400, "Invalid role")
@@ -1321,8 +1335,7 @@ async def create_invite_with_link(body: InviteCreate, user=Depends(get_current_u
     }
     await db.invites.insert_one(invite)
 
-    base_url = os.environ.get("APP_BASE_URL", "").rstrip("/") or "https://herd-hub-19.emergent.host"
-    accept_url = f"{base_url}/accept-invite?token={raw_token}"
+    accept_url = f"{_base_url(request)}/accept-invite?token={raw_token}"
 
     mail = await send_email(
         to=email_l,
@@ -1348,7 +1361,7 @@ async def create_invite_with_link(body: InviteCreate, user=Depends(get_current_u
     return out
 
 @api_router.post("/invites/{invite_id}/resend")
-async def resend_invite(invite_id: str, user=Depends(get_current_user)):
+async def resend_invite(invite_id: str, request: Request, user=Depends(get_current_user)):
     require_setup_role(user)
     inv = await db.invites.find_one({"id": invite_id})
     if not inv: raise HTTPException(404, "Invite not found")
@@ -1361,8 +1374,7 @@ async def resend_invite(invite_id: str, user=Depends(get_current_user)):
         {"$set": {"token_hash": token_hash, "expires_at": iso(expires_at), "updated_at": iso(now_utc())}})
 
     barn = await db.barn.find_one({"id": inv.get("barn_id", "primary")}, {"_id": 0, "name": 1}) or {}
-    base_url = os.environ.get("APP_BASE_URL", "").rstrip("/") or "https://herd-hub-19.emergent.host"
-    accept_url = f"{base_url}/accept-invite?token={raw_token}"
+    accept_url = f"{_base_url(request)}/accept-invite?token={raw_token}"
     mail = await send_email(
         to=inv["email"],
         subject=f"Reminder: your invitation to {barn.get('name') or 'EquineSync'}",
@@ -1492,6 +1504,162 @@ async def onboarding_funnel(user=Depends(get_current_user)):
     rows = await db.events.aggregate(pipeline).to_list(100)
     return [{"event": r["_id"], "count": r["count"]} for r in rows]
 
+# ---------------- Setup Health Reports ----------------
+async def _setup_health_payload() -> Dict[str, Any]:
+    """Aggregate everything the Setup Health report needs in a single payload."""
+    total_progress = await db.onboarding_progress.count_documents({})
+    completed_progress = await db.onboarding_progress.count_documents({"completed": True})
+
+    # Funnel by step
+    progresses = await db.onboarding_progress.find({}, {"_id": 0, "steps": 1, "data": 1, "updated_at": 1, "created_at": 1, "completed": 1, "completed_at": 1, "user_id": 1}).to_list(2000)
+    funnel = {s["id"]: {"label": s["label"], "complete": 0, "in_progress": 0, "skipped": 0, "pending": 0} for s in ONBOARDING_STEPS}
+    durations: List[float] = []
+    for p in progresses:
+        for sid, status in (p.get("steps") or {}).items():
+            if sid in funnel and status in funnel[sid]:
+                funnel[sid][status] += 1
+        if p.get("completed") and p.get("created_at") and p.get("completed_at"):
+            try:
+                a = datetime.fromisoformat(p["created_at"]); b = datetime.fromisoformat(p["completed_at"])
+                if a.tzinfo is None: a = a.replace(tzinfo=timezone.utc)
+                if b.tzinfo is None: b = b.replace(tzinfo=timezone.utc)
+                durations.append((b - a).total_seconds() / 3600.0)  # hours
+            except Exception:
+                pass
+
+    def _median(xs):
+        if not xs: return None
+        xs = sorted(xs); n = len(xs)
+        return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2
+
+    median_hours = _median(durations)
+
+    # Invite metrics
+    total_invites = await db.invites.count_documents({})
+    accepted = await db.invites.count_documents({"status": "accepted"})
+    pending_invites = await db.invites.count_documents({"status": "pending"})
+    revoked = await db.invites.count_documents({"status": "revoked"})
+    expired = await db.invites.count_documents({"status": "expired"})
+    acceptance_rate = round(100 * accepted / total_invites) if total_invites else 0
+
+    return {
+        "total_setups": total_progress,
+        "completed_setups": completed_progress,
+        "in_progress_setups": total_progress - completed_progress,
+        "completion_rate": round(100 * completed_progress / total_progress) if total_progress else 0,
+        "median_hours_to_launch": round(median_hours, 1) if median_hours else None,
+        "median_days_to_launch": round(median_hours / 24, 1) if median_hours else None,
+        "funnel": [{"step": sid, **counts} for sid, counts in funnel.items()],
+        "invites": {
+            "total": total_invites, "accepted": accepted, "pending": pending_invites,
+            "revoked": revoked, "expired": expired, "acceptance_rate": acceptance_rate,
+        },
+    }
+
+@api_router.get("/reports/setup-health")
+async def setup_health(user=Depends(get_current_user)):
+    require_setup_role(user)
+    return await _setup_health_payload()
+
+async def _nudge_candidates(min_days: int = 3) -> List[Dict[str, Any]]:
+    """Users with onboarding in progress whose last update is N days old."""
+    cutoff = now_utc() - timedelta(days=min_days)
+    cursor = db.onboarding_progress.find({"completed": {"$ne": True}}, {"_id": 0})
+    rows = await cursor.to_list(2000)
+    out = []
+    for p in rows:
+        try:
+            updated = datetime.fromisoformat(p.get("updated_at") or p.get("created_at"))
+            if updated.tzinfo is None: updated = updated.replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
+        if updated > cutoff:
+            continue
+        u = await db.users.find_one({"id": p["user_id"]}, {"_id": 0, "email": 1, "full_name": 1, "role": 1})
+        if not u or not u.get("email"):
+            continue
+        steps = p.get("steps") or {}
+        completed = sum(1 for v in steps.values() if v == "complete")
+        next_step = next((s for s in ONBOARDING_STEPS if steps.get(s["id"]) not in ("complete", "skipped")), None)
+        days_stalled = max(1, int((now_utc() - updated).total_seconds() / 86400))
+        out.append({
+            "user_id": p["user_id"], "email": u["email"], "full_name": u.get("full_name", ""), "role": u.get("role"),
+            "percent_done": round(100 * completed / len(ONBOARDING_STEPS)),
+            "next_step": next_step["id"] if next_step else "review",
+            "next_step_label": next_step["label"] if next_step else "Review & Launch",
+            "days_stalled": days_stalled, "updated_at": p.get("updated_at"),
+            "current_step": p.get("current_step"),
+            "last_nudged_at": p.get("last_nudged_at"),
+        })
+    return out
+
+@api_router.get("/reports/nudge-candidates")
+async def nudge_candidates(min_days: int = 3, user=Depends(get_current_user)):
+    require_setup_role(user)
+    return await _nudge_candidates(min_days)
+
+class SendNudgesBody(BaseModel):
+    min_days: int = 3
+    cooldown_hours: int = 24  # don't nudge same user within N hours
+    user_ids: Optional[List[str]] = None  # restrict to subset
+
+async def _send_nudges(request: Optional[Request], inviter_name: str, min_days: int = 3, cooldown_hours: int = 24, user_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+    candidates = await _nudge_candidates(min_days)
+    if user_ids is not None:
+        wanted = set(user_ids)
+        candidates = [c for c in candidates if c["user_id"] in wanted]
+    barn = await db.barn.find_one({"id": "primary"}, {"_id": 0, "name": 1}) or {}
+    sent = 0; skipped = 0; errors = 0; detail = []
+    cooldown = now_utc() - timedelta(hours=cooldown_hours)
+    base = _base_url(request) if request else (os.environ.get("APP_BASE_URL", "").rstrip("/") or "https://herd-hub-19.emergent.host")
+    for c in candidates:
+        last = c.get("last_nudged_at")
+        if last:
+            try:
+                dt = datetime.fromisoformat(last)
+                if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
+                if dt > cooldown:
+                    skipped += 1
+                    detail.append({"email": c["email"], "result": "cooldown"}); continue
+            except Exception:
+                pass
+        mail = await send_email(
+            to=c["email"],
+            subject=f"Pick up where you left off at {barn.get('name') or 'EquineSync'}",
+            template="onboarding_nudge",
+            variables={
+                "barn_name": barn.get("name") or "EquineSync",
+                "invitee_name": (c["full_name"].split(" ")[0] if c["full_name"] else c["email"].split("@")[0]),
+                "days_stalled": c["days_stalled"],
+                "percent_done": c["percent_done"],
+                "next_step_label": c["next_step_label"],
+                "resume_url": f"{base}/onboarding",
+                "ttl_days": 7,
+            },
+        )
+        if mail.get("status") == "sent":
+            sent += 1
+            detail.append({"email": c["email"], "result": "sent"})
+        elif mail.get("dev"):
+            skipped += 1
+            detail.append({"email": c["email"], "result": mail.get("status")})
+        else:
+            errors += 1
+            detail.append({"email": c["email"], "result": "error", "error": mail.get("error", "")[:120]})
+        await db.onboarding_progress.update_one(
+            {"user_id": c["user_id"]},
+            {"$set": {"last_nudged_at": iso(now_utc())}, "$inc": {"nudges_sent": 1}}
+        )
+        await _track("onboarding.nudge_sent", {"user_id": c["user_id"], "days_stalled": c["days_stalled"], "result": mail.get("status")}, None)
+    return {"candidates": len(candidates), "sent": sent, "skipped": skipped, "errors": errors, "detail": detail}
+
+@api_router.post("/admin/send-nudges")
+async def admin_send_nudges(body: SendNudgesBody, request: Request, user=Depends(get_current_user)):
+    require_setup_role(user)
+    result = await _send_nudges(request, user["full_name"], body.min_days, body.cooldown_hours, body.user_ids)
+    await _track("admin.nudges_run", {"trigger": "manual", **{k: v for k, v in result.items() if k != "detail"}}, user["id"])
+    return result
+
 # ---------------- Tenant Reset (admin support) ----------------
 class TenantResetBody(BaseModel):
     scope: str = "onboarding"  # 'onboarding' | 'all_setup_data'
@@ -1544,6 +1712,21 @@ async def on_startup():
             logger.info("Auto-seeded demo data.")
         except Exception as e:
             logger.exception("Seed failed: %s", e)
+
+    # Kick off the daily nudge scheduler (24h interval, 6h warm-up after boot).
+    async def _nudge_loop():
+        await asyncio.sleep(6 * 3600)  # initial delay so server is warm + first nudges aren't spam
+        while True:
+            try:
+                result = await _send_nudges(None, "EquineSync Concierge", min_days=3, cooldown_hours=24)
+                logger.info("Daily nudge run: %s", {k: v for k, v in result.items() if k != "detail"})
+                await _track("admin.nudges_run", {"trigger": "auto_daily", "sent": result.get("sent"), "candidates": result.get("candidates")}, None)
+            except Exception:
+                logger.exception("Auto nudge loop failed")
+            await asyncio.sleep(24 * 3600)
+
+    if os.environ.get("DISABLE_AUTO_NUDGES", "").lower() not in ("1", "true", "yes"):
+        asyncio.create_task(_nudge_loop())
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

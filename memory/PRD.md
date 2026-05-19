@@ -21,16 +21,33 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
-### Onboarding / Barn Setup Workflow (Feb 18 2026 — added)
+### Onboarding / Barn Setup Workflow (Feb 17–19 2026 — added)
 - 10-step guided wizard at `/onboarding` with sticky stepper, autosave, resume-where-you-left-off, percent progress
 - Steps: Barn Profile · Locations · Owners · Horses · Riders · Feed Templates · Inventory · Staff Invites · Recurring Schedules · Review & Launch
 - CSV bulk import for **owners** and **horses**: drag-drop + paste + downloadable template + preview with duplicate detection + commit with server-side dedupe
-- Backend models/endpoints: `/barn` (settings), `/locations`, `/feed-templates`, `/inventory` (with low_stock flag), `/recurring-schedules`, `/staff-invites` (de-duped by email), `/onboarding/{steps,progress,complete,reset,csv-preview,csv-commit,csv-template}`
+- Backend models/endpoints: `/barn` (settings), `/locations`, `/feed-templates`, `/inventory` (with low_stock flag), `/recurring-schedules`, `/onboarding/{steps,progress,complete,reset,csv-preview,csv-commit,csv-template}`
 - Role gating: only `admin` / `barn_manager` can edit barn-level settings or invite staff
-- Sidebar: "Barn Setup" nav item with Sparkles icon
-- Dashboard "Setup Progress" card auto-shows percent bar until completion
-- Settings → "Re-open setup" button for admin recovery
-- Tests: 15/15 onboarding pytest cases pass
+
+### Magic-Link Invites + Email Layer (Feb 19 2026 — added)
+- **Resend integration** (`mailer.py` abstraction) with dev-mode fallback (no key → logs warning, returns dev_accept_url to UI)
+- Branded HTML email templates: `_base.html` + `onboarding_invite.html` (luxury aesthetic, mobile-friendly tables)
+- Endpoints: `POST /invites` (create+send), `/invites/{id}/resend`, `/invites/{id}/revoke`, `GET /invites/verify?token=...`, `POST /invites/accept`
+- Magic tokens: sha256-hashed at rest, single-use, 7-day TTL (env-configurable)
+- AcceptInvite page `/accept-invite?token=...` with password set, auto-launches onboarding for `admin`/`barn_manager` roles
+- `APP_BASE_URL` env-driven with request-origin fallback for preview environments
+- `Resend` integration code-complete; emails activate the moment `RESEND_API_KEY` is added to `/app/backend/.env`
+
+### Polish + Analytics (Feb 19 2026)
+- Native `<select>` replaced with **shadcn Select** in all onboarding form controls
+- **Deep-merge** for `progress.data` (sibling keys in nested dicts preserved)
+- **Tenant-level reset** endpoint `/admin/tenant-reset` (admin-only, requires confirm="RESET", scopes: onboarding | all_setup_data)
+- **Settings page** exposes `Re-open setup` (per-user) and tenant-reset controls (admin only)
+- **Dashboard checklist widget** — 10-tile detailed setup status grid with click-to-step navigation, replaces simple progress bar
+- **Analytics events**: `POST /events` + `GET /events/onboarding-funnel` (admin) + frontend `track()` helper; events fire on step_completed, step_skipped, completed, invite_sent, invite_resent, invite_revoked, invite_accepted, csv_imported, tenant.reset
+
+### Testing (Feb 19 2026)
+- Backend: **20/20** invite/analytics/tenant-reset tests PASS (in addition to prior 35 passing onboarding+core tests)
+- Frontend: 100% — all checklists, shadcn Select, accept-invite redirect, dev-link banner, tenant-reset UI verified by testing agent
 
 
 ### Backend (/app/backend/server.py)

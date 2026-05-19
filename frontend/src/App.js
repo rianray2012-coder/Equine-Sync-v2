@@ -26,6 +26,7 @@ import Settings from "./pages/Settings";
 import Placeholder from "./pages/Placeholder";
 import Onboarding from "./pages/Onboarding";
 import AcceptInvite from "./pages/AcceptInvite";
+import Reports from "./pages/Reports";
 
 const Protected = ({ children }) => {
   const { user, loading } = useAuth();
@@ -66,7 +67,7 @@ function App() {
               <Route path="/maintenance" element={<Placeholder title="Maintenance" description="Tickets for fences, gates, waterers and arenas." />} />
               <Route path="/staff" element={<Placeholder title="Staff Management" description="Workloads, certifications and shift scheduling." />} />
               <Route path="/messaging" element={<Messaging />} />
-              <Route path="/reports" element={<Placeholder title="Reports" description="Profitability and operational insights." />} />
+              <Route path="/reports" element={<Reports />} />
               <Route path="/owner-portal" element={<OwnerPortal />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
