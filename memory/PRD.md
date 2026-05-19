@@ -21,6 +21,23 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
+### Unified Operational Task Engine (Feb 19 2026 — Phase 1 SHIPPED)
+- **Architecture blueprint**: `/app/memory/TASK_ENGINE_ARCHITECTURE.md` — full event-driven design (TaskTemplate → Task → TaskCompletion → TaskEvent), 17 sections, approved by user.
+- **Backend module** `/app/backend/task_engine.py` — single self-contained module included into the existing `api_router`. No `server.py` big-bang refactor (deferred until Phase 2 scope grows).
+- **Models**: 4 Mongo collections — `task_templates`, `tasks`, `task_completions`, `task_events`. All carry `tenant_id` (default="default", single-tenant for now, forward-compat).
+- **Categories**: feed · medication · turnout_out · turnout_in · stall_clean · farrier · vet · rehab · custom — one polymorphic engine; typed `payload` per category.
+- **Recurrence**: RFC 5545 RRULE internally (`python-dateutil`), 14-day rolling materialization horizon, materializer loop every 15 min.
+- **Lifecycle**: scheduled → due → overdue → in_progress → completed/skipped/cancelled. Skipped vs refused are distinct outcomes preserved on the immutable completion record.
+- **Offline-first**: idempotent `client_completion_id` on completion endpoint; concurrent completion appends note to canonical and voids the duplicate; soft-void preserves audit trail.
+- **Event fan-out**: All side effects flow through `TaskEvent` — never inline in routes (enforced anti-pattern).
+- **Owner visibility layer**: horse_owner role only sees curated `task.completed` events in categories {medication, farrier, vet, rehab, feed} — stall_clean / turnout-only events filtered out.
+- **API endpoints** (all under `/api`): `task-templates` (GET/POST/PATCH/DELETE soft), `tasks` (GET filtered, GET /today, POST ad-hoc, PATCH), `tasks/{id}/complete` · `/skip` · `/void` · `/reassign`, `tasks/bulk-complete`, `tasks/materialize`, `tasks/analytics/summary`, `horses/{id}/timeline`, `staff/{id}/activity`.
+- **Seed**: 9 demo templates auto-seeded on first boot (AM/PM grain, daily bute, AM turnout + PM bring-in, daily stall pick, 6-week farrier RRULE, one-off spring vaccines, twice-daily rehab hand-walk). Materializer creates ~117 occurrences across the 14-day horizon.
+- **Frontend**: new mobile-first **"Today" page** at `/today` (added to sidebar nav). 6 urgency-ordered groups (overdue_critical, due_now, upcoming_next_4h, later_today, completed_today, informational). Swipe-right-to-complete + swipe-left-to-skip on touch; large 44px tap-target buttons on desktop; bulk-select mode with shared note; category filter chips; per-task sync dots (synced/queued/syncing/retry/failed) plus header sync badge with manual "Retry now" affordance when failures surface.
+- **Offline queue** `/app/frontend/src/lib/taskSync.js`: localStorage-backed, exponential backoff (1s, 5s, 15s, 60s, 5m, 30m), auto-drains on `online` event, optimistic UI, idempotent on server.
+- **Tests**: 13/13 task engine pytest tests PASS (`/app/backend/tests/test_task_engine.py`). Pre-existing 77 tests still passing (3 pre-existing failures in `test_feed_complete` / CSV-commit owners-horses are accumulated-state dedup, not regressions).
+- **Testing agent verdict** (iteration_7): backend 100%, frontend 100%, no regressions, two non-blocking suggestions; one (manual Retry-now button) implemented immediately.
+
 ### Onboarding / Barn Setup Workflow (Feb 17–19 2026 — added)
 - 10-step guided wizard at `/onboarding` with sticky stepper, autosave, resume-where-you-left-off, percent progress
 - Steps: Barn Profile · Locations · Owners · Horses · Riders · Feed Templates · Inventory · Staff Invites · Recurring Schedules · Review & Launch
@@ -118,8 +135,13 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 - Mobile PWA install
 
 ## Next Tasks (priority order)
-1. Object storage integration for photo/document uploads
-2. Stall Rest & Rehab detailed workspace
-3. Inventory module with low-stock alerts
-4. Reports / BI dashboard with charts
-5. Shows & Competitions full module
+1. **Task Engine Phase 2** — Wire existing siloed pages (Feed, Medications, Health) to read/write the unified engine; deprecate legacy collections as data migrates
+2. **Owner Portal feed** — wire `/api/horses/{id}/timeline?owner_view=true` into the owner UI with curated, soft-tone visual treatment
+3. **Refactor server.py** into routes/, models/, services/ once Phase 2 lands (`/app/memory/TASK_ENGINE_ARCHITECTURE.md` §14)
+4. **Notifications layer** — promote TaskEvent dispatcher behind a queue + email/push channels with per-user preferences (`[Future]` §15)
+5. Object storage integration for photo/document uploads
+6. Stall Rest & Rehab detailed workspace (now mostly subsumed by rehab tasks in the engine)
+7. Inventory module with low-stock alerts
+8. Reports / BI dashboard with charts (analytics summary endpoint already produces the signal data)
+9. Shows & Competitions full module
+10. Dark mode toggle

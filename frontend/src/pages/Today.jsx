@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { api, fmtTime } from "../lib/api";
 import {
   enqueueComplete, enqueueSkip, enqueueBulkComplete,
-  subscribeSyncState, getPendingForTask,
+  subscribeSyncState, retryFailed,
 } from "../lib/taskSync";
 import { PageHeader, Card, StatusPill, SectionEyebrow, Empty } from "../components/Primitives";
 import {
@@ -79,6 +79,15 @@ const SyncHeaderBadge = () => {
           ? `${failed} sync issue${failed > 1 ? "s" : ""}`
           : `Syncing ${pending}…`}
       </span>
+      {failed > 0 && (
+        <button
+          data-testid="sync-retry-now"
+          onClick={() => retryFailed()}
+          className="ml-1 underline underline-offset-2 hover:text-equine-ink transition-colors"
+        >
+          Retry now
+        </button>
+      )}
     </div>
   );
 };
