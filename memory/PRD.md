@@ -21,6 +21,25 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
+### Phase 2 — Engine Integration, Auth Hardening, Notifications, Partial Refactor (Feb 19 2026)
+- **Owner Portal Curated Timeline** — `/app/frontend/src/components/CuratedTimeline.jsx` surfaced on `/owner-portal` (with horse picker) and as a new `Timeline` tab on `/horses/:id`. Server-side filter enforced for `horse_owner` role: only `{medication, farrier, vet, rehab, feed}` events visible.
+- **Feed/Medications/Health rewired to unified engine** — `/feed`, `/medications` now read `/api/tasks?category=feed|medication` via shared hook `useEngineTasksToday()` in `/app/frontend/src/lib/engineTasks.js`; complete/skip flow through the offline-tolerant taskSync queue. `/health` shows an engine-sourced "Upcoming visits" card (vet + farrier) above legacy historical records. Legacy `/feed-tasks` and `/medication-logs` collections remain readable for the dashboard summary widget but new writes flow through the engine.
+- **Auth hardening** — `/app/backend/auth_security.py`:
+  - JWT access TTL reduced from 7d → 4h (configurable via `JWT_EXP_HOURS` env)
+  - Refresh-token rotation (30d, sha256-hashed at rest, **single-use enforced**), new endpoints `POST /api/auth/refresh`, `POST /api/auth/logout`, `POST /api/auth/logout-all`
+  - `SecurityHeadersMiddleware` applies OWASP headers + CSP on every response (`X-Frame-Options=DENY`, `X-Content-Type-Options=nosniff`, `Referrer-Policy=strict-origin-when-cross-origin`, `Permissions-Policy`, `Strict-Transport-Security`, `Cross-Origin-Opener-Policy`, `Content-Security-Policy`)
+  - Frontend axios interceptor (`/app/frontend/src/lib/api.js`) auto-refreshes on 401 with in-flight dedup, falls back to forced logout on refresh failure
+- **Notification dispatcher** — `/app/backend/notifications.py`:
+  - Background loop drains `TaskEvent` rows every 10s; marks `dispatched_at` to prevent double-send
+  - Per-user `notification_preferences` document (inbox/email channel × event_type × category matrix)
+  - Channel handlers: in-app inbox (always), email via Resend (P1), push deferred
+  - Endpoints: `GET /api/notifications`, `POST /api/notifications/{id}/read`, `POST /api/notifications/read-all`, `GET/PUT /api/notifications/preferences`, `POST /api/notifications/drain` (admin force-drain)
+  - Frontend: `NotificationsBell` (header bell with unread badge + dropdown), `NotificationPrefsCard` on Settings (channel toggles + event×category matrix)
+  - Recipient routing: actor never self-notified; staff/admin recipients always; owners only for curated categories
+- **Partial server.py refactor** — `routes/auth.py` extracted as a self-contained `build_router(db)` factory. Fixed a `load_dotenv` order bug (was running after submodule imports, causing JWT_SECRET fallback to "change-me" in route module). Notifications and task engine already shipped as separate modules earlier this session.
+- **Tests**: 20/20 Phase 2 + 13/13 Task Engine regression pass (`/app/backend/tests/test_phase2.py`, `test_task_engine.py`); pre-existing 4 data-pollution failures in legacy tests are unrelated.
+- **Testing agent verdict** (iteration_8): backend 100%, frontend 100%, no regressions, no critical issues.
+
 ### Unified Operational Task Engine (Feb 19 2026 — Phase 1 SHIPPED)
 - **Architecture blueprint**: `/app/memory/TASK_ENGINE_ARCHITECTURE.md` — full event-driven design (TaskTemplate → Task → TaskCompletion → TaskEvent), 17 sections, approved by user.
 - **Backend module** `/app/backend/task_engine.py` — single self-contained module included into the existing `api_router`. No `server.py` big-bang refactor (deferred until Phase 2 scope grows).
@@ -135,13 +154,13 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 - Mobile PWA install
 
 ## Next Tasks (priority order)
-1. **Task Engine Phase 2** — Wire existing siloed pages (Feed, Medications, Health) to read/write the unified engine; deprecate legacy collections as data migrates
-2. **Owner Portal feed** — wire `/api/horses/{id}/timeline?owner_view=true` into the owner UI with curated, soft-tone visual treatment
-3. **Refactor server.py** into routes/, models/, services/ once Phase 2 lands (`/app/memory/TASK_ENGINE_ARCHITECTURE.md` §14)
-4. **Notifications layer** — promote TaskEvent dispatcher behind a queue + email/push channels with per-user preferences (`[Future]` §15)
-5. Object storage integration for photo/document uploads
-6. Stall Rest & Rehab detailed workspace (now mostly subsumed by rehab tasks in the engine)
-7. Inventory module with low-stock alerts
-8. Reports / BI dashboard with charts (analytics summary endpoint already produces the signal data)
-9. Shows & Competitions full module
-10. Dark mode toggle
+1. **Complete server.py refactor** — extract remaining routes per blueprint §14: `routes/dashboard.py`, `routes/onboarding.py`, `routes/invites.py`, `routes/reports.py` (auth + tasks + notifications already extracted). Target server.py < 700 lines.
+2. **Owner portal polish** — add request-status filter chips; consider Pull-to-refresh; surface upcoming engine vet/farrier visits to owners.
+3. **Notifications follow-on** — promote dispatcher to MongoDB change-streams (requires replica set) or Redis Streams; add web-push channel; richer email digest formatting; bulk-digest mode.
+4. **API hygiene** — `POST /api/tasks` should either accept legacy `horse_id` alias or 422-reject naive callers who omit `linked_horse_ids` (silent drop today). Trivial guard.
+5. **Object storage** — photo/document uploads for horses, completions, vet visits.
+6. **AI Wellness Pulse** — Claude Sonnet 4.5 over the engine timeline (skipped-X-times-this-week kind of nudges).
+7. **Inventory module** with low-stock alerts.
+8. **Dark mode toggle** (CSS-var scaffolding already in place).
+9. **Shows & Competitions** module.
+10. **Reports / BI dashboard** with charts (analytics summary endpoint already shipping signals).
