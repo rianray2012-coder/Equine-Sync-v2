@@ -235,10 +235,47 @@ class TaskEngine:
         start_window = now_utc() - timedelta(days=1)
         return [o for o in rule_obj.between(start_window, horizon, inc=True)][:500]
 
+    @staticmethod
+    def _build_task_doc(template: dict, occ: datetime, tenant_id: str) -> dict:
+        wb = int(template.get("window_minutes_before", 30) or 0)
+        wa = int(template.get("window_minutes_after", 120) or 0)
+        now_iso = iso(now_utc())
+        return {
+            "id": new_id(),
+            "tenant_id": tenant_id,
+            "template_id": template["id"],
+            "category": template["category"],
+            "title": template["title"],
+            "linked_horse_ids": list(template.get("linked_horse_ids", [])),
+            "linked_location_id": template.get("linked_location_id"),
+            "assignee_user_id": template.get("default_assignee_user_id"),
+            "assignee_role": template.get("default_assignee_role"),
+            "scheduled_at": iso(occ),
+            "window_start": iso(occ - timedelta(minutes=wb)),
+            "window_end": iso(occ + timedelta(minutes=wa)),
+            "priority": template.get("priority", "standard"),
+            "status": "scheduled",
+            "payload": dict(template.get("payload_defaults") or {}),
+            "notes": None,
+            "client_completion_id": None,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        }
+
+    async def _existing_occurrence_times(self, tenant_id: str, template_id: str) -> set:
+        existing = await self.db.tasks.find(
+            {
+                "tenant_id": tenant_id,
+                "template_id": template_id,
+                "scheduled_at": {"$gte": iso(now_utc() - timedelta(days=1))},
+            },
+            {"_id": 0, "scheduled_at": 1},
+        ).to_list(2000)
+        return {row["scheduled_at"] for row in existing}
+
     async def materialize_template(self, template: dict) -> int:
         """Create future Task occurrences for this template up to the horizon.
         Idempotent: existing tasks at the same scheduled_at are kept untouched.
-        Returns number of new tasks created.
         """
         if not template.get("active", True):
             return 0
@@ -248,56 +285,23 @@ class TaskEngine:
             return 0
 
         tenant_id = template.get("tenant_id", DEFAULT_TENANT_ID)
-        existing = await self.db.tasks.find(
-            {
-                "tenant_id": tenant_id,
-                "template_id": template["id"],
-                "scheduled_at": {"$gte": iso(now_utc() - timedelta(days=1))},
-            },
-            {"_id": 0, "scheduled_at": 1, "status": 1},
-        ).to_list(2000)
-        existing_keys = {(row["scheduled_at"], row.get("status")) for row in existing}
-        existing_times = {row["scheduled_at"] for row in existing}
+        existing_times = await self._existing_occurrence_times(tenant_id, template["id"])
 
-        new_docs = []
-        wb = int(template.get("window_minutes_before", 30) or 0)
-        wa = int(template.get("window_minutes_after", 120) or 0)
-        for occ in occurrences:
-            scheduled_iso = iso(occ)
-            if scheduled_iso in existing_times:
-                continue
-            new_docs.append({
-                "id": new_id(),
-                "tenant_id": tenant_id,
-                "template_id": template["id"],
-                "category": template["category"],
-                "title": template["title"],
-                "linked_horse_ids": list(template.get("linked_horse_ids", [])),
-                "linked_location_id": template.get("linked_location_id"),
-                "assignee_user_id": template.get("default_assignee_user_id"),
-                "assignee_role": template.get("default_assignee_role"),
-                "scheduled_at": scheduled_iso,
-                "window_start": iso(occ - timedelta(minutes=wb)),
-                "window_end": iso(occ + timedelta(minutes=wa)),
-                "priority": template.get("priority", "standard"),
-                "status": "scheduled",
-                "payload": dict(template.get("payload_defaults") or {}),
-                "notes": None,
-                "client_completion_id": None,
-                "created_at": iso(now_utc()),
-                "updated_at": iso(now_utc()),
-            })
-        if new_docs:
-            await self.db.tasks.insert_many(new_docs)
-            for doc in new_docs:
-                await self.emit_event(
-                    tenant_id=tenant_id,
-                    event_type="task.created",
-                    task=doc,
-                    actor_user_id=None,
-                )
-        # discard helper to satisfy linter
-        _ = existing_keys
+        new_docs = [
+            self._build_task_doc(template, occ, tenant_id)
+            for occ in occurrences
+            if iso(occ) not in existing_times
+        ]
+        if not new_docs:
+            return 0
+        await self.db.tasks.insert_many(new_docs)
+        for doc in new_docs:
+            await self.emit_event(
+                tenant_id=tenant_id,
+                event_type="task.created",
+                task=doc,
+                actor_user_id=None,
+            )
         return len(new_docs)
 
     async def materialize_all(self, tenant_id: str = DEFAULT_TENANT_ID) -> int:
@@ -353,29 +357,12 @@ class TaskEngine:
         }
         await self.db.task_events.insert_one(event_doc)
 
-    # -- completion ------------------------------------------------------
-    async def complete_task(self, task_id: str, body: CompleteBody, user: dict,
-                            tenant_id: str = DEFAULT_TENANT_ID) -> dict:
-        task = await self.db.tasks.find_one(
-            {"id": task_id, "tenant_id": tenant_id}, {"_id": 0},
-        )
-        if not task:
-            raise HTTPException(404, "Task not found")
-
-        # Idempotency: if same (task_id, client_completion_id) exists, return it.
-        existing = await self.db.task_completions.find_one(
-            {"task_id": task_id, "client_completion_id": body.client_completion_id},
-            {"_id": 0},
-        )
-        if existing:
-            return {"task": task, "completion": existing, "deduped": True}
-
-        # Concurrency: a *different* completion already canonicalized this task.
-        canonical = await self.db.task_completions.find_one(
-            {"task_id": task_id, "voided": {"$ne": True}}, {"_id": 0},
-        )
+    # -- completion helpers ---------------------------------------------
+    @staticmethod
+    def _build_completion_doc(task_id: str, body: CompleteBody, user: dict,
+                              tenant_id: str) -> dict:
         completed_at = body.completed_at or iso(now_utc())
-        completion = {
+        return {
             "id": new_id(),
             "tenant_id": tenant_id,
             "task_id": task_id,
@@ -392,32 +379,60 @@ class TaskEngine:
             "voided_reason": None,
         }
 
+    @staticmethod
+    def _outcome_to_status(outcome: str) -> str:
+        # refused behaves operationally as skipped; outcome preserved on completion.
+        if outcome in ("skipped", "refused"):
+            return "skipped"
+        return "completed"
+
+    async def _append_duplicate_note(self, canonical: dict, body: CompleteBody, user: dict):
+        completed_at = body.completed_at or iso(now_utc())
+        extra_note = (
+            f"Also marked {body.outcome} by {user.get('full_name', 'user')} @ {completed_at}"
+        )
+        existing_notes = canonical.get("notes") or ""
+        new_notes = (existing_notes + ("\n" if existing_notes else "") + extra_note)[:2000]
+        await self.db.task_completions.update_one(
+            {"id": canonical["id"]}, {"$set": {"notes": new_notes}},
+        )
+
+    # -- completion ------------------------------------------------------
+    async def complete_task(self, task_id: str, body: CompleteBody, user: dict,
+                            tenant_id: str = DEFAULT_TENANT_ID) -> dict:
+        task = await self.db.tasks.find_one(
+            {"id": task_id, "tenant_id": tenant_id}, {"_id": 0},
+        )
+        if not task:
+            raise HTTPException(404, "Task not found")
+
+        # Idempotency: same (task_id, client_completion_id) — return existing.
+        existing = await self.db.task_completions.find_one(
+            {"task_id": task_id, "client_completion_id": body.client_completion_id},
+            {"_id": 0},
+        )
+        if existing:
+            return {"task": task, "completion": existing, "deduped": True}
+
+        canonical = await self.db.task_completions.find_one(
+            {"task_id": task_id, "voided": {"$ne": True}}, {"_id": 0},
+        )
+        completion = self._build_completion_doc(task_id, body, user, tenant_id)
+
+        # Concurrency: a different completion already canonicalized this task.
         if canonical:
-            # Second-completer: don't override canonical, append as note-only.
             completion["voided"] = True
             completion["voided_reason"] = "duplicate_concurrent_completion"
             await self.db.task_completions.insert_one(completion)
             completion.pop("_id", None)
-            # Append note to canonical for transparency.
-            extra_note = (f"Also marked {body.outcome} by {user.get('full_name','user')} "
-                           f"@ {completed_at}")
-            existing_notes = canonical.get("notes") or ""
-            new_notes = (existing_notes + ("\n" if existing_notes else "") + extra_note)[:2000]
-            await self.db.task_completions.update_one(
-                {"id": canonical["id"]}, {"$set": {"notes": new_notes}},
-            )
+            await self._append_duplicate_note(canonical, body, user)
             return {"task": task, "completion": canonical, "deduped": False,
                     "duplicate_note_appended": True}
 
         await self.db.task_completions.insert_one(completion)
         completion.pop("_id", None)
-        # Status mapping
-        if body.outcome == "skipped":
-            new_status = "skipped"
-        elif body.outcome == "refused":
-            new_status = "skipped"  # behave as skipped operationally; refused preserved on completion record
-        else:
-            new_status = "completed"
+
+        new_status = self._outcome_to_status(body.outcome)
         await self.db.tasks.update_one(
             {"id": task_id},
             {"$set": {

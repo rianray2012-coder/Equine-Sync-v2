@@ -2,23 +2,36 @@
  * Offline-tolerant Task completion queue.
  *
  * Optimistic UI: completion is reflected in local state instantly while a
- * background worker drains a localStorage-backed queue with exponential backoff.
- * Idempotent on the server via `client_completion_id`.
+ * background worker drains a localStorage-backed queue with exponential
+ * backoff. Idempotent on the server via `client_completion_id`.
  */
 import { api } from "./api";
 
 const QUEUE_KEY = "equine_task_completion_queue_v1";
 const RETRY_DELAYS = [1000, 5000, 15000, 60000, 5 * 60000, 30 * 60000];
+const SYNCED_TTL_MS = 60_000;
 
 const subscribers = new Set();
 
+// ── storage helpers ────────────────────────────────────────────────────────
 const load = () => {
-  try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]"); }
-  catch { return []; }
+  try {
+    return JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]");
+  } catch (err) {
+    console.warn("[taskSync] queue read failed", err);
+    return [];
+  }
 };
+
 const save = (q) => {
-  try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); } catch {}
-  subscribers.forEach((s) => { try { s(q); } catch {} });
+  try {
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+  } catch (err) {
+    console.warn("[taskSync] queue write failed", err);
+  }
+  subscribers.forEach((s) => {
+    try { s(q); } catch (err) { console.warn("[taskSync] subscriber error", err); }
+  });
 };
 
 export const subscribeSyncState = (fn) => {
@@ -28,70 +41,106 @@ export const subscribeSyncState = (fn) => {
 };
 
 export const newClientCompletionId = () =>
-  (crypto.randomUUID ? crypto.randomUUID() : `ccid-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  crypto.randomUUID
+    ? crypto.randomUUID()
+    : `ccid-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+// ── request shaping ───────────────────────────────────────────────────────
+const requestPathFor = (item) => {
+  if (item.kind === "bulk") return "/tasks/bulk-complete";
+  return `/tasks/${item.task_id}/${item.action || "complete"}`;
+};
+
+const isNonRetryableStatus = (status) =>
+  Boolean(status && status >= 400 && status < 500 && status !== 408 && status !== 429);
+
+const scheduleRetry = (item) => {
+  const idx = Math.min(item.attempts - 1, RETRY_DELAYS.length - 1);
+  item.nextAttemptAt = Date.now() + RETRY_DELAYS[idx];
+  item.state = "queued";
+};
+
+const markFailed = (item, err) => {
+  item.state = "failed";
+  item.error = err?.response?.data?.detail || `HTTP ${err?.response?.status}`;
+};
+
+const markSynced = (item) => {
+  item.state = "synced";
+  item.syncedAt = new Date().toISOString();
+};
+
+// ── single-item attempt; returns true if state changed ────────────────────
+const attemptItem = async (item, q) => {
+  if (item.state === "synced") return false;
+  if (item.nextAttemptAt && Date.now() < item.nextAttemptAt) return false;
+
+  item.state = "syncing";
+  item.attempts = (item.attempts || 0) + 1;
+  save(q);
+
+  try {
+    await api.post(requestPathFor(item), item.body);
+    markSynced(item);
+  } catch (err) {
+    if (isNonRetryableStatus(err?.response?.status)) {
+      markFailed(item, err);
+    } else {
+      scheduleRetry(item);
+      item.error = err?.message || "network";
+    }
+  }
+  save(q);
+  return true;
+};
+
+const purgeOldSynced = (q) => {
+  const cutoff = Date.now() - SYNCED_TTL_MS;
+  return q.filter(
+    (x) => !(x.state === "synced" && x.syncedAt && new Date(x.syncedAt).getTime() < cutoff),
+  );
+};
+
+// ── queue drain loop (single-flight) ──────────────────────────────────────
 let processing = false;
 
 const processQueue = async () => {
   if (processing) return;
   processing = true;
   try {
-    let q = load();
     let progressed = true;
     while (progressed) {
       progressed = false;
-      q = load();
-      for (let i = 0; i < q.length; i++) {
-        const item = q[i];
-        if (item.state === "synced") continue;
-        const now = Date.now();
-        if (item.nextAttemptAt && now < item.nextAttemptAt) continue;
-        item.state = "syncing";
-        item.attempts = (item.attempts || 0) + 1;
-        save(q);
-        try {
-          const path = item.kind === "bulk"
-            ? "/tasks/bulk-complete"
-            : `/tasks/${item.task_id}/${item.action || "complete"}`;
-          await api.post(path, item.body);
-          item.state = "synced";
-          item.syncedAt = new Date().toISOString();
-          progressed = true;
-        } catch (err) {
-          const status = err?.response?.status;
-          // Validation errors are non-retryable
-          if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
-            item.state = "failed";
-            item.error = err?.response?.data?.detail || `HTTP ${status}`;
-          } else {
-            const idx = Math.min(item.attempts - 1, RETRY_DELAYS.length - 1);
-            item.nextAttemptAt = Date.now() + RETRY_DELAYS[idx];
-            item.state = "queued";
-            item.error = err?.message || "network";
-          }
-        }
-        save(q);
+      const q = load();
+      for (const item of q) {
+        const changed = await attemptItem(item, q);
+        if (changed) progressed = true;
       }
-      // remove synced items older than 60s to keep queue tidy
-      const cutoff = Date.now() - 60_000;
-      const cleaned = q.filter((x) => !(x.state === "synced" && x.syncedAt && new Date(x.syncedAt).getTime() < cutoff));
-      if (cleaned.length !== q.length) save(cleaned);
+      const cleaned = purgeOldSynced(load());
+      if (cleaned.length !== load().length) save(cleaned);
     }
   } finally {
     processing = false;
   }
 };
 
-// Drain every 4s and when coming back online
 setInterval(processQueue, 4000);
 if (typeof window !== "undefined") {
   window.addEventListener("online", () => processQueue());
 }
 
-export const enqueueComplete = (task_id, { outcome = "done", payload_actual = {}, notes } = {}) => {
+// ── public API ────────────────────────────────────────────────────────────
+const enqueue = (item) => {
   const q = load();
+  q.push(item);
+  save(q);
+  processQueue();
+  return item.id;
+};
+
+export const enqueueComplete = (task_id, { outcome = "done", payload_actual = {}, notes } = {}) => {
   const client_completion_id = newClientCompletionId();
-  q.push({
+  return enqueue({
     id: client_completion_id,
     task_id,
     kind: "single",
@@ -107,15 +156,11 @@ export const enqueueComplete = (task_id, { outcome = "done", payload_actual = {}
       completed_at: new Date().toISOString(),
     },
   });
-  save(q);
-  processQueue();
-  return client_completion_id;
 };
 
 export const enqueueSkip = (task_id, { refused = false, reason, notes } = {}) => {
-  const q = load();
   const client_completion_id = newClientCompletionId();
-  q.push({
+  return enqueue({
     id: client_completion_id,
     task_id,
     kind: "single",
@@ -125,14 +170,10 @@ export const enqueueSkip = (task_id, { refused = false, reason, notes } = {}) =>
     enqueuedAt: new Date().toISOString(),
     body: { client_completion_id, refused, reason: reason || null, notes: notes || null },
   });
-  save(q);
-  processQueue();
-  return client_completion_id;
 };
 
 export const enqueueBulkComplete = (task_ids, { shared_note } = {}) => {
   if (!task_ids.length) return null;
-  const q = load();
   const items = task_ids.map((tid) => ({
     task_id: tid,
     client_completion_id: newClientCompletionId(),
@@ -140,7 +181,7 @@ export const enqueueBulkComplete = (task_ids, { shared_note } = {}) => {
     completed_at: new Date().toISOString(),
   }));
   const id = newClientCompletionId();
-  q.push({
+  return enqueue({
     id,
     kind: "bulk",
     state: "queued",
@@ -149,14 +190,14 @@ export const enqueueBulkComplete = (task_ids, { shared_note } = {}) => {
     body: { items, shared_note: shared_note || null },
     task_ids,
   });
-  save(q);
-  processQueue();
-  return id;
 };
 
 export const getPendingForTask = (task_id) =>
-  load().filter((x) => x.state !== "synced" &&
-    (x.task_id === task_id || (x.kind === "bulk" && x.task_ids?.includes(task_id))));
+  load().filter(
+    (x) =>
+      x.state !== "synced" &&
+      (x.task_id === task_id || (x.kind === "bulk" && x.task_ids?.includes(task_id))),
+  );
 
 export const getQueueSummary = () => {
   const q = load();
