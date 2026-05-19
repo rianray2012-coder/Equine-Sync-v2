@@ -2,22 +2,37 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, money } from "../lib/api";
 import { Card, PageHeader, Stat, StatusPill } from "../components/Primitives";
-import { Pill, AlertTriangle, BedDouble, Receipt, CloudRain, GraduationCap, ClipboardCheck, Stethoscope, Heart, UtensilsCrossed, Sparkles, ChevronRight } from "lucide-react";
+import { Pill, AlertTriangle, BedDouble, Receipt, CloudRain, GraduationCap, ClipboardCheck, Stethoscope, Heart, UtensilsCrossed, Sparkles, ChevronRight, Check, Circle, Building2, MapPin, Users, Cat, Package, UserPlus, Calendar, Rocket } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+
+const STEP_META = {
+  barn: { label: "Barn Profile", icon: Building2 },
+  locations: { label: "Locations", icon: MapPin },
+  owners: { label: "Owners & Clients", icon: Users },
+  horses: { label: "Horse Profiles", icon: Cat },
+  riders: { label: "Riders", icon: GraduationCap },
+  feed_templates: { label: "Feed Templates", icon: UtensilsCrossed },
+  inventory: { label: "Inventory", icon: Package },
+  staff: { label: "Team & Staff", icon: UserPlus },
+  schedules: { label: "Recurring Schedules", icon: Calendar },
+  review: { label: "Review & Launch", icon: Rocket },
+};
 
 export default function Dashboard() {
   const { user } = useAuth();
   const [summary, setSummary] = useState(null);
   const [board, setBoard] = useState(null);
   const [progress, setProgress] = useState(null);
+  const [steps, setSteps] = useState([]);
 
   useEffect(() => {
     api.get("/dashboard/summary").then((r) => setSummary(r.data));
     api.get("/dashboard/barn-board").then((r) => setBoard(r.data));
     api.get("/onboarding/progress").then((r) => setProgress(r.data)).catch(() => {});
+    api.get("/onboarding/steps").then((r) => setSteps(r.data.steps)).catch(() => setSteps([]));
   }, []);
 
-  const showSetupCard = progress && !progress.completed && (progress.percent ?? 0) < 100;
+  const showSetup = progress && !progress.completed && (progress.percent ?? 0) < 100;
 
   return (
     <div data-testid="dashboard-page">
@@ -27,25 +42,60 @@ export default function Dashboard() {
         subtitle="A live overview of horses, health, operations and revenue across your facility."
       />
 
-      {showSetupCard && (
-        <Link to="/onboarding" data-testid="setup-progress-card" className="block mb-8 group">
-          <div className="equine-card equine-card-hover p-6 flex items-center gap-5 border-equine-steel/40">
-            <div className="w-14 h-14 rounded-2xl bg-equine-steel/30 border border-equine-steel/50 flex items-center justify-center">
+      {showSetup && steps.length > 0 && (
+        <div className="equine-card p-6 mb-8 border-equine-steel/40" data-testid="setup-checklist-card">
+          <div className="flex items-start gap-4 mb-5">
+            <div className="w-12 h-12 rounded-2xl bg-equine-steel/30 border border-equine-steel/50 flex items-center justify-center flex-shrink-0">
               <Sparkles strokeWidth={1.4} className="text-equine-champagne" />
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1">
               <div className="label-eyebrow">Setup concierge</div>
-              <div className="font-display text-2xl text-equine-ivory mt-1">Finish setting up your barn</div>
-              <div className="mt-2 flex items-center gap-4">
+              <div className="flex items-end justify-between gap-4">
+                <h3 className="font-display text-3xl text-equine-ivory mt-1">Finish setting up your barn</h3>
+                <Link to="/onboarding" data-testid="resume-setup" className="btn-primary !py-2 !px-4 text-[13px] inline-flex items-center gap-2 whitespace-nowrap">
+                  Resume <ChevronRight className="w-4 h-4" />
+                </Link>
+              </div>
+              <div className="mt-3 flex items-center gap-4">
                 <div className="flex-1 h-1.5 bg-equine-soft rounded-full overflow-hidden max-w-md">
                   <div className="h-full bg-equine-champagne transition-all duration-500" style={{ width: `${progress.percent}%` }} />
                 </div>
                 <span className="text-equine-platinum/70 text-[12.5px]">{progress.percent}% complete</span>
               </div>
             </div>
-            <ChevronRight className="text-equine-champagne group-hover:translate-x-0.5 transition-transform" />
           </div>
-        </Link>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 mt-2">
+            {steps.map((s) => {
+              const status = progress.steps?.[s.id] || "pending";
+              const Ic = STEP_META[s.id]?.icon || Circle;
+              const isDone = status === "complete";
+              const isSkipped = status === "skipped";
+              const isInProgress = status === "in_progress";
+              const tone = isDone ? "border-equine-sage/40 bg-equine-sage/10"
+                : isInProgress ? "border-equine-champagne/40 bg-equine-champagne/10"
+                : isSkipped ? "border-equine-graphite/50 bg-equine-soft"
+                : "border-equine-graphite/40 bg-equine-soft";
+              return (
+                <Link to="/onboarding" key={s.id} data-testid={`checklist-${s.id}`}
+                  className={`px-3 py-2.5 rounded-lg border transition-colors hover:border-equine-champagne flex items-center gap-2.5 ${tone}`}
+                >
+                  {isDone ? (
+                    <Check strokeWidth={2} className="w-4 h-4 text-equine-sage flex-shrink-0" />
+                  ) : isSkipped ? (
+                    <Circle strokeWidth={1.5} className="w-4 h-4 text-equine-platinum/40 flex-shrink-0" />
+                  ) : (
+                    <Ic strokeWidth={1.5} className={`w-4 h-4 flex-shrink-0 ${isInProgress ? "text-equine-champagne" : "text-equine-platinum/70"}`} />
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-[12.5px] text-equine-ivory truncate">{STEP_META[s.id]?.label || s.label}</div>
+                    <div className="text-[10px] uppercase tracking-[0.15em] text-equine-platinum/55">{status.replace('_', ' ')}</div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5 mb-10">

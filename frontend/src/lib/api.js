@@ -24,3 +24,8 @@ export const fmtTime = (s) => {
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 };
 export const money = (n) => `$${(Number(n) || 0).toLocaleString()}`;
+
+/** Fire-and-forget analytics event. Silently no-ops on failure. */
+export const track = (name, props = {}) => {
+  api.post("/events", { name, props }).catch(() => {});
+};

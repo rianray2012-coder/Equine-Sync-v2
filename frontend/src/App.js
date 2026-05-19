@@ -25,6 +25,7 @@ import Incidents from "./pages/Incidents";
 import Settings from "./pages/Settings";
 import Placeholder from "./pages/Placeholder";
 import Onboarding from "./pages/Onboarding";
+import AcceptInvite from "./pages/AcceptInvite";
 
 const Protected = ({ children }) => {
   const { user, loading } = useAuth();
@@ -41,6 +42,7 @@ function App() {
           <Toaster position="top-right" theme="dark" />
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route element={<Protected><AppShell /></Protected>}>
               <Route index element={<Dashboard />} />
               <Route path="/onboarding" element={<Onboarding />} />

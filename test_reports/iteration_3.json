@@ -1,0 +1,47 @@
+{
+  "summary": "Validated EquineSync invite/onboarding expansion end-to-end. Backend: 20/20 new tests PASS in /app/backend/tests/test_invites_and_analytics.py covering: POST /api/invites (dev_accept_url surfacing in dev mode, role-guard 403 for groom, 409 on dup email & on existing user), GET /api/invites (token_hash not leaked), resend (new dev_accept_url + sends history grows), revoke, verify (404 invalid / 410 used), accept (creates user, JWT, auto_launch=true for barn_manager / false for groom, pre-creates onboarding_progress), POST /api/onboarding/reset (re-opens wizard), tenant-reset (admin-only, requires confirm='RESET', onboarding & all_setup_data scopes, unknown scope 400, groom 403), POST /api/events + GET /api/events/onboarding-funnel (admin-only), PATCH /api/onboarding/progress data deep-merge (sibling keys preserved). Frontend: login admin -> dashboard 'setup-checklist-card' renders with all 10 status tiles + resume-setup; clicking 'checklist-barn' navigates to /onboarding. Onboarding Locations 'Type' is now a shadcn Select (combobox role, 7 options, selectable). Staff step invite -> dev-link-banner appears with accept-invite token URL + Copy button. Settings page exposes reopen-setup + tenant-reset-onboarding + tenant-reset-all to admin. /accept-invite?token=... renders accept-form; submitting password creates user and redirects barn_manager to /onboarding with welcome toast (auto_launch_onboarding=true working).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/invites", "issue": "APP_BASE_URL env var defaults to hardcoded 'https://herd-hub-19.emergent.host' when unset. In preview environments the frontend is on a different host (herd-hub-19.preview.emergentagent.com), so dev_accept_url shown in the UI points at the wrong origin. Recommend deriving base_url from request origin or documenting APP_BASE_URL must be set per env."},
+      {"endpoint": "POST /api/admin/tenant-reset (scope='all_setup_data')", "issue": "Wipes 'staff_invites' + 'invites' + 'barn' + 'locations' + 'feed_templates' + 'inventory' + 'recurring_schedules' + 'onboarding_progress' but does NOT wipe horses/owners/riders created during onboarding. Either rename scope (e.g. 'setup_collections') or extend cleanup to match what users committed via CSV."},
+      {"endpoint": "POST /api/invites/accept", "issue": "Body uses `body.password` directly without checking against a confirm field; relies on frontend to enforce match. Acceptable, but document. Also, password complexity rule is only length>=8 — no character class enforcement."},
+      {"endpoint": "POST /api/onboarding/reset", "issue": "Resets the CURRENT user only (correct), but TenantReset(scope='onboarding') wipes ALL users' progress — semantics are clear but consider renaming endpoint to /admin/tenant-reset/onboarding to avoid confusion with /onboarding/reset."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_invites_and_analytics.py",
+    "/app/test_reports/pytest/invites_results.xml"
+  ],
+  "action_items": [
+    "(Minor) Make APP_BASE_URL default to request origin (or env-driven per environment) so dev_accept_url matches the frontend host in preview/staging.",
+    "(Minor) Consider extending tenant-reset 'all_setup_data' scope to include horses/owners/riders, or rename the scope to clarify it only wipes config collections.",
+    "(Nit) Add password complexity hint on AcceptInvite form (currently silent minLength=8).",
+    "(Nit) Differentiate naming between user-scoped /onboarding/reset and tenant-wide /admin/tenant-reset to reduce confusion."
+  ],
+  "critical_code_review_comments": [
+    "Deep-merge implementation _deep_merge() is correct and recursive — verified by sibling-key preservation test (PASS).",
+    "Invite tokens are stored as sha256(token_hash) and never returned in API responses — good security.",
+    "auto_launch_onboarding correctly derived from role ∈ {admin, barn_manager}; onboarding_progress doc pre-created with correct shape (steps map, current_step, completed=false for setup roles).",
+    "_track() uses fire-and-forget try/except — good, never fails the parent request.",
+    "require_setup_role enforced on /invites POST, /invites/{id}/resend, /invites/{id}/revoke, GET /invites, GET /events/onboarding-funnel; tenant-reset is admin-only — role guards consistent.",
+    "Mailer dev mode (RESEND_API_KEY blank) returns {status: 'dev_logged', dev: true}; server then attaches dev_accept_url to invite response only when mail.get('dev') is truthy — clean abstraction.",
+    "InviteAccept does NOT support inviting an existing user by re-sending a token, but POST /invites already 409s on existing email — symmetric behavior.",
+    "Tenant-reset 'all_setup_data' deletes the 'barn' collection entirely; on next /api/barn GET the seeded primary barn must be re-bootstrapped — verify seed re-runs or expose a fix-up endpoint."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_invites_and_analytics.py (new, 20 tests)"
+  ],
+  "success_rate": {"backend": "100% (20/20 new tests)", "frontend": "100% (all flows: login, checklist, onboarding, shadcn Select, staff invite, dev banner, settings controls, accept-invite redirect)"},
+  "test_credentials": "admin@equinesync.com / demo1234, groom@equinesync.com / demo1234 (per /app/memory/test_credentials.md)",
+  "seed_data_creation": "Test created multiple invite docs with TEST_/e2e_ prefixed emails — some accepted users now exist in db.users (e2e_acc_*, test_invite_*); these do not pollute UI lists. test_onboarding_scope tenant-reset wipes onboarding_progress; subsequent admin GET /onboarding/progress recreates a fresh doc.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All review_request features verified working. After test_onboarding_scope runs, admin's onboarding_progress is wiped; first subsequent GET /onboarding/progress re-creates a fresh pending doc (verified). APP_BASE_URL hardcoded fallback is the only environmental quirk — testing on preview hosts requires rewriting the host portion of dev_accept_url to the preview origin before navigating (script in iteration 3 does this).",
+  "rca_of_the_issue": "N/A — no critical bugs found."
+}

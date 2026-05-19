@@ -12,6 +12,9 @@ import uuid
 from datetime import datetime, timezone, timedelta, date
 import bcrypt
 import jwt as pyjwt
+import secrets
+import hashlib
+from mailer import send as send_email, render as render_email
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -958,6 +961,16 @@ async def get_progress(user=Depends(get_current_user)):
     doc["percent"] = round(100 * completed / len(ONBOARDING_STEPS))
     return doc
 
+def _deep_merge(base: dict, patch: dict) -> dict:
+    """Recursively merge patch into base. dict values are merged, others replaced."""
+    out = dict(base or {})
+    for k, v in (patch or {}).items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
 @api_router.patch("/onboarding/progress")
 async def patch_progress(body: ProgressPatch, user=Depends(get_current_user)):
     doc = await db.onboarding_progress.find_one({"user_id": user["id"]})
@@ -970,10 +983,9 @@ async def patch_progress(body: ProgressPatch, user=Depends(get_current_user)):
     if body.current_step:
         update["current_step"] = body.current_step
     if body.data:
-        # merge data bag
+        # deep merge data bag so nested objects (e.g. data['barn']['contact']) aren't replaced wholesale
         existing = doc.get("data", {}) or {}
-        existing.update(body.data)
-        update["data"] = existing
+        update["data"] = _deep_merge(existing, body.data)
     await db.onboarding_progress.update_one({"user_id": user["id"]}, {"$set": update})
     fresh = await db.onboarding_progress.find_one({"user_id": user["id"]}, {"_id": 0})
     completed_steps = sum(1 for v in fresh.get("steps", {}).values() if v == "complete")
@@ -1231,6 +1243,279 @@ async def csv_template(kind: str):
     if not text:
         raise HTTPException(400, "Unknown template")
     return {"text": text, "filename": f"equinesync_{kind}_template.csv"}
+
+# ---------------- Magic-link Invites ----------------
+ROLE_LABELS = {
+    "admin": "Stable Owner / Admin", "barn_manager": "Barn Manager", "trainer": "Trainer",
+    "groom": "Groom", "working_student": "Working Student", "horse_owner": "Horse Owner",
+    "rider": "Rider", "parent": "Parent / Guardian", "veterinarian": "Veterinarian", "farrier": "Farrier",
+}
+
+class InviteCreate(BaseModel):
+    email: EmailStr
+    full_name: Optional[str] = None
+    role: str
+    barn_id: Optional[str] = "primary"
+    message: Optional[str] = None
+
+class InviteAccept(BaseModel):
+    token: str
+    password: str
+    full_name: Optional[str] = None
+
+def _hash_token(t: str) -> str:
+    return hashlib.sha256(t.encode("utf-8")).hexdigest()
+
+def _new_token() -> tuple[str, str]:
+    raw = secrets.token_urlsafe(32)
+    return raw, _hash_token(raw)
+
+async def _track(name: str, props: Dict[str, Any], user_id: Optional[str] = None):
+    """Internal: record an analytics event server-side."""
+    try:
+        await db.events.insert_one({
+            "id": new_id(), "name": name, "props": props or {},
+            "user_id": user_id, "at": iso(now_utc()),
+        })
+    except Exception:
+        logger.exception("Failed to record event %s", name)
+
+@api_router.get("/invites")
+async def list_invites_full(user=Depends(get_current_user)):
+    require_setup_role(user)
+    items = await db.invites.find({}, {"_id": 0, "token_hash": 0}).sort("created_at", -1).to_list(500)
+    return items
+
+@api_router.post("/invites")
+async def create_invite_with_link(body: InviteCreate, user=Depends(get_current_user)):
+    require_setup_role(user)
+    if body.role not in ROLES:
+        raise HTTPException(400, "Invalid role")
+    email_l = body.email.lower()
+    # de-dupe by email — active (pending, non-expired) invites or existing users
+    if await db.users.find_one({"email": email_l}):
+        raise HTTPException(409, "A user with this email already exists")
+    existing = await db.invites.find_one({"email": email_l, "status": "pending"})
+    if existing:
+        raise HTTPException(409, "An invite for this email is already pending — resend or revoke it first")
+
+    raw_token, token_hash = _new_token()
+    ttl_days = int(os.environ.get("INVITE_TTL_DAYS", "7"))
+    expires_at = now_utc() + timedelta(days=ttl_days)
+    barn = await db.barn.find_one({"id": body.barn_id or "primary"}, {"_id": 0, "name": 1}) or {}
+
+    invite = {
+        "id": new_id(),
+        "email": email_l,
+        "full_name": body.full_name,
+        "role": body.role,
+        "barn_id": body.barn_id or "primary",
+        "token_hash": token_hash,
+        "status": "pending",
+        "message": body.message,
+        "invited_by_id": user["id"],
+        "invited_by_name": user["full_name"],
+        "expires_at": iso(expires_at),
+        "created_at": iso(now_utc()),
+        "sends": [],
+    }
+    await db.invites.insert_one(invite)
+
+    base_url = os.environ.get("APP_BASE_URL", "").rstrip("/") or "https://herd-hub-19.emergent.host"
+    accept_url = f"{base_url}/accept-invite?token={raw_token}"
+
+    mail = await send_email(
+        to=email_l,
+        subject=f"You're invited to {barn.get('name') or 'EquineSync'}",
+        template="onboarding_invite",
+        variables={
+            "barn_name": barn.get("name") or "EquineSync",
+            "invitee_name": (body.full_name or email_l.split('@')[0]).strip() or "rider",
+            "inviter_name": user["full_name"],
+            "role_label": ROLE_LABELS.get(body.role, body.role.replace('_', ' ')),
+            "accept_url": accept_url,
+            "ttl_days": ttl_days,
+        },
+    )
+    await db.invites.update_one({"id": invite["id"]},
+        {"$push": {"sends": {"at": iso(now_utc()), "status": mail.get("status"), "id": mail.get("id")}}})
+    await _track("invite.sent", {"invite_id": invite["id"], "role": body.role, "dev_mode": mail.get("dev", False)}, user["id"])
+
+    out = await db.invites.find_one({"id": invite["id"]}, {"_id": 0, "token_hash": 0})
+    # Surface the magic link to the inviter in dev mode so they can share it manually if email is disabled.
+    if mail.get("dev"):
+        out["dev_accept_url"] = accept_url
+    return out
+
+@api_router.post("/invites/{invite_id}/resend")
+async def resend_invite(invite_id: str, user=Depends(get_current_user)):
+    require_setup_role(user)
+    inv = await db.invites.find_one({"id": invite_id})
+    if not inv: raise HTTPException(404, "Invite not found")
+    if inv.get("status") != "pending":
+        raise HTTPException(400, f"Invite is {inv.get('status')}")
+    raw_token, token_hash = _new_token()
+    ttl_days = int(os.environ.get("INVITE_TTL_DAYS", "7"))
+    expires_at = now_utc() + timedelta(days=ttl_days)
+    await db.invites.update_one({"id": invite_id},
+        {"$set": {"token_hash": token_hash, "expires_at": iso(expires_at), "updated_at": iso(now_utc())}})
+
+    barn = await db.barn.find_one({"id": inv.get("barn_id", "primary")}, {"_id": 0, "name": 1}) or {}
+    base_url = os.environ.get("APP_BASE_URL", "").rstrip("/") or "https://herd-hub-19.emergent.host"
+    accept_url = f"{base_url}/accept-invite?token={raw_token}"
+    mail = await send_email(
+        to=inv["email"],
+        subject=f"Reminder: your invitation to {barn.get('name') or 'EquineSync'}",
+        template="onboarding_invite",
+        variables={
+            "barn_name": barn.get("name") or "EquineSync",
+            "invitee_name": (inv.get("full_name") or inv["email"].split('@')[0]),
+            "inviter_name": user["full_name"],
+            "role_label": ROLE_LABELS.get(inv["role"], inv["role"].replace('_', ' ')),
+            "accept_url": accept_url,
+            "ttl_days": ttl_days,
+        },
+    )
+    await db.invites.update_one({"id": invite_id},
+        {"$push": {"sends": {"at": iso(now_utc()), "status": mail.get("status"), "id": mail.get("id"), "resend": True}}})
+    await _track("invite.resent", {"invite_id": invite_id}, user["id"])
+    out = await db.invites.find_one({"id": invite_id}, {"_id": 0, "token_hash": 0})
+    if mail.get("dev"):
+        out["dev_accept_url"] = accept_url
+    return out
+
+@api_router.post("/invites/{invite_id}/revoke")
+async def revoke_invite(invite_id: str, user=Depends(get_current_user)):
+    require_setup_role(user)
+    res = await db.invites.update_one(
+        {"id": invite_id, "status": "pending"},
+        {"$set": {"status": "revoked", "revoked_at": iso(now_utc()), "revoked_by": user["full_name"]}}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, "No pending invite found")
+    await _track("invite.revoked", {"invite_id": invite_id}, user["id"])
+    return {"ok": True}
+
+@api_router.get("/invites/verify")
+async def verify_invite(token: str):
+    inv = await db.invites.find_one({"token_hash": _hash_token(token)}, {"_id": 0, "token_hash": 0})
+    if not inv:
+        raise HTTPException(404, "Invalid invitation link")
+    if inv.get("status") != "pending":
+        raise HTTPException(410, f"This invitation is {inv.get('status')}")
+    try:
+        exp = datetime.fromisoformat(inv["expires_at"])
+        if exp.tzinfo is None: exp = exp.replace(tzinfo=timezone.utc)
+        if exp < now_utc():
+            await db.invites.update_one({"id": inv["id"]}, {"$set": {"status": "expired"}})
+            raise HTTPException(410, "This invitation has expired")
+    except KeyError:
+        pass
+    barn = await db.barn.find_one({"id": inv.get("barn_id", "primary")}, {"_id": 0, "name": 1, "facility_type": 1}) or {}
+    inv["barn"] = barn
+    return inv
+
+@api_router.post("/invites/accept")
+async def accept_invite(body: InviteAccept):
+    inv = await db.invites.find_one({"token_hash": _hash_token(body.token)})
+    if not inv:
+        raise HTTPException(404, "Invalid invitation")
+    if inv.get("status") != "pending":
+        raise HTTPException(410, f"Invitation is {inv.get('status')}")
+    exp = datetime.fromisoformat(inv["expires_at"])
+    if exp.tzinfo is None: exp = exp.replace(tzinfo=timezone.utc)
+    if exp < now_utc():
+        await db.invites.update_one({"id": inv["id"]}, {"$set": {"status": "expired"}})
+        raise HTTPException(410, "Invitation expired")
+    if len(body.password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+    if await db.users.find_one({"email": inv["email"]}):
+        raise HTTPException(409, "A user already exists for this email — please sign in")
+
+    full_name = (body.full_name or inv.get("full_name") or inv["email"].split('@')[0]).strip()
+    user = {
+        "id": new_id(),
+        "email": inv["email"],
+        "full_name": full_name,
+        "role": inv["role"],
+        "password_hash": hash_pwd(body.password),
+        "created_at": iso(now_utc()),
+        "via_invite_id": inv["id"],
+    }
+    await db.users.insert_one(user)
+    await db.invites.update_one({"id": inv["id"]},
+        {"$set": {"status": "accepted", "accepted_at": iso(now_utc()), "accepted_user_id": user["id"]}})
+
+    # Pre-create an onboarding progress doc so wizard auto-launches and resumes cleanly.
+    has_setup_role = inv["role"] in ("admin", "barn_manager")
+    progress = {
+        "user_id": user["id"],
+        "steps": {s["id"]: "pending" for s in ONBOARDING_STEPS},
+        "current_step": ONBOARDING_STEPS[0]["id"],
+        "data": {},
+        "completed": not has_setup_role,  # non-setup roles don't see the wizard
+        "auto_launch": has_setup_role,
+        "created_at": iso(now_utc()),
+        "updated_at": iso(now_utc()),
+    }
+    await db.onboarding_progress.insert_one(progress)
+
+    token = create_token(user["id"], user["role"])
+    await _track("invite.accepted", {"invite_id": inv["id"], "role": inv["role"]}, user["id"])
+    return {
+        "token": token,
+        "user": {k: v for k, v in user.items() if k not in ("password_hash", "_id")},
+        "auto_launch_onboarding": has_setup_role,
+    }
+
+# ---------------- Analytics ----------------
+class EventIn(BaseModel):
+    name: str
+    props: Optional[Dict[str, Any]] = {}
+
+@api_router.post("/events")
+async def track_event(body: EventIn, user=Depends(get_current_user)):
+    await db.events.insert_one({
+        "id": new_id(), "name": body.name, "props": body.props or {},
+        "user_id": user["id"], "user_role": user.get("role"), "at": iso(now_utc()),
+    })
+    return {"ok": True}
+
+@api_router.get("/events/onboarding-funnel")
+async def onboarding_funnel(user=Depends(get_current_user)):
+    require_setup_role(user)
+    pipeline = [
+        {"$match": {"name": {"$regex": "^onboarding\\."}}},
+        {"$group": {"_id": "$name", "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}},
+    ]
+    rows = await db.events.aggregate(pipeline).to_list(100)
+    return [{"event": r["_id"], "count": r["count"]} for r in rows]
+
+# ---------------- Tenant Reset (admin support) ----------------
+class TenantResetBody(BaseModel):
+    scope: str = "onboarding"  # 'onboarding' | 'all_setup_data'
+    confirm: str  # must equal "RESET"
+
+@api_router.post("/admin/tenant-reset")
+async def tenant_reset(body: TenantResetBody, user=Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Admin only")
+    if body.confirm != "RESET":
+        raise HTTPException(400, "Confirmation token required (send confirm=\"RESET\")")
+    cleared: Dict[str, int] = {}
+    if body.scope == "onboarding":
+        r = await db.onboarding_progress.delete_many({})
+        cleared["onboarding_progress"] = r.deleted_count
+    elif body.scope == "all_setup_data":
+        for c in ["onboarding_progress", "barn", "locations", "feed_templates",
+                  "inventory", "recurring_schedules", "staff_invites", "invites"]:
+            r = await db[c].delete_many({})
+            cleared[c] = r.deleted_count
+    else:
+        raise HTTPException(400, "Unknown scope")
+    await _track("tenant.reset", {"scope": body.scope, "cleared": cleared}, user["id"])
+    return {"ok": True, "cleared": cleared}
 
 # ---------------- Health ----------------
 @api_router.get("/")
