@@ -5,7 +5,7 @@ export const PageHeader = ({ eyebrow, title, subtitle, action }) => (
     <div className="max-w-2xl">
       {eyebrow && <div className="label-eyebrow mb-3">{eyebrow}</div>}
       <h1 className="font-display text-4xl sm:text-5xl lg:text-[56px] text-equine-ivory leading-[1.05]">{title}</h1>
-      {subtitle && <p className="mt-4 text-equine-silver/75 text-[15.5px] leading-relaxed">{subtitle}</p>}
+      {subtitle && <p className="mt-4 text-equine-inkMuted text-[15.5px] leading-relaxed">{subtitle}</p>}
     </div>
     {action}
   </div>

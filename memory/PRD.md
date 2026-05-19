@@ -28,7 +28,19 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 - Backend models/endpoints: `/barn` (settings), `/locations`, `/feed-templates`, `/inventory` (with low_stock flag), `/recurring-schedules`, `/onboarding/{steps,progress,complete,reset,csv-preview,csv-commit,csv-template}`
 - Role gating: only `admin` / `barn_manager` can edit barn-level settings or invite staff
 
-### Magic-Link Invites + Email Layer (Feb 19 2026 — added)
+### Design System v3 — Soft Lavender Pearl + Charcoal Navy (Feb 19 2026)
+- **Full palette pivot** from dark saddle/brass to **light lavender pearl** with deep charcoal navy as sidebar / primary brand
+- New tokens (Tailwind + CSS vars):
+  - **Surfaces**: bg `#F7F5FA` (lavender ivory), surface `#EAE7F2` (lavender mist), card `#FDFBFF` (pearl), elevated `#FFFFFF`
+  - **Ink**: primary `#2A2A32`, muted `#666674`, soft `#9A98A8`
+  - **Brand**: navy `#2E3448`, navyDeep `#22262F`, navyLift `#3D445A`
+  - **Accents**: brass→**icy blue** `#A7B7E7` / `#C2CDEC`, saddle→**dusty lavender** `#C7B6D9` / `#A593C0`, champagne taupe `#B89B7A`, brushed silver `#B8BDC9`
+  - **Status**: sage `#7AA08A`, golden sand `#B5894A`, mauve `#8B5E6B`
+- Sidebar stays deep navy with icy-blue active rail; main content is pearl + lavender; FAB is icy-blue gradient
+- Dark-mode CSS-var scaffolding ready for future toggle
+- Tests: 100% pass, zero regressions across 14 routes
+
+### Magic-Link Invites + Email Layer (Feb 19 2026)
 - **Resend integration** (`mailer.py` abstraction) — **LIVE** with real API key as of Feb 19 2026.
 - Sandbox handling: when Resend rejects non-owner recipients, mailer returns `status='sandbox'`, dev_accept_url surfaced in UI for manual share until domain is verified
 - Branded HTML email templates: `_base.html` + `onboarding_invite.html` + `onboarding_nudge.html` (luxury aesthetic)

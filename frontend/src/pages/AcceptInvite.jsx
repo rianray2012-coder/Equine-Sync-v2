@@ -76,7 +76,7 @@ export default function AcceptInvite() {
             <div className="equine-card p-8 text-center" data-testid="invite-error">
               <AlertTriangle className="mx-auto text-equine-clay mb-3" />
               <h2 className="font-display text-2xl text-equine-ivory mb-2">Invitation unavailable</h2>
-              <p className="text-equine-platinum/70 text-[14px]">{error}</p>
+              <p className="text-equine-inkMuted text-[14px]">{error}</p>
               <button onClick={() => navigate("/login")} className="btn-secondary mt-6">Go to sign in</button>
             </div>
           )}
