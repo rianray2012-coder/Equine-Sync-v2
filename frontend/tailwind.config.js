@@ -10,20 +10,37 @@ module.exports = {
       },
       colors: {
         equine: {
-          black: '#111111',
-          soft: '#1E1E1E',
-          card: '#1A1A1A',
-          tertiary: '#2A2A2A',
-          graphite: '#4D4D4D',
-          platinum: '#C0C0C0',
-          silver: '#D9D9D9',
+          // Foundation surfaces (warm charcoal, subtle saddle undertone)
+          black: '#13110E',
+          soft: '#1C1814',
+          card: '#22201C',
+          elevated: '#2A2620',
+          tertiary: '#322D26',
+          hairline: '#332E26',
+          graphite: '#4A423A',
+
+          // Neutrals (warm, not cool)
+          taupe: '#8A7E6C',
+          platinum: '#C9C0AE',
+          silver: '#D9D2C0',
+          cream: '#EDE7D7',
           ivory: '#F5F2EC',
-          steel: '#52667A',
-          champagne: '#BFC5CC',
-          sage: '#6E8B74',
+
+          // Equestrian accents
+          saddle: '#8B6F4E',        // saddle leather
+          saddleDeep: '#6B5640',
+          brass: '#B89968',         // warm brass
+          brassLight: '#D4B884',
+          champagne: '#C9B690',     // warmer champagne
+
+          // Accents (subtle steel for cool contrast)
+          steel: '#5E7080',
+
+          // Status (warmer, more refined)
+          sage: '#7B9682',
           amber: '#C6924B',
           clay: '#A85C4B',
-          slate: '#708090',
+          slate: '#7A8390',
         },
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',

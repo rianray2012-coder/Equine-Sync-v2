@@ -6,82 +6,235 @@
 
 @layer base {
   :root {
-    --background: 0 0% 7%;
-    --foreground: 40 25% 95%;
-    --card: 0 0% 12%;
-    --card-foreground: 40 25% 95%;
-    --popover: 0 0% 12%;
-    --popover-foreground: 40 25% 95%;
-    --primary: 220 17% 76%;
-    --primary-foreground: 0 0% 7%;
-    --secondary: 0 0% 17%;
-    --secondary-foreground: 40 25% 95%;
-    --muted: 0 0% 17%;
-    --muted-foreground: 0 0% 65%;
-    --accent: 211 19% 40%;
-    --accent-foreground: 40 25% 95%;
+    --background: 36 14% 7%;          /* warm charcoal */
+    --foreground: 38 32% 94%;         /* warm ivory */
+    --card: 36 14% 12%;
+    --card-foreground: 38 32% 94%;
+    --popover: 36 14% 12%;
+    --popover-foreground: 38 32% 94%;
+    --primary: 40 28% 70%;            /* brass */
+    --primary-foreground: 36 14% 7%;
+    --secondary: 36 14% 14%;
+    --secondary-foreground: 38 32% 94%;
+    --muted: 36 14% 16%;
+    --muted-foreground: 38 14% 70%;
+    --accent: 34 28% 42%;             /* saddle */
+    --accent-foreground: 38 32% 94%;
     --destructive: 11 35% 48%;
-    --destructive-foreground: 40 25% 95%;
-    --border: 0 0% 30%;
-    --input: 0 0% 20%;
-    --ring: 211 19% 40%;
-    --radius: 0.875rem;
+    --destructive-foreground: 38 32% 94%;
+    --border: 36 14% 24%;
+    --input: 36 14% 18%;
+    --ring: 40 28% 60%;
+    --radius: 1rem;
   }
 }
 
 @layer base {
   * { @apply border-border; }
   html, body, #root { height: 100%; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
-    background-color: #111111;
+    /* Layered ambient warmth — radial highlights from brass + saddle on a deep warm base */
+    background-color: #13110E;
+    background-image:
+      radial-gradient(1200px circle at 12% -10%, rgba(184,153,104,0.06), transparent 55%),
+      radial-gradient(900px circle at 95% 8%, rgba(139,111,78,0.05), transparent 50%),
+      radial-gradient(1100px circle at 50% 110%, rgba(139,111,78,0.04), transparent 60%);
+    background-attachment: fixed;
     color: #F5F2EC;
     font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
   h1, h2, h3, h4, .font-display {
     font-family: 'Cormorant Garamond', serif;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.012em;
     font-weight: 400;
   }
-  ::selection { background: #52667A; color: #F5F2EC; }
+  ::selection { background: #B89968; color: #13110E; }
+
+  /* Mobile-first defaults */
+  button, [role="button"], a {
+    -webkit-tap-highlight-color: transparent;
+  }
+  input, textarea, select {
+    font-size: 16px; /* prevents iOS zoom on focus */
+  }
 }
 
 @layer components {
-  .glass {
-    background: rgba(17,17,17,0.7);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid rgba(77,77,77,0.5);
-  }
+  /* ============ Surfaces ============ */
+  .surface-1 { background-color: #1C1814; }
+  .surface-2 { background-color: #22201C; }
+  .surface-3 { background-color: #2A2620; }
+  .hairline { border-top: 1px solid #332E26; }
+  .hairline-b { border-bottom: 1px solid #332E26; }
+
+  /* ============ Cards ============ */
   .equine-card {
-    background-color: #1A1A1A;
-    border: 1px solid #2E2E2E;
-    border-radius: 16px;
-    box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset, 0 8px 28px rgba(0,0,0,0.35);
+    position: relative;
+    background:
+      linear-gradient(180deg, rgba(184,153,104,0.025) 0%, rgba(184,153,104,0) 28%),
+      #22201C;
+    border: 1px solid #3D3730;
+    border-radius: 18px;
+    box-shadow:
+      inset 0 1px 0 rgba(245,242,236,0.025),
+      0 1px 0 rgba(245,242,236,0.015),
+      0 12px 32px -12px rgba(0,0,0,0.55),
+      0 4px 12px -6px rgba(0,0,0,0.4);
   }
   .equine-card-hover {
-    @apply transition-all duration-300;
+    transition: background-color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease, transform 0.35s ease;
   }
   .equine-card-hover:hover {
-    background-color: #1F1F1F;
-    border-color: #4D4D4D;
+    background:
+      linear-gradient(180deg, rgba(184,153,104,0.05) 0%, rgba(184,153,104,0.01) 32%),
+      #28241F;
+    border-color: #524938;
+    box-shadow:
+      inset 0 1px 0 rgba(245,242,236,0.035),
+      0 16px 40px -10px rgba(0,0,0,0.6),
+      0 6px 16px -4px rgba(0,0,0,0.45);
   }
-  .hairline { border-top: 1px solid #2A2A2A; }
+
+  .equine-card-elevated {
+    background:
+      linear-gradient(180deg, rgba(184,153,104,0.05) 0%, rgba(184,153,104,0) 40%),
+      #2A2620;
+    border: 1px solid #4A4034;
+    border-radius: 18px;
+    box-shadow:
+      inset 0 1px 0 rgba(245,242,236,0.04),
+      0 20px 50px -10px rgba(0,0,0,0.65),
+      0 8px 22px -4px rgba(0,0,0,0.5);
+  }
+
+  /* ============ Glass header ============ */
+  .glass {
+    background: rgba(19,17,14,0.72);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border-bottom: 1px solid rgba(61,55,48,0.6);
+  }
+
+  /* ============ Typography accents ============ */
   .label-eyebrow {
-    @apply text-[11px] tracking-[0.22em] uppercase text-equine-platinum/70 font-semibold;
+    @apply text-[10.5px] tracking-[0.24em] uppercase font-semibold;
+    color: #C9B690;
+    text-shadow: 0 1px 0 rgba(0,0,0,0.3);
   }
+  .label-eyebrow-muted {
+    @apply text-[10px] tracking-[0.22em] uppercase font-medium;
+    color: rgba(201,182,144,0.55);
+  }
+
+  /* ============ Buttons ============ */
   .btn-primary {
-    @apply rounded-full px-5 py-2.5 bg-equine-champagne text-equine-black font-medium hover:bg-equine-ivory transition-colors active:scale-[0.97];
+    @apply rounded-full px-5 py-2.5 font-medium transition-all duration-200 active:scale-[0.97];
+    background: linear-gradient(180deg, #C9A875 0%, #B89968 100%);
+    color: #13110E;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.25),
+      0 1px 0 rgba(0,0,0,0.3),
+      0 6px 16px -6px rgba(184,153,104,0.35);
+    min-height: 44px;
   }
+  .btn-primary:hover {
+    background: linear-gradient(180deg, #D4B884 0%, #C9A875 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.3),
+      0 8px 20px -6px rgba(184,153,104,0.5);
+  }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
   .btn-secondary {
-    @apply rounded-full px-5 py-2.5 bg-transparent border border-equine-graphite text-equine-ivory hover:bg-equine-soft transition-colors active:scale-[0.97];
+    @apply rounded-full px-5 py-2.5 font-medium transition-all duration-200 active:scale-[0.97];
+    background: rgba(42,38,32,0.6);
+    color: #F5F2EC;
+    border: 1px solid #4A4034;
+    min-height: 44px;
   }
+  .btn-secondary:hover {
+    background: rgba(58,52,44,0.8);
+    border-color: #B89968;
+    color: #F5F2EC;
+  }
+
+  /* ============ Scrollbar ============ */
   .scrollbar-luxe::-webkit-scrollbar { width: 8px; height: 8px; }
-  .scrollbar-luxe::-webkit-scrollbar-thumb { background: #2A2A2A; border-radius: 8px; }
-  .scrollbar-luxe::-webkit-scrollbar-thumb:hover { background: #4D4D4D; }
+  .scrollbar-luxe::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-luxe::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #3D3730, #2A2620);
+    border-radius: 8px;
+  }
+  .scrollbar-luxe::-webkit-scrollbar-thumb:hover { background: #524938; }
+
+  /* ============ Brass-accent left rail (sidebar active state) ============ */
+  .nav-active-rail {
+    position: relative;
+  }
+  .nav-active-rail::before {
+    content: "";
+    position: absolute;
+    left: -3px;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #D4B884, #B89968 60%, #8B6F4E);
+    box-shadow: 0 0 12px rgba(184,153,104,0.45);
+  }
+
+  /* ============ Status pills (warmer borders) ============ */
+  .pill {
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-[10.5px] tracking-[0.16em] uppercase border font-medium;
+    letter-spacing: 0.18em;
+  }
+
+  /* ============ Editorial section divider ============ */
+  .section-eyebrow {
+    @apply flex items-center gap-3 mb-5;
+  }
+  .section-eyebrow .line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, #332E26, transparent);
+  }
+
+  /* ============ Mobile FAB ============ */
+  .fab {
+    @apply fixed bottom-6 right-6 z-30 rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95;
+    width: 60px; height: 60px;
+    background: linear-gradient(135deg, #D4B884, #B89968 60%, #8B6F4E);
+    color: #13110E;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.3),
+      0 8px 28px -4px rgba(184,153,104,0.4),
+      0 18px 40px -10px rgba(0,0,0,0.6);
+  }
+  .fab:hover { transform: translateY(-2px); }
+
+  /* ============ Touch targets (mobile-first) ============ */
+  .tap-44 { min-height: 44px; min-width: 44px; }
+
+  /* ============ Subtle warm divider lines on Cards ============ */
+  .equine-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #3D3730 20%, #3D3730 80%, transparent);
+    margin: 1.25rem 0;
+  }
 }
 
 @layer base {
   [data-debug-wrapper="true"] { display: contents !important; }
 }
+
+/* ============ Animations ============ */
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes shimmerBrass { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+.animate-fade-in { animation: fadeInUp 0.5s ease-out both; }
+.animate-fade-in-delay-1 { animation: fadeInUp 0.5s ease-out 0.05s both; }
+.animate-fade-in-delay-2 { animation: fadeInUp 0.5s ease-out 0.1s both; }
+.animate-fade-in-delay-3 { animation: fadeInUp 0.5s ease-out 0.15s both; }
