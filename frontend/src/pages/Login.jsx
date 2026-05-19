@@ -39,25 +39,25 @@ export default function Login() {
   return (
     <div className="min-h-screen w-full grid lg:grid-cols-2 bg-equine-black">
       {/* Left visual */}
-      <div className="relative hidden lg:block">
+      <div className="relative hidden lg:block bg-equine-navy">
         <img
           src="https://static.prod-images.emergentagent.com/jobs/137f7c6b-a2e1-41c0-9c38-96d2409d644a/images/3ca3908290d52bc07be0b5f45e2f358fac3cee0e8034aa339d3b62ddac3b3403.png"
           alt="Luxury equestrian arena"
-          className="absolute inset-0 w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full object-cover opacity-40"
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-equine-black/85 via-equine-black/55 to-equine-black/90" />
-        <div className="relative z-10 h-full flex flex-col justify-between p-12">
-          <Logo />
+        <div className="absolute inset-0 bg-gradient-to-br from-equine-navy via-equine-navy/85 to-equine-navyDeep" />
+        <div className="relative z-10 h-full flex flex-col justify-between p-12 text-white">
+          <Logo onNavy />
           <div className="max-w-md">
-            <div className="label-eyebrow mb-5">An operating system for the modern barn</div>
-            <h2 className="font-display text-5xl xl:text-6xl leading-[1.05] text-equine-ivory">
+            <div className="text-[10.5px] tracking-[0.28em] uppercase text-equine-brassLight font-semibold mb-5">An operating system for the modern barn</div>
+            <h2 className="font-display text-5xl xl:text-6xl leading-[1.05] text-white">
               Quiet precision.<br/>Operational mastery.
             </h2>
-            <p className="mt-6 text-equine-silver/80 text-[15px] leading-relaxed">
+            <p className="mt-6 text-equine-silver/85 text-[15px] leading-relaxed">
               EquineSync unites horse care, training, billing, and owner communication in one elegant platform — built for elite show barns, rehab facilities, and luxury private operations.
             </p>
           </div>
-          <div className="text-[11px] tracking-[0.22em] uppercase text-equine-platinum/40">© EquineSync · Crafted for elite equestrian operations</div>
+          <div className="text-[11px] tracking-[0.22em] uppercase text-equine-brassLight/55">© EquineSync · Crafted for elite equestrian operations</div>
         </div>
       </div>
 
@@ -67,7 +67,7 @@ export default function Login() {
           <div className="lg:hidden mb-10"><Logo /></div>
           <div className="label-eyebrow mb-4">Sign in</div>
           <h1 className="font-display text-4xl text-equine-ivory leading-none">Welcome back</h1>
-          <p className="mt-3 text-equine-silver/70">Access your stable operations dashboard.</p>
+          <p className="mt-3 text-equine-silver">Access your stable operations dashboard.</p>
 
           <form onSubmit={submit} className="mt-8 space-y-5" data-testid="login-form">
             <div>
@@ -75,7 +75,7 @@ export default function Login() {
               <input
                 type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
                 data-testid="login-email"
-                className="w-full bg-equine-soft border border-equine-graphite/60 rounded-xl px-4 py-3 text-equine-ivory focus:outline-none focus:border-equine-champagne transition-colors"
+                className="input-field"
               />
             </div>
             <div>
@@ -83,7 +83,7 @@ export default function Login() {
               <input
                 type="password" value={password} onChange={(e) => setPassword(e.target.value)} required
                 data-testid="login-password"
-                className="w-full bg-equine-soft border border-equine-graphite/60 rounded-xl px-4 py-3 text-equine-ivory focus:outline-none focus:border-equine-champagne transition-colors"
+                className="input-field"
               />
             </div>
             {err && <div className="text-equine-clay text-sm" data-testid="login-error">{err}</div>}
@@ -93,7 +93,7 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="mt-10 pt-6 border-t border-equine-graphite/30">
+          <div className="mt-10 pt-6 border-t border-equine-hairline">
             <div className="label-eyebrow mb-3">Demo accounts (password: demo1234)</div>
             <div className="grid grid-cols-1 gap-2">
               {DEMO.map((d) => (
@@ -101,10 +101,10 @@ export default function Login() {
                   key={d.email}
                   onClick={() => { setEmail(d.email); setPassword("demo1234"); }}
                   data-testid={`demo-${d.role.toLowerCase().replace(/\s/g, '-')}`}
-                  className="text-left px-4 py-2.5 rounded-lg border border-equine-graphite/50 hover:border-equine-champagne hover:bg-equine-soft transition-all flex items-center justify-between"
+                  className="text-left px-4 py-2.5 rounded-lg border border-equine-graphite/40 hover:border-equine-saddle hover:bg-equine-soft transition-all flex items-center justify-between"
                 >
-                  <span className="text-[13px] text-equine-silver">{d.email}</span>
-                  <span className="text-[11px] tracking-[0.16em] uppercase text-equine-platinum/60">{d.role}</span>
+                  <span className="text-[13px] text-equine-ivory">{d.email}</span>
+                  <span className="text-[11px] tracking-[0.16em] uppercase text-equine-silver">{d.role}</span>
                 </button>
               ))}
             </div>

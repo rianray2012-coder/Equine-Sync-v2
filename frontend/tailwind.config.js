@@ -10,37 +10,43 @@ module.exports = {
       },
       colors: {
         equine: {
-          // Foundation surfaces (warm charcoal, subtle saddle undertone)
-          black: '#13110E',
-          soft: '#1C1814',
-          card: '#22201C',
-          elevated: '#2A2620',
-          tertiary: '#322D26',
-          hairline: '#332E26',
-          graphite: '#4A423A',
+          /* ============ SURFACES (light) ============ */
+          black:       '#F7F5FA',  // primary BG — soft lavender ivory
+          soft:        '#EAE7F2',  // secondary surface — lavender mist
+          card:        '#FDFBFF',  // elevated card — pearl white
+          elevated:    '#FFFFFF',  // top elevation
+          tertiary:    '#F0EDF5',
+          hairline:    '#E0DCEC',
+          graphite:    '#B8BDC9',  // brushed silver (borders, dividers)
 
-          // Neutrals (warm, not cool)
-          taupe: '#8A7E6C',
-          platinum: '#C9C0AE',
-          silver: '#D9D2C0',
-          cream: '#EDE7D7',
-          ivory: '#F5F2EC',
+          /* ============ TEXT (ink-style) ============ */
+          ink:         '#2A2A32',  // primary text
+          inkMuted:    '#666674',  // secondary text
+          inkSoft:     '#9A98A8',  // muted text
 
-          // Equestrian accents
-          saddle: '#8B6F4E',        // saddle leather
-          saddleDeep: '#6B5640',
-          brass: '#B89968',         // warm brass
-          brassLight: '#D4B884',
-          champagne: '#C9B690',     // warmer champagne
+          /* ============ Legacy text aliases ============ */
+          ivory:       '#2A2A32',  // legacy: text-equine-ivory now = primary ink
+          cream:       '#2E3448',
+          silver:      '#666674',
+          platinum:    '#9A98A8',
 
-          // Accents (subtle steel for cool contrast)
-          steel: '#5E7080',
+          /* ============ ACCENTS ============ */
+          navy:        '#2E3448',  // deep charcoal navy (sidebar, primary brand)
+          navyDeep:    '#22262F',
+          navyLift:    '#3D445A',
+          brass:       '#A7B7E7',  // icy blue (primary accent — was brass)
+          brassLight:  '#C2CDEC',  // light icy blue
+          saddle:      '#C7B6D9',  // dusty lavender (was saddle leather)
+          saddleDeep:  '#A593C0',
+          champagne:   '#B89B7A',  // muted champagne taupe (warm accent)
+          taupe:       '#B8BDC9',  // brushed silver
+          steel:       '#A7B7E7',  // icy blue (alias)
 
-          // Status (warmer, more refined)
-          sage: '#7B9682',
-          amber: '#C6924B',
-          clay: '#A85C4B',
-          slate: '#7A8390',
+          /* ============ STATUS (muted, refined) ============ */
+          sage:        '#7AA08A',  // soft sage (darker for contrast on light)
+          amber:       '#B5894A',  // muted golden sand (darkened)
+          clay:        '#8B5E6B',  // muted mauve
+          slate:       '#666674',
         },
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',

@@ -4,28 +4,103 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   COLOR TOKENS — Soft lavender pearl with deep charcoal navy
+   Strategy: Light by default; dark mode flips bg/ink via class
+   ============================================================ */
 @layer base {
   :root {
-    --background: 36 14% 7%;          /* warm charcoal */
-    --foreground: 38 32% 94%;         /* warm ivory */
-    --card: 36 14% 12%;
-    --card-foreground: 38 32% 94%;
-    --popover: 36 14% 12%;
-    --popover-foreground: 38 32% 94%;
-    --primary: 40 28% 70%;            /* brass */
-    --primary-foreground: 36 14% 7%;
-    --secondary: 36 14% 14%;
-    --secondary-foreground: 38 32% 94%;
-    --muted: 36 14% 16%;
-    --muted-foreground: 38 14% 70%;
-    --accent: 34 28% 42%;             /* saddle */
-    --accent-foreground: 38 32% 94%;
-    --destructive: 11 35% 48%;
-    --destructive-foreground: 38 32% 94%;
-    --border: 36 14% 24%;
-    --input: 36 14% 18%;
-    --ring: 40 28% 60%;
-    --radius: 1rem;
+    /* Surfaces */
+    --bg:              #F7F5FA;
+    --surface:         #EAE7F2;
+    --surface-2:       #FDFBFF;
+    --surface-3:       #FFFFFF;
+    --hairline:        #E0DCEC;
+    --border-soft:     #D5D0E2;
+
+    /* Ink */
+    --ink:             #2A2A32;
+    --ink-muted:       #666674;
+    --ink-soft:        #9A98A8;
+
+    /* Brand & accents */
+    --navy:            #2E3448;
+    --navy-deep:       #22262F;
+    --navy-lift:       #3D445A;
+    --icy:             #A7B7E7;
+    --icy-light:       #C2CDEC;
+    --lavender:        #C7B6D9;
+    --lavender-deep:   #A593C0;
+    --silver:          #B8BDC9;
+    --champagne:       #B89B7A;
+
+    /* Status */
+    --sage:            #7AA08A;
+    --amber:           #B5894A;
+    --clay:            #8B5E6B;
+
+    /* shadcn tokens (HSL) — light theme */
+    --background:      252 28% 97%;
+    --foreground:      232 8% 18%;
+    --card:            264 50% 99%;
+    --card-foreground: 232 8% 18%;
+    --popover:         264 50% 99%;
+    --popover-foreground: 232 8% 18%;
+    --primary:         226 21% 23%;       /* navy */
+    --primary-foreground: 252 28% 97%;
+    --secondary:       254 28% 93%;       /* lavender mist */
+    --secondary-foreground: 232 8% 18%;
+    --muted:           254 28% 93%;
+    --muted-foreground: 236 7% 42%;
+    --accent:          222 56% 79%;       /* icy blue */
+    --accent-foreground: 232 8% 18%;
+    --destructive:     345 19% 46%;       /* mauve */
+    --destructive-foreground: 252 28% 97%;
+    --border:          258 30% 87%;
+    --input:           258 30% 87%;
+    --ring:            222 56% 70%;
+    --radius: 0.875rem;
+  }
+
+  /* ============ DARK MODE (optional, opt-in via .dark on <html>) ============ */
+  .dark {
+    --bg:              #1A1B22;
+    --surface:         #232431;
+    --surface-2:       #2A2B38;
+    --surface-3:       #2F3140;
+    --hairline:        #353748;
+    --border-soft:     #404257;
+
+    --ink:             #F2F0F7;
+    --ink-muted:       #B8B6CC;
+    --ink-soft:        #8A88A0;
+
+    --navy:            #2E3448;
+    --icy:             #A7B7E7;
+    --icy-light:       #C2CDEC;
+    --lavender:        #C7B6D9;
+    --silver:          #B8BDC9;
+    --champagne:       #B89B7A;
+
+    --background:      232 14% 12%;
+    --foreground:      252 22% 95%;
+    --card:            232 14% 17%;
+    --card-foreground: 252 22% 95%;
+    --popover:         232 14% 17%;
+    --popover-foreground: 252 22% 95%;
+    --primary:         222 56% 79%;
+    --primary-foreground: 232 14% 12%;
+    --secondary:       232 14% 21%;
+    --secondary-foreground: 252 22% 95%;
+    --muted:           232 14% 21%;
+    --muted-foreground: 252 12% 70%;
+    --accent:          222 56% 79%;
+    --accent-foreground: 232 14% 12%;
+    --destructive:     345 19% 56%;
+    --destructive-foreground: 252 22% 95%;
+    --border:          232 14% 26%;
+    --input:           232 14% 21%;
+    --ring:            222 56% 79%;
   }
 }
 
@@ -34,14 +109,14 @@
   html, body, #root { height: 100%; }
   html { -webkit-text-size-adjust: 100%; }
   body {
-    /* Layered ambient warmth — radial highlights from brass + saddle on a deep warm base */
-    background-color: #13110E;
+    background-color: var(--bg);
+    /* Soft pearl highlights — restrained, no neon */
     background-image:
-      radial-gradient(1200px circle at 12% -10%, rgba(184,153,104,0.06), transparent 55%),
-      radial-gradient(900px circle at 95% 8%, rgba(139,111,78,0.05), transparent 50%),
-      radial-gradient(1100px circle at 50% 110%, rgba(139,111,78,0.04), transparent 60%);
+      radial-gradient(1400px circle at 14% -10%, rgba(167,183,231,0.18), transparent 55%),
+      radial-gradient(1100px circle at 92% 12%, rgba(199,182,217,0.14), transparent 55%),
+      radial-gradient(1200px circle at 50% 110%, rgba(184,189,201,0.10), transparent 60%);
     background-attachment: fixed;
-    color: #F5F2EC;
+    color: var(--ink);
     font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -49,132 +124,131 @@
   }
   h1, h2, h3, h4, .font-display {
     font-family: 'Cormorant Garamond', serif;
-    letter-spacing: -0.012em;
+    letter-spacing: -0.014em;
     font-weight: 400;
+    color: var(--ink);
   }
-  ::selection { background: #B89968; color: #13110E; }
-
-  /* Mobile-first defaults */
-  button, [role="button"], a {
-    -webkit-tap-highlight-color: transparent;
-  }
-  input, textarea, select {
-    font-size: 16px; /* prevents iOS zoom on focus */
-  }
+  ::selection { background: var(--icy); color: var(--navy); }
+  button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
+  input, textarea, select { font-size: 16px; }
 }
 
 @layer components {
   /* ============ Surfaces ============ */
-  .surface-1 { background-color: #1C1814; }
-  .surface-2 { background-color: #22201C; }
-  .surface-3 { background-color: #2A2620; }
-  .hairline { border-top: 1px solid #332E26; }
-  .hairline-b { border-bottom: 1px solid #332E26; }
+  .surface-1 { background-color: var(--surface); }
+  .surface-2 { background-color: var(--surface-2); }
+  .surface-3 { background-color: var(--surface-3); }
+  .hairline { border-top: 1px solid var(--hairline); }
+  .hairline-b { border-bottom: 1px solid var(--hairline); }
 
   /* ============ Cards ============ */
   .equine-card {
     position: relative;
     background:
-      linear-gradient(180deg, rgba(184,153,104,0.025) 0%, rgba(184,153,104,0) 28%),
-      #22201C;
-    border: 1px solid #3D3730;
+      linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(253,251,255,0.85) 100%),
+      var(--surface-2);
+    border: 1px solid var(--hairline);
     border-radius: 18px;
     box-shadow:
-      inset 0 1px 0 rgba(245,242,236,0.025),
-      0 1px 0 rgba(245,242,236,0.015),
-      0 12px 32px -12px rgba(0,0,0,0.55),
-      0 4px 12px -6px rgba(0,0,0,0.4);
+      inset 0 1px 0 rgba(255,255,255,0.85),
+      0 1px 2px rgba(46,52,72,0.04),
+      0 12px 32px -16px rgba(46,52,72,0.10),
+      0 4px 12px -6px rgba(46,52,72,0.06);
   }
   .equine-card-hover {
-    transition: background-color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease, transform 0.35s ease;
+    transition: background-color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease, transform 0.2s ease;
   }
   .equine-card-hover:hover {
-    background:
-      linear-gradient(180deg, rgba(184,153,104,0.05) 0%, rgba(184,153,104,0.01) 32%),
-      #28241F;
-    border-color: #524938;
+    border-color: var(--border-soft);
     box-shadow:
-      inset 0 1px 0 rgba(245,242,236,0.035),
-      0 16px 40px -10px rgba(0,0,0,0.6),
-      0 6px 16px -4px rgba(0,0,0,0.45);
+      inset 0 1px 0 rgba(255,255,255,0.9),
+      0 1px 2px rgba(46,52,72,0.05),
+      0 18px 40px -14px rgba(46,52,72,0.14),
+      0 6px 16px -4px rgba(46,52,72,0.08);
   }
-
   .equine-card-elevated {
     background:
-      linear-gradient(180deg, rgba(184,153,104,0.05) 0%, rgba(184,153,104,0) 40%),
-      #2A2620;
-    border: 1px solid #4A4034;
+      linear-gradient(180deg, rgba(255,255,255,0.9), rgba(253,251,255,0.95));
+    border: 1px solid var(--hairline);
     border-radius: 18px;
     box-shadow:
-      inset 0 1px 0 rgba(245,242,236,0.04),
-      0 20px 50px -10px rgba(0,0,0,0.65),
-      0 8px 22px -4px rgba(0,0,0,0.5);
+      inset 0 1px 0 #ffffff,
+      0 20px 50px -20px rgba(46,52,72,0.16),
+      0 8px 22px -6px rgba(46,52,72,0.10);
   }
 
-  /* ============ Glass header ============ */
+  /* ============ Glass header — frosted pearl ============ */
   .glass {
-    background: rgba(19,17,14,0.72);
-    backdrop-filter: blur(20px) saturate(140%);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-    border-bottom: 1px solid rgba(61,55,48,0.6);
+    background: rgba(247,245,250,0.78);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid rgba(224,220,236,0.7);
   }
 
   /* ============ Typography accents ============ */
   .label-eyebrow {
     @apply text-[10.5px] tracking-[0.24em] uppercase font-semibold;
-    color: #C9B690;
-    text-shadow: 0 1px 0 rgba(0,0,0,0.3);
+    color: var(--navy);
+    opacity: 0.7;
   }
   .label-eyebrow-muted {
     @apply text-[10px] tracking-[0.22em] uppercase font-medium;
-    color: rgba(201,182,144,0.55);
+    color: var(--ink-soft);
   }
 
   /* ============ Buttons ============ */
   .btn-primary {
     @apply rounded-full px-5 py-2.5 font-medium transition-all duration-200 active:scale-[0.97];
-    background: linear-gradient(180deg, #C9A875 0%, #B89968 100%);
-    color: #13110E;
+    background: linear-gradient(180deg, var(--navy-lift) 0%, var(--navy) 100%);
+    color: #F7F5FA;
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.25),
-      0 1px 0 rgba(0,0,0,0.3),
-      0 6px 16px -6px rgba(184,153,104,0.35);
+      inset 0 1px 0 rgba(255,255,255,0.18),
+      0 1px 2px rgba(46,52,72,0.2),
+      0 8px 18px -8px rgba(46,52,72,0.35);
     min-height: 44px;
   }
   .btn-primary:hover {
-    background: linear-gradient(180deg, #D4B884 0%, #C9A875 100%);
+    background: linear-gradient(180deg, #4A516B 0%, #353B52 100%);
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.3),
-      0 8px 20px -6px rgba(184,153,104,0.5);
+      inset 0 1px 0 rgba(255,255,255,0.22),
+      0 10px 22px -8px rgba(46,52,72,0.45);
   }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .btn-secondary {
     @apply rounded-full px-5 py-2.5 font-medium transition-all duration-200 active:scale-[0.97];
-    background: rgba(42,38,32,0.6);
-    color: #F5F2EC;
-    border: 1px solid #4A4034;
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--border-soft);
     min-height: 44px;
   }
   .btn-secondary:hover {
-    background: rgba(58,52,44,0.8);
-    border-color: #B89968;
-    color: #F5F2EC;
+    background: var(--surface-2);
+    border-color: var(--lavender-deep);
+  }
+
+  .btn-accent {
+    @apply rounded-full px-5 py-2.5 font-medium transition-all duration-200 active:scale-[0.97];
+    background: linear-gradient(180deg, #C2CDEC 0%, #A7B7E7 100%);
+    color: var(--navy);
+    border: 1px solid rgba(46,52,72,0.08);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.6),
+      0 6px 16px -8px rgba(167,183,231,0.7);
+    min-height: 44px;
   }
 
   /* ============ Scrollbar ============ */
   .scrollbar-luxe::-webkit-scrollbar { width: 8px; height: 8px; }
   .scrollbar-luxe::-webkit-scrollbar-track { background: transparent; }
   .scrollbar-luxe::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #3D3730, #2A2620);
+    background: var(--border-soft);
     border-radius: 8px;
   }
-  .scrollbar-luxe::-webkit-scrollbar-thumb:hover { background: #524938; }
+  .scrollbar-luxe::-webkit-scrollbar-thumb:hover { background: var(--lavender-deep); }
 
-  /* ============ Brass-accent left rail (sidebar active state) ============ */
-  .nav-active-rail {
-    position: relative;
-  }
+  /* ============ Sidebar — deep navy with pearl undertones ============ */
+  .nav-active-rail { position: relative; }
   .nav-active-rail::before {
     content: "";
     position: absolute;
@@ -183,57 +257,61 @@
     bottom: 6px;
     width: 3px;
     border-radius: 3px;
-    background: linear-gradient(180deg, #D4B884, #B89968 60%, #8B6F4E);
-    box-shadow: 0 0 12px rgba(184,153,104,0.45);
+    background: linear-gradient(180deg, #C2CDEC, #A7B7E7 60%, #8094C4);
+    box-shadow: 0 0 14px rgba(167,183,231,0.55);
   }
 
-  /* ============ Status pills (warmer borders) ============ */
+  /* ============ Pills ============ */
   .pill {
     @apply inline-flex items-center px-2.5 py-1 rounded-full text-[10.5px] tracking-[0.16em] uppercase border font-medium;
     letter-spacing: 0.18em;
   }
 
   /* ============ Editorial section divider ============ */
-  .section-eyebrow {
-    @apply flex items-center gap-3 mb-5;
-  }
+  .section-eyebrow { @apply flex items-center gap-3 mb-5; }
   .section-eyebrow .line {
     flex: 1;
     height: 1px;
-    background: linear-gradient(90deg, #332E26, transparent);
+    background: linear-gradient(90deg, var(--hairline), transparent);
   }
 
-  /* ============ Mobile FAB ============ */
+  /* ============ Mobile FAB — icy blue accent ============ */
   .fab {
-    @apply fixed bottom-20 right-5 z-30 rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-95 lg:bottom-6 lg:right-6;
+    @apply fixed bottom-20 right-5 z-30 rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 lg:bottom-6 lg:right-6;
     width: 60px; height: 60px;
-    background: linear-gradient(135deg, #D4B884, #B89968 60%, #8B6F4E);
-    color: #13110E;
+    background: linear-gradient(135deg, #C2CDEC, #A7B7E7 60%, #8094C4);
+    color: var(--navy);
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.3),
-      0 8px 28px -4px rgba(184,153,104,0.4),
-      0 18px 40px -10px rgba(0,0,0,0.6);
+      inset 0 1px 0 rgba(255,255,255,0.6),
+      0 10px 28px -6px rgba(167,183,231,0.5),
+      0 18px 40px -12px rgba(46,52,72,0.25);
   }
   .fab:hover { transform: translateY(-2px); }
 
-  /* ============ Touch targets (mobile-first) ============ */
   .tap-44 { min-height: 44px; min-width: 44px; }
 
-  /* ============ Subtle warm divider lines on Cards ============ */
   .equine-divider {
     height: 1px;
-    background: linear-gradient(90deg, transparent, #3D3730 20%, #3D3730 80%, transparent);
+    background: linear-gradient(90deg, transparent, var(--hairline) 20%, var(--hairline) 80%, transparent);
     margin: 1.25rem 0;
   }
+
+  /* ============ Inputs ============ */
+  .input-field {
+    @apply w-full rounded-xl px-4 py-3 transition-colors duration-200 outline-none;
+    background: var(--surface-2);
+    color: var(--ink);
+    border: 1px solid var(--border-soft);
+  }
+  .input-field:focus { border-color: var(--icy); box-shadow: 0 0 0 3px rgba(167,183,231,0.2); }
+  .input-field::placeholder { color: var(--ink-soft); }
 }
 
 @layer base {
   [data-debug-wrapper="true"] { display: contents !important; }
 }
 
-/* ============ Animations ============ */
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes shimmerBrass { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
 .animate-fade-in { animation: fadeInUp 0.5s ease-out both; }
 .animate-fade-in-delay-1 { animation: fadeInUp 0.5s ease-out 0.05s both; }
 .animate-fade-in-delay-2 { animation: fadeInUp 0.5s ease-out 0.1s both; }

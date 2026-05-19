@@ -1,0 +1,29 @@
+{
+  "summary": "Iteration 6 — Full design-system pivot to LIGHT lavender pearl + deep charcoal navy verified end-to-end. Login renders correctly (navy left panel rgb(46,52,72) + light pearl right panel rgb(247,245,250), 'Enter the barn' button is a dark navy gradient with light pearl text rgb(247,245,250)). Demo account chips are readable. Login as admin@equinesync.com / demo1234 succeeds and lands on / (which renders Dashboard). Dashboard sidebar is dark navy (#2E3448), main content is light pearl, setup-checklist-card and all 4 action tiles (tile-feed, tile-meds, tile-lessons, tile-stall) render with readable dark ink text on pearl cards. All 14 protected routes load successfully with sidebar=navy: /horses, /barn-board, /onboarding, /reports, /billing, /messaging, /medications, /health, /feed, /lessons, /training, /owner-portal, /settings, /incidents — text length >500 chars each, zero in-page error elements. Reports page renders 5 KPI cards (Setups in progress=3, Completed=0, Completion rate=0%, Median time, Invite acceptance=33%), 10 funnel-step rows (Barn Profile → Review & Launch), and Invitation pipeline section, all with the new palette. Onboarding wizard works: Barn Profile form (step 1/10) loads with name/address/timezone fields pre-filled, shadcn Select ('Facility Type: Choose…') renders as a combobox, sidebar step list is visible with active step highlighted, Save profile + Save & continue buttons visible (navy gradient). /accept-invite?token=dummy123 renders dark navy left panel + light form right panel (matches spec); shows graceful 'Invitation unavailable / Invalid invitation link' card. Mobile 390x844: dashboard-fab is visible (60x60), uses icy-blue gradient (linear-gradient 135deg, rgb(194,205,236), rgb(167,183,231)) and sits bottom-right; sidebar collapses behind hamburger as expected. Console: zero Tailwind 'unknown class' warnings, zero JS errors; only 2 generic 404s for non-design assets (favicon-class). Text contrast is acceptable across all surfaces — no white-on-pearl invisibility found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/accept-invite (invalid token state)", "issues": ["The 'Invalid invitation link' helper text under the error card title is rendered in light gray (ink-soft #9A98A8) on a near-white card — readable but on the low end of WCAG contrast. Not a regression of this iteration; the previous error card had the same hierarchy."]},
+      {"screen": "Dashboard header subheading", "issues": ["'A live overview of horses, daily care, alerts and operations across your facility.' uses ink-muted on pearl which appears very light; legible but verges on weak contrast at 100% zoom. Cosmetic only."]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/pytest/pytest_results.xml", "/app/test_reports/pytest/onboarding_results.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "tailwind.config.js correctly preserves all legacy aliases (equine.ivory→#2A2A32, equine.cream→#2E3448, equine.brassLight→#C2CDEC, equine.saddleDeep→#A593C0, equine.elevated→#FFFFFF, equine.hairline→#E0DCEC) so no existing component breaks. Zero 'unknown class' warnings confirms full coverage.",
+    "index.css :root + .dark scaffolds both shadcn HSL tokens and raw --bg/--surface/--ink tokens — clean dark-mode opt-in path for the future toggle.",
+    "Login.jsx and AcceptInvite.jsx both use bg-equine-navy on the left panel (rgb 46,52,72) and the default light body bg on the right — exactly matches spec.",
+    "Sidebar.jsx still uses bg-equine-navy + nav-active-rail::before icy-blue gradient — verified the active rail + dot indicator render on Dashboard.",
+    "FAB class composes lg:hidden on desktop and icy-blue gradient (#C2CDEC → #A7B7E7 → #8094C4) on mobile — verified at 390x844.",
+    "No instance of bg-equine-card paired with text-equine-platinum on a light surface was found in the visual sweep; all card text renders as dark ink (#2A2A32) on pearl (#FDFBFF) — readable."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only review per request)", "frontend": "100% (every bullet in the features_or_bugs_to_test list verified)"},
+  "test_credentials": "admin@equinesync.com / demo1234 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None — read-only visual + nav verification.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Light palette pivot is complete and stable. Sidebar bg color contract: rgb(46,52,72). Body bg: rgb(247,245,250). The shadcn Select in Onboarding/Locations renders as a button combobox — to test option selection use force=True click + wait_for_timeout(200) before clicking the option. /accept-invite shows 'Invitation unavailable' for invalid tokens (graceful — not an error to flag). The Emergent preview badge still overlaps the bottom-right FAB on mobile (cosmetic preview-env artifact noted in iter 5)."
+}

@@ -47,25 +47,25 @@ export default function AcceptInvite() {
 
   return (
     <div className="min-h-screen w-full grid lg:grid-cols-2 bg-equine-black" data-testid="accept-invite-page">
-      <div className="relative hidden lg:block">
+      <div className="relative hidden lg:block bg-equine-navy">
         <img
           src="https://static.prod-images.emergentagent.com/jobs/137f7c6b-a2e1-41c0-9c38-96d2409d644a/images/3ca3908290d52bc07be0b5f45e2f358fac3cee0e8034aa339d3b62ddac3b3403.png"
           alt="Luxury equestrian arena"
-          className="absolute inset-0 w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full object-cover opacity-40"
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-equine-black/85 via-equine-black/55 to-equine-black/90" />
-        <div className="relative z-10 h-full flex flex-col justify-between p-12">
-          <Logo />
+        <div className="absolute inset-0 bg-gradient-to-br from-equine-navy via-equine-navy/85 to-equine-navyDeep" />
+        <div className="relative z-10 h-full flex flex-col justify-between p-12 text-white">
+          <Logo onNavy />
           <div className="max-w-md">
-            <div className="label-eyebrow mb-5">You've been invited</div>
-            <h2 className="font-display text-5xl xl:text-6xl leading-[1.05] text-equine-ivory">
+            <div className="text-[10.5px] tracking-[0.28em] uppercase text-equine-brassLight font-semibold mb-5">You've been invited</div>
+            <h2 className="font-display text-5xl xl:text-6xl leading-[1.05] text-white">
               A seat at the barn awaits.
             </h2>
-            <p className="mt-6 text-equine-silver/80 text-[15px] leading-relaxed">
+            <p className="mt-6 text-equine-silver/85 text-[15px] leading-relaxed">
               Set your password to join the team. We'll walk you through a brief concierge setup so you can hit the ground running.
             </p>
           </div>
-          <div className="text-[11px] tracking-[0.22em] uppercase text-equine-platinum/40">© EquineSync · Crafted for elite equestrian operations</div>
+          <div className="text-[11px] tracking-[0.22em] uppercase text-equine-brassLight/55">© EquineSync · Crafted for elite equestrian operations</div>
         </div>
       </div>
 
