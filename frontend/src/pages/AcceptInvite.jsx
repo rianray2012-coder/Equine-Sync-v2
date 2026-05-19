@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, tokens } from "../lib/api";
 import { Logo } from "../components/Logo";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
@@ -32,7 +32,7 @@ export default function AcceptInvite() {
     setSubmitting(true);
     try {
       const r = await api.post("/invites/accept", { token, password, full_name: fullName });
-      localStorage.setItem("equine_token", r.data.token);
+      tokens.set({ token: r.data.token, refresh_token: r.data.refresh_token });
       if (setSession) setSession(r.data.user);
       toast.success("Welcome to the barn");
       if (r.data.auto_launch_onboarding) {

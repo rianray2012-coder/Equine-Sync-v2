@@ -6,6 +6,12 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
+
+# Load .env BEFORE importing any submodule that reads env vars at import time
+# (e.g. routes/auth.py reads JWT_SECRET; auth_security.py reads JWT_EXP_HOURS).
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
+
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
 import uuid
@@ -22,9 +28,21 @@ from task_engine import (
     seed_demo_templates,
     DEFAULT_TENANT_ID as TASK_TENANT_ID,
 )
-
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+from auth_security import (
+    JWT_EXP_HOURS,
+    SecurityHeadersMiddleware,
+    issue_refresh_token,
+    consume_refresh_token,
+    revoke_refresh_token,
+    revoke_all_user_refresh_tokens,
+    ensure_refresh_indexes,
+)
+from notifications import (
+    build_router as build_notifications_router,
+    start_dispatcher as start_notification_dispatcher,
+    ensure_indexes as ensure_notification_indexes,
+)
+from routes.auth import build_router as build_auth_router
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -32,7 +50,6 @@ db = client[os.environ['DB_NAME']]
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'change-me')
 JWT_ALG = 'HS256'
-JWT_EXP_DAYS = 7
 
 app = FastAPI(title="EquineSync API")
 api_router = APIRouter(prefix="/api")
@@ -61,7 +78,7 @@ def create_token(user_id: str, role: str) -> str:
     payload = {
         'sub': user_id,
         'role': role,
-        'exp': datetime.now(timezone.utc) + timedelta(days=JWT_EXP_DAYS),
+        'exp': datetime.now(timezone.utc) + timedelta(hours=JWT_EXP_HOURS),
     }
     return pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
@@ -245,37 +262,22 @@ class AIRequest(BaseModel):
     kind: str  # wellness_insight, training_summary, owner_update
     context: Dict[str, Any]
 
-# ---------------- Auth ----------------
-@api_router.post("/auth/register")
-async def register(body: UserCreate):
-    if body.role not in ROLES:
-        raise HTTPException(400, "Invalid role")
-    existing = await db.users.find_one({"email": body.email.lower()})
-    if existing:
-        raise HTTPException(400, "Email already registered")
-    user = {
-        "id": new_id(),
-        "email": body.email.lower(),
-        "full_name": body.full_name,
-        "role": body.role,
-        "password_hash": hash_pwd(body.password),
-        "created_at": iso(now_utc()),
-    }
-    await db.users.insert_one(user)
-    token = create_token(user["id"], user["role"])
-    return {"token": token, "user": {k: v for k, v in user.items() if k not in ("password_hash", "_id")}}
+def _user_safe(user: dict) -> dict:
+    return {k: v for k, v in user.items() if k not in ("password_hash", "_id")}
 
-@api_router.post("/auth/login")
-async def login(body: LoginBody):
-    user = await db.users.find_one({"email": body.email.lower()})
-    if not user or not verify_pwd(body.password, user.get("password_hash", "")):
-        raise HTTPException(401, "Invalid credentials")
-    token = create_token(user["id"], user["role"])
-    return {"token": token, "user": {k: v for k, v in user.items() if k not in ("password_hash", "_id")}}
 
-@api_router.get("/auth/me")
-async def me(user=Depends(get_current_user)):
-    return user
+async def _client_meta(request: Request):
+    ua = request.headers.get("user-agent") if request else None
+    ip = request.client.host if request and request.client else None
+    return ua, ip
+
+
+class RefreshBody(BaseModel):
+    refresh_token: str
+
+
+# Auth endpoints extracted to routes/auth.py. Router included below near
+# the bottom of this file along with task engine and notifications.
 
 # ---------------- Generic listing helpers ----------------
 def clean(doc):
@@ -1434,7 +1436,7 @@ async def verify_invite(token: str):
     return inv
 
 @api_router.post("/invites/accept")
-async def accept_invite(body: InviteAccept):
+async def accept_invite(body: InviteAccept, request: Request):
     inv = await db.invites.find_one({"token_hash": _hash_token(body.token)})
     if not inv:
         raise HTTPException(404, "Invalid invitation")
@@ -1479,10 +1481,14 @@ async def accept_invite(body: InviteAccept):
     await db.onboarding_progress.insert_one(progress)
 
     token = create_token(user["id"], user["role"])
+    ua, ip = await _client_meta(request)
+    refresh = await issue_refresh_token(db, user["id"], user_agent=ua, ip=ip)
     await _track("invite.accepted", {"invite_id": inv["id"], "role": inv["role"]}, user["id"])
     return {
         "token": token,
-        "user": {k: v for k, v in user.items() if k not in ("password_hash", "_id")},
+        "refresh_token": refresh,
+        "expires_in_seconds": JWT_EXP_HOURS * 3600,
+        "user": _user_safe(user),
         "auto_launch_onboarding": has_setup_role,
     }
 
@@ -1703,6 +1709,12 @@ async def root():
 # ---------------- Unified Task Engine ----------------
 api_router.include_router(build_task_engine_router(db, get_current_user, _track))
 
+# ---------------- Auth routes (extracted to routes/auth.py) ----------------
+api_router.include_router(build_auth_router(db))
+
+# ---------------- Notifications ----------------
+api_router.include_router(build_notifications_router(db, get_current_user))
+
 app.include_router(api_router)
 
 app.add_middleware(
@@ -1712,6 +1724,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -1730,6 +1743,8 @@ async def on_startup():
     try:
         engine = TaskEngine(db, _track)
         await engine.ensure_indexes()
+        await ensure_refresh_indexes(db)
+        await ensure_notification_indexes(db)
         # Seed demo templates if none exist yet
         admin_user = await db.users.find_one({"role": "admin"}, {"_id": 0, "id": 1})
         admin_id = admin_user.get("id") if admin_user else None
@@ -1757,6 +1772,11 @@ async def on_startup():
 
     if os.environ.get("DISABLE_TASK_MATERIALIZER", "").lower() not in ("1", "true", "yes"):
         asyncio.create_task(_materialize_loop())
+
+    # ---------- Notification dispatcher ----------
+    if os.environ.get("DISABLE_NOTIFICATIONS", "").lower() not in ("1", "true", "yes"):
+        mailer_handle = {"send": send_email, "render": render_email}
+        asyncio.create_task(start_notification_dispatcher(db, mailer_handle))
 
     # Kick off the daily nudge scheduler (24h interval, 6h warm-up after boot).
     async def _nudge_loop():

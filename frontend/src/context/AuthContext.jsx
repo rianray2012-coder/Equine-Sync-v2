@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { api } from "../lib/api";
+import { api, tokens } from "../lib/api";
 
 const AuthContext = createContext(null);
 
@@ -8,20 +8,27 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem("equine_token");
-    if (!token) { setLoading(false); return; }
-    api.get("/auth/me").then((r) => setUser(r.data)).catch(() => localStorage.removeItem("equine_token")).finally(() => setLoading(false));
+    const access = tokens.getAccess();
+    if (!access) { setLoading(false); return; }
+    api.get("/auth/me")
+      .then((r) => setUser(r.data))
+      .catch(() => tokens.clear())
+      .finally(() => setLoading(false));
   }, []);
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
-    localStorage.setItem("equine_token", data.token);
+    tokens.set({ token: data.token, refresh_token: data.refresh_token });
     setUser(data.user);
     return data.user;
   };
 
-  const logout = () => {
-    localStorage.removeItem("equine_token");
+  const logout = async () => {
+    const refresh_token = tokens.getRefresh();
+    if (refresh_token) {
+      try { await api.post("/auth/logout", { refresh_token }); } catch {}
+    }
+    tokens.clear();
     setUser(null);
   };
 

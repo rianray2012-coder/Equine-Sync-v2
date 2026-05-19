@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { Outlet, Navigate } from "react-router-dom";
 import Sidebar from "./Sidebar";
-import { Menu, Bell, Search } from "lucide-react";
+import { Menu, Search } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import NotificationsBell from "./NotificationsBell";
 
 export default function AppShell() {
   const [open, setOpen] = useState(false);
@@ -38,10 +39,7 @@ export default function AppShell() {
               className="bg-transparent border-none outline-none text-[14px] text-equine-ivory placeholder:text-equine-platinum/40 flex-1 py-1"
             />
           </div>
-          <button data-testid="notifications-btn" className="p-2 rounded-lg hover:bg-equine-soft relative">
-            <Bell strokeWidth={1.5} className="w-[18px] h-[18px]" />
-            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-equine-amber" />
-          </button>
+          <NotificationsBell />
         </header>
 
         <main className="flex-1 overflow-y-auto scrollbar-luxe px-5 lg:px-10 py-8 animate-fade-in">

@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { RotateCcw, Trash2, ShieldAlert } from "lucide-react";
+import NotificationPrefsCard from "../components/NotificationPrefsCard";
 
 export default function Settings() {
   const { user } = useAuth();
@@ -64,6 +65,8 @@ export default function Settings() {
           </button>
         </div>
       </Card>
+
+      <NotificationPrefsCard />
 
       {isAdmin && (
         <Card className="mt-6 !border-equine-clay/30">

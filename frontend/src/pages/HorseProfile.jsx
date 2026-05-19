@@ -3,8 +3,9 @@ import { useParams, Link } from "react-router-dom";
 import { api, fmtDate, money } from "../lib/api";
 import { Card, StatusPill } from "../components/Primitives";
 import { ArrowLeft, Sparkles } from "lucide-react";
+import CuratedTimeline from "../components/CuratedTimeline";
 
-const TABS = ["Overview", "Feed", "Training", "Health", "Injuries", "Medications", "Wellness", "Billing", "Owner"];
+const TABS = ["Overview", "Timeline", "Feed", "Training", "Health", "Injuries", "Medications", "Wellness", "Billing", "Owner"];
 
 export default function HorseProfile() {
   const { id } = useParams();
@@ -126,6 +127,7 @@ export default function HorseProfile() {
         </div>
       )}
       {tab === "Medications" && <List items={meds} render={(m) => <Row title={m.name} sub={`${m.dosage} · ${m.frequency} · ${m.route}`} right={m.prescribing_vet} />} />}
+      {tab === "Timeline" && <Card><CuratedTimeline horseId={id} limit={60} ownerView={false} /></Card>}
       {tab === "Health" && <List items={vet} render={(v) => <Row title={v.title} sub={`${fmtDate(v.date)} · ${v.vet_name}`} right={money(v.cost)} />} />}
       {tab === "Injuries" && <List items={injuries} render={(i) => <Row title={i.title} sub={i.description} right={<StatusPill tone={i.status === "resolved" ? "success" : "warning"}>{i.status}</StatusPill>} />} />}
       {tab === "Wellness" && <List items={wellness} render={(w) => <Row title={`Wellness check · ${fmtDate(w.created_at)}`} sub={`Appetite ${w.appetite}/5 · Energy ${w.energy}/5 · Coat ${w.coat_quality}/5`} right={<StatusPill tone={w.status === "normal" ? "success" : "warning"}>{w.status}</StatusPill>} />} />}
