@@ -206,9 +206,13 @@ def test_csv_template_owners(H):
 
 
 def test_csv_preview_and_commit_horses(H):
+    import uuid
+    suffix = uuid.uuid4().hex[:8]
+    name_a = f"TEST_Comet_{suffix}"
+    name_b = f"TEST_Luna_{suffix}"
     csv_text = ("name,breed,age,color,discipline\n"
-                "TEST_ Comet,Thoroughbred,8,Chestnut,Dressage\n"
-                "TEST_ Luna,Warmblood,12,Gray,Show Jumping\n")
+                f"{name_a},Thoroughbred,8,Chestnut,Dressage\n"
+                f"{name_b},Warmblood,12,Gray,Show Jumping\n")
     r = requests.post(f"{API}/onboarding/csv-preview", headers=H,
                       json={"kind": "horses", "csv_text": csv_text}, timeout=30)
     assert r.status_code == 200, r.text
@@ -226,7 +230,7 @@ def test_csv_preview_and_commit_horses(H):
     r2 = requests.post(f"{API}/onboarding/csv-preview", headers=H,
                        json={"kind": "horses", "csv_text": csv_text}, timeout=30).json()
     names = {n.lower() for n in r2["duplicates"]}
-    assert "test_ comet" in names
+    assert name_a.lower() in names
 
     # Cleanup created horses
     horses = requests.get(f"{API}/horses", headers=H, timeout=30).json()
@@ -236,9 +240,13 @@ def test_csv_preview_and_commit_horses(H):
 
 
 def test_csv_preview_and_commit_owners(H):
+    import uuid
+    suffix = uuid.uuid4().hex[:8]
+    email_a = f"test_owner1_{suffix}@example.com"
+    email_b = f"test_owner2_{suffix}@example.com"
     csv_text = ("full_name,email,phone,waiver_signed\n"
-                "TEST_ Owner One,test_owner1@example.com,555-0001,yes\n"
-                "TEST_ Owner Two,test_owner2@example.com,555-0002,no\n")
+                f"TEST_Owner_One_{suffix},{email_a},555-0001,yes\n"
+                f"TEST_Owner_Two_{suffix},{email_b},555-0002,no\n")
     r = requests.post(f"{API}/onboarding/csv-preview", headers=H,
                       json={"kind": "owners", "csv_text": csv_text}, timeout=30)
     assert r.status_code == 200
@@ -253,7 +261,7 @@ def test_csv_preview_and_commit_owners(H):
     # Re-preview should mark duplicates
     r2 = requests.post(f"{API}/onboarding/csv-preview", headers=H,
                        json={"kind": "owners", "csv_text": csv_text}, timeout=30).json()
-    assert "test_owner1@example.com" in [d.lower() for d in r2["duplicates"]]
+    assert email_a in [d.lower() for d in r2["duplicates"]]
 
     # Cleanup
     owners = requests.get(f"{API}/owners", headers=H, timeout=30).json()

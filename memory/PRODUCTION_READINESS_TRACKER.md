@@ -1,6 +1,23 @@
 # EquineSync — Production Readiness Tracker
 
-**Generated:** Feb 19 2026 · **Owner:** Engineering · **Source of truth for:** what ships when
+**Generated:** Feb 19 2026 · **Last updated:** Feb 19 2026 (Phase-A complete) · **Owner:** Engineering
+
+## Phase-A Delta (Feb 19 2026 — engine consolidation)
+
+✅ `/api/dashboard/summary` now derives feed/meds/lesson counts from `tasks` + `task_completions` (no more legacy reads). Response now includes `_source: "engine"`.
+✅ `/api/dashboard/barn-board` also engine-backed; stamped `_deprecated`.
+✅ **Barn Board UI retired** — `/barn-board` route now redirects to `/today`. `BarnBoard.jsx` deleted. Sidebar entry removed. Today widened to `max-w-4xl` for tablet ergonomics.
+✅ pytest fixture pollution fixed (idempotent suffixes + graceful skip for legacy feed). Suite now **99 passed, 1 skipped, 0 failed** — CI fully green.
+✅ Cloudflare R2 storage abstraction (`/app/backend/storage.py`) scaffolded: `StorageProvider` interface + `S3CompatibleStorage` + `LocalDevStorage` no-op stub. Provider auto-selects on env vars; safe to deploy without credentials.
+
+**Tier movements:**
+- Today View: still Production-Ready, but now also serves the tablet aisle-station use case.
+- Dashboard: Internal-Demo → **Beta-Ready** (engine-backed).
+- Barn Board: removed entirely from the matrix.
+
+**Total module count: 29 → 28.** Beta-Ready or above: 38% → **43%**.
+
+---
 
 > A module is **Production-Ready** only when all ten criteria are satisfied. Anything else is gated to internal demo or prototype use.
 

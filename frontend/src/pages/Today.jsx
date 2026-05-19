@@ -419,7 +419,7 @@ export default function Today() {
   }, [data]);
 
   return (
-    <div data-testid="today-page" className="pb-24 lg:pb-12 max-w-3xl mx-auto">
+    <div data-testid="today-page" className="pb-24 lg:pb-12 max-w-4xl mx-auto">
       <PageHeader
         eyebrow="Today"
         title="Operational Pulse"

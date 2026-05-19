@@ -104,7 +104,7 @@ export default function Dashboard() {
       )}
 
       {/* ━━━━━━━━━━━━━━━━━━━━━ SECTION 1: RIGHT NOW ━━━━━━━━━━━━━━━━━━━━━ */}
-      <SectionEyebrow action={<Link to="/barn-board" className="text-[11px] uppercase tracking-[0.22em] text-equine-brass/80 hover:text-equine-brassLight inline-flex items-center gap-1.5">Open Barn Board <ArrowRight className="w-3 h-3" /></Link>}>
+      <SectionEyebrow action={<Link to="/today" className="text-[11px] uppercase tracking-[0.22em] text-equine-brass/80 hover:text-equine-brassLight inline-flex items-center gap-1.5">Open Today <ArrowRight className="w-3 h-3" /></Link>}>
         Right Now · Immediate Tasks
       </SectionEyebrow>
 
@@ -177,12 +177,12 @@ export default function Dashboard() {
         <Stat testid="stat-revenue" label="Outstanding" value={money(summary?.overdue_amount ?? 0)} accent="brass" caption={`${summary?.overdue_invoices ?? 0} invoice(s)`} icon={Receipt} />
       </div>
 
-      {/* Mobile FAB — quick jump to Barn Board */}
+      {/* Mobile FAB — quick jump to Today */}
       <button
-        onClick={() => navigate("/barn-board")}
+        onClick={() => navigate("/today")}
         className="fab lg:hidden"
         data-testid="dashboard-fab"
-        aria-label="Open today's barn board"
+        aria-label="Open today's operational pulse"
       >
         <Sunrise strokeWidth={1.6} className="w-7 h-7" />
       </button>

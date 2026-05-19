@@ -8,7 +8,6 @@ import { Toaster } from "sonner";
 import AppShell from "./components/AppShell";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import BarnBoard from "./pages/BarnBoard";
 import Horses from "./pages/Horses";
 import HorseProfile from "./pages/HorseProfile";
 import Riders from "./pages/Riders";
@@ -48,8 +47,8 @@ function App() {
             <Route element={<Protected><AppShell /></Protected>}>
               <Route index element={<Dashboard />} />
               <Route path="/today" element={<Today />} />
+              <Route path="/barn-board" element={<Navigate to="/today" replace />} />
               <Route path="/onboarding" element={<Onboarding />} />
-              <Route path="/barn-board" element={<BarnBoard />} />
               <Route path="/horses" element={<Horses />} />
               <Route path="/horses/:id" element={<HorseProfile />} />
               <Route path="/riders" element={<Riders />} />

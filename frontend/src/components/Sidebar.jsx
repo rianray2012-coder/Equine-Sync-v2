@@ -1,7 +1,7 @@
 import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, Tablet, Cat, UserCircle2, Users, GraduationCap, Dumbbell,
+  LayoutDashboard, Cat, UserCircle2, Users, GraduationCap, Dumbbell,
   Stethoscope, BedDouble, Pill, Trees, UtensilsCrossed, Package, Trophy, Receipt,
   FileText, AlertTriangle, Wrench, ClipboardList, MessageSquare, BarChart3, Settings,
   LogOut, Crown, Sparkles, ListChecks
@@ -15,7 +15,6 @@ const NAV_SECTIONS = [
     items: [
       { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
       { to: "/today", label: "Today", icon: ListChecks },
-      { to: "/barn-board", label: "Barn Board", icon: Tablet },
       { to: "/feed", label: "Feed Room", icon: UtensilsCrossed },
       { to: "/medications", label: "Medications", icon: Pill },
     ],
