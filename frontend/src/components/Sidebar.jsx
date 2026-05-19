@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Tablet, Cat, UserCircle2, Users, GraduationCap, Dumbbell,
   Stethoscope, BedDouble, Pill, Trees, UtensilsCrossed, Package, Trophy, Receipt,
   FileText, AlertTriangle, Wrench, ClipboardList, MessageSquare, BarChart3, Settings,
-  LogOut, Crown, Sparkles
+  LogOut, Crown, Sparkles, ListChecks
 } from "lucide-react";
 import { Logo } from "./Logo";
 import { useAuth } from "../context/AuthContext";
@@ -14,6 +14,7 @@ const NAV_SECTIONS = [
     label: "Daily",
     items: [
       { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
+      { to: "/today", label: "Today", icon: ListChecks },
       { to: "/barn-board", label: "Barn Board", icon: Tablet },
       { to: "/feed", label: "Feed Room", icon: UtensilsCrossed },
       { to: "/medications", label: "Medications", icon: Pill },

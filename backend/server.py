@@ -16,6 +16,12 @@ import secrets
 import hashlib
 import asyncio
 from mailer import send as send_email, render as render_email
+from task_engine import (
+    build_router as build_task_engine_router,
+    TaskEngine,
+    seed_demo_templates,
+    DEFAULT_TENANT_ID as TASK_TENANT_ID,
+)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -1694,6 +1700,9 @@ async def tenant_reset(body: TenantResetBody, user=Depends(get_current_user)):
 async def root():
     return {"app": "EquineSync", "status": "ok"}
 
+# ---------------- Unified Task Engine ----------------
+api_router.include_router(build_task_engine_router(db, get_current_user, _track))
+
 app.include_router(api_router)
 
 app.add_middleware(
@@ -1716,6 +1725,38 @@ async def on_startup():
             logger.info("Auto-seeded demo data.")
         except Exception as e:
             logger.exception("Seed failed: %s", e)
+
+    # ---------- Task Engine bootstrap ----------
+    try:
+        engine = TaskEngine(db, _track)
+        await engine.ensure_indexes()
+        # Seed demo templates if none exist yet
+        admin_user = await db.users.find_one({"role": "admin"}, {"_id": 0, "id": 1})
+        admin_id = admin_user.get("id") if admin_user else None
+        seed_res = await seed_demo_templates(db, admin_id)
+        if not seed_res.get("skipped"):
+            logger.info("Task engine: seeded %d demo templates.", seed_res.get("templates_created", 0))
+        # Initial materialization for the 14-day horizon
+        created = await engine.materialize_all()
+        if created:
+            logger.info("Task engine: materialized %d initial occurrences.", created)
+    except Exception:
+        logger.exception("Task engine startup failed")
+
+    async def _materialize_loop():
+        await asyncio.sleep(60)
+        engine_loop = TaskEngine(db, _track)
+        while True:
+            try:
+                n = await engine_loop.materialize_all()
+                if n:
+                    logger.info("Task engine: rolling materialization created %d tasks.", n)
+            except Exception:
+                logger.exception("Materialization loop failed")
+            await asyncio.sleep(15 * 60)
+
+    if os.environ.get("DISABLE_TASK_MATERIALIZER", "").lower() not in ("1", "true", "yes"):
+        asyncio.create_task(_materialize_loop())
 
     # Kick off the daily nudge scheduler (24h interval, 6h warm-up after boot).
     async def _nudge_loop():

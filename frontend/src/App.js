@@ -27,6 +27,7 @@ import Placeholder from "./pages/Placeholder";
 import Onboarding from "./pages/Onboarding";
 import AcceptInvite from "./pages/AcceptInvite";
 import Reports from "./pages/Reports";
+import Today from "./pages/Today";
 
 const Protected = ({ children }) => {
   const { user, loading } = useAuth();
@@ -46,6 +47,7 @@ function App() {
             <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route element={<Protected><AppShell /></Protected>}>
               <Route index element={<Dashboard />} />
+              <Route path="/today" element={<Today />} />
               <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/barn-board" element={<BarnBoard />} />
               <Route path="/horses" element={<Horses />} />

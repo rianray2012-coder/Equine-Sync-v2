@@ -1,0 +1,28 @@
+{
+  "summary": "Iteration 7 — Unified Task Engine (backend module + Today.jsx frontend) tested end-to-end. All 13 backend pytest cases in test_task_engine.py PASS (5.20s). Verified: GET /api/task-templates returns 9 seeded templates spanning all 8 categories (feed, medication, turnout_in/out, stall_clean, farrier, vet, rehab); GET /api/tasks/today returns 6 urgency groups with counts; POST /api/tasks creates and emits task.created; POST /api/tasks/{id}/complete is idempotent on client_completion_id (2nd call deduped=true); concurrent completion with DIFFERENT ccid keeps canonical and appends note (duplicate_note_appended=true, second record voided=true); bulk-complete succeeded=3; skip with refused=false produces outcome=skipped, refused=true produces outcome=refused; void reverts and emits task.voided; horse timeline OK; owner-token timeline filtered to {medication, farrier, vet, rehab, feed} only; PATCH template re-materializes only future scheduled tasks; DELETE template soft-deletes and cancels future scheduled; POST template with invalid RRULE returns 422; analytics summary returns completions+currently_overdue+by_event_category. Frontend /today page: renders correctly, sidebar nav-today works, all 6 groups present with chips (filter-chip-all + 8 categories), bulk-mode-toggle + bulk-action-bar + bulk-complete-confirm wiring correct, complete-btn click moves task to completed_today group (count badge 36→37 instantly = optimistic UI confirmed), sync-header-badge is intentionally null when no pending items, after page refresh the completed_today section still contains the synced row (localStorage queue → backend → today endpoint round-trip verified). No regression: /, /horses, /onboarding, /reports, /feed, /health, /medications all load with zero error elements and body content present.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/today", "issues": ["'Completed today' and 'Later today' and 'Informational' groups default to collapsed (correct for mobile-first UX) but show no visual hint that they are clickable beyond the chevron — minor discoverability nit, not a bug."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_task_engine.py", "/app/test_reports/pytest/task_engine_results.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "task_engine.py:319-329 _derive_status correctly treats 'in_progress' as terminal-ish (won't recompute) — note: a refused-outcome task currently maps to status='skipped' (line 418); this is intentional per design but the completion record still carries outcome='refused' for audit, which is correct.",
+    "task_engine.py:374-410 concurrency handling: canonical-first wins, duplicate is inserted with voided=true and appends a human-readable note to canonical — clean. Unique index on (task_id, client_completion_id) at line 211 backs idempotency at the DB layer.",
+    "task_engine.py:540-547 PATCH template uses delete_many on future scheduled-only tasks — preserves completed/in_progress/skipped. Good. DELETE template uses soft-delete + cancels future scheduled. Good.",
+    "task_engine.py:792-796 owner timeline filter: requires BOTH event_type ∈ OWNER_VISIBLE_EVENT_TYPES ({'task.completed'}) AND category ∈ OWNER_VISIBLE_CATEGORIES. Means owners only see *completed* curated events — task.created/skipped/voided not surfaced. Confirm with PM that this is the intended owner UX (it matches the directive: 'only see curated wellness/care events').",
+    "Today.jsx is 518 lines — borderline for a single page component; consider extracting SyncHeaderBadge, TaskCard, and Group into /components/today/ subfolder for maintainability (not blocking).",
+    "taskSync.js localStorage queue cleared only on successful POST; failed items retained with state='failed'. Good for offline barn UX. Suggest exposing a manual 'Retry now' button bound to the sync-header-badge when failed>0 (currently auto-retry only)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (13/13 task_engine tests pass)", "frontend": "100% (Today page + nav + optimistic UI + persistence + regression all verified)"},
+  "test_credentials": "admin@equinesync.com / demo1234 (verified). owner@equinesync.com / demo1234 (verified via test_owner_timeline_visibility).",
+  "seed_data_creation": "None manually — backend auto-seeds 9 demo templates on first startup via seed_demo_templates() (idempotent). Test runs created additional ad-hoc tasks (~30) via _new_task helper; pre-existing accumulated tasks are visible in completed_today (37 rows after the latest click). Recommend a clean-up job or test-prefix filter if test data pollution becomes problematic.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Task engine is solid. Note for UI testing: groups 'completed_today', 'later_today', 'informational' are COLLAPSED by default in Today.jsx (GROUP_META.collapsed=true → useState(!collapsed)=false). To assert task-row presence inside these, FIRST click the group's header button to expand, then count. The section's count badge (number next to label) updates instantly via optimistic UI even while collapsed — preferred assertion. Sync header badge appears only when queue has pending/syncing/failed items; null otherwise (by design, not a bug). Backend mongo collections in play: tasks, task_templates, task_completions, task_events — all indexed properly in TaskEngine.ensure_indexes."
+}
