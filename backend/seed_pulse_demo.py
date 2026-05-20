@@ -119,6 +119,20 @@ async def main():
         return
     print(f"Owner: {owner['full_name']} <{owner['email']}>")
 
+    # Reset runs FIRST — it doesn't need an owned horse and is operator's
+    # explicit "clean slate" intent.
+    if args.reset:
+        if args.apply:
+            r = await reset(db)
+            print(f"Reset: deleted {r['events']} events, restored {r['horses_restored']} horse linkage(s).")
+        else:
+            preview = await db.task_events.count_documents({"demo_marker": DEMO_MARKER})
+            horses_to_restore = await db.horses.count_documents({"_demo_marker": DEMO_MARKER})
+            print(f"Reset (dry-run): would delete {preview} events, restore {horses_to_restore} horse linkage(s).")
+        if not args.link_first_horse:
+            print("\nReset complete. (Pass --link-first-horse to also re-seed.)")
+            return
+
     horse = await db.horses.find_one(
         {"owner_id": owner["id"]},
         {"_id": 0, "id": 1, "name": 1, "owner_id": 1},
@@ -150,15 +164,6 @@ async def main():
             print(f"Would link '{any_horse['name']}' to {args.owner_email} (dry-run).")
             horse = any_horse
     print(f"Horse: {horse['name']} ({horse['id']})")
-
-    if args.reset:
-        if args.apply:
-            r = await reset(db)
-            print(f"Reset: deleted {r['events']} events, restored {r['horses_restored']} horse linkage(s).")
-        else:
-            preview = await db.task_events.count_documents({"demo_marker": DEMO_MARKER})
-            horses_to_restore = await db.horses.count_documents({"_demo_marker": DEMO_MARKER})
-            print(f"Reset (dry-run): would delete {preview} events, restore {horses_to_restore} horse linkage(s).")
 
     # 5 medication completions over the last 5 days at 09:00 → triggers
     # the medication-adherence pulse line.

@@ -21,6 +21,29 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
+### Frontend complexity reduction — Dashboard.jsx + Onboarding.jsx (Feb 20 2026)
+- **`Dashboard.jsx`**: 306 → 158 lines (**48%**). Extracted into `components/dashboard/`:
+  - `SetupConciergeCard.jsx` — incomplete-onboarding tile grid (uses shared `STEP_META`).
+  - `ActionTile.jsx` — the four high-density "Right Now" tiles.
+  - `AlertsCard.jsx` — five-row attention list with tone variants.
+  - `SmallCards.jsx` — `WeatherCard`, `OperationsCard`, **and a new engine-derived `UpcomingCareCard`** that lists the next vet/farrier/rehab visits from `/api/tasks?start=…&end=…` (filtered client-side, no new endpoint).
+  - **Fake `WellnessPulseCard` with hard-coded 62/22/12/4 percentages DELETED** — exactly the "analytics clutter / dashboard inflation" the spec warned against.
+- **`Onboarding.jsx`**: 764 → 211 lines (**72%**). State + stepper + content router only. Step bodies extracted into `components/onboarding/`:
+  - `FormPrimitives.jsx` (Field + Select, shared by every step)
+  - `BarnStep.jsx`, `CrudStep.jsx` (generic CRUD with `CRUD_CONFIG` for Locations/FeedTemplates/Inventory/Schedules), `RecordsStep.jsx` (Owners/Horses/Riders with CSV import), `StaffStep.jsx`, `ReviewStep.jsx`.
+- **Shared single source of truth**: `lib/onboardingMeta.js` exports `STEP_META` used by both Dashboard's SetupConcierge and the Onboarding stepper.
+- **Behaviour preserved**: every data-testid from the original Dashboard and Onboarding still resolves; autosave, skip/back/next/launch, CSV preview/commit, dev-link banner — all identical.
+
+### `seed_pulse_demo.py` — demo-scoped pulse seeder (Feb 20 2026)
+- Standalone CLI under `/app/backend/seed_pulse_demo.py` (NOT imported by `server.py`).
+- **Three workflows**:
+  - `python -m seed_pulse_demo` — dry-run preview.
+  - `python -m seed_pulse_demo --apply --link-first-horse` — seed 5d of completed task_events (5 med + 2 rehab) tagged `demo_marker="pulse-demo-v1"` and temporarily link the first horse to the demo owner with `_demo_marker` tag.
+  - `python -m seed_pulse_demo --apply --reset` — clean only (delete events + restore horse linkage).
+  - `python -m seed_pulse_demo --apply --reset --link-first-horse` — clean + reseed in one command.
+- **Isolation guarantees**: every write carries the demo marker so cleanup never touches other documents. Verified by testing agent.
+- **Live-verified**: after seeding, `POST /api/notifications/digest/preview` as the demo owner returns the calm pulse line — testing agent observed "Valentino completed all scheduled rehab sessions this week." (medication path correctly silenced by an existing 24h med-skip preempt, falling through to rehab as designed).
+
 ### Wellness Pulse — quiet operational intelligence (Feb 20 2026)
 - `/app/backend/wellness_pulse.py` (new) — **rule-based, pure-function** observational composer derived strictly from `task_events`.
 - Discipline:
