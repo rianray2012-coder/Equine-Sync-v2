@@ -6,8 +6,14 @@ import pytest
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
-ADMIN = {"email": "admin@equinesync.com", "password": "demo1234"}
-GROOM = {"email": "groom@equinesync.com", "password": "demo1234"}
+ADMIN = {
+    "email": os.environ.get("TEST_ADMIN_EMAIL", "admin@equinesync.com"),
+    "password": os.environ.get("TEST_PASSWORD", "demo1234"),
+}
+GROOM = {
+    "email": os.environ.get("TEST_GROOM_EMAIL", "groom@equinesync.com"),
+    "password": os.environ.get("TEST_PASSWORD", "demo1234"),
+}
 
 
 def _login(creds):

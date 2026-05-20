@@ -328,17 +328,15 @@ export default function Today() {
       const map = {};
       let synced = 0;
       for (const item of q) {
-        if (item.state === "synced") { synced++; continue; }
+        if (item.state === "synced") { synced += 1; continue; }
         const ids = item.kind === "bulk" ? (item.task_ids || []) : [item.task_id];
         for (const tid of ids) {
-          // failed > syncing > queued
           if (item.state === "failed") map[tid] = "failed";
-          else if (item.state === "syncing") map[tid] = map[tid] === "failed" ? "failed" : "syncing";
+          else if (item.state === "syncing" && map[tid] !== "failed") map[tid] = "syncing";
           else if (!map[tid]) map[tid] = "queued";
         }
       }
       setQueueState(map);
-      // if any newly synced, refresh today data
       if (synced > lastSyncedCount) {
         lastSyncedCount = synced;
         reload();

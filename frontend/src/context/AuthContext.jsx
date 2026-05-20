@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api, tokens } from "../lib/api";
 
 const AuthContext = createContext(null);
@@ -16,29 +16,34 @@ export const AuthProvider = ({ children }) => {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
     tokens.set({ token: data.token, refresh_token: data.refresh_token });
     setUser(data.user);
     return data.user;
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     const refresh_token = tokens.getRefresh();
     if (refresh_token) {
-      try { await api.post("/auth/logout", { refresh_token }); } catch {}
+      try {
+        await api.post("/auth/logout", { refresh_token });
+      } catch (err) {
+        console.warn("[auth] logout request failed; clearing local session anyway", err);
+      }
     }
     tokens.clear();
     setUser(null);
-  };
+  }, []);
 
-  const setSession = (newUser) => setUser(newUser);
+  const setSession = useCallback((newUser) => setUser(newUser), []);
 
-  return (
-    <AuthContext.Provider value={{ user, login, logout, loading, setSession }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({ user, login, logout, loading, setSession }),
+    [user, login, logout, loading, setSession],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => useContext(AuthContext);

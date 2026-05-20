@@ -453,9 +453,12 @@ class TaskEngine:
                    "notes": body.notes},
         )
         try:
-            self._track(f"task.{body.outcome}", {"task_id": task_id, "category": task.get("category")}, user["id"])
+            res = self._track(f"task.{body.outcome}", {"task_id": task_id, "category": task.get("category")}, user["id"])
+            # _track may be sync or async depending on how the engine was wired.
+            if hasattr(res, "__await__"):
+                await res
         except Exception:
-            pass
+            logger.debug("analytics track failed", exc_info=True)
         return {"task": task, "completion": completion, "deduped": False}
 
     async def skip_task(self, task_id: str, body: SkipBody, user: dict,

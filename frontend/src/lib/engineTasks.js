@@ -8,6 +8,22 @@ import {
   enqueueComplete, enqueueSkip, subscribeSyncState,
 } from "./taskSync";
 
+// Map a sync-queue snapshot to `{ task_id: state }` and the count of synced items.
+const summarizeQueue = (q) => {
+  const map = {};
+  let syncedCount = 0;
+  for (const item of q) {
+    if (item.state === "synced") { syncedCount += 1; continue; }
+    const ids = item.kind === "bulk" ? (item.task_ids || []) : [item.task_id];
+    for (const tid of ids) {
+      if (item.state === "failed") map[tid] = "failed";
+      else if (item.state === "syncing" && map[tid] !== "failed") map[tid] = "syncing";
+      else if (!map[tid]) map[tid] = "queued";
+    }
+  }
+  return { map, syncedCount };
+};
+
 const todayBounds = () => {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
@@ -58,20 +74,10 @@ export const useEngineTasksToday = (categories) => {
   useEffect(() => {
     let lastSynced = 0;
     return subscribeSyncState((q) => {
-      const map = {};
-      let synced = 0;
-      for (const item of q) {
-        if (item.state === "synced") { synced += 1; continue; }
-        const ids = item.kind === "bulk" ? (item.task_ids || []) : [item.task_id];
-        for (const tid of ids) {
-          if (item.state === "failed") map[tid] = "failed";
-          else if (item.state === "syncing") map[tid] = map[tid] === "failed" ? "failed" : "syncing";
-          else if (!map[tid]) map[tid] = "queued";
-        }
-      }
+      const { map, syncedCount } = summarizeQueue(q);
       setQueueState(map);
-      if (synced > lastSynced) {
-        lastSynced = synced;
+      if (syncedCount > lastSynced) {
+        lastSynced = syncedCount;
         reload();
       }
     });

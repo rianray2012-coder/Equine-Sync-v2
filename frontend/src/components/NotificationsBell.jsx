@@ -34,14 +34,18 @@ export default function NotificationsBell() {
     try {
       await api.post("/notifications/read-all");
       refresh();
-    } catch {}
+    } catch (err) {
+      console.warn("[notifications] mark-all failed", err);
+    }
   };
 
   const markOne = async (id) => {
     try {
       await api.post(`/notifications/${id}/read`);
       refresh();
-    } catch {}
+    } catch (err) {
+      console.warn("[notifications] mark-one failed", err);
+    }
   };
 
   return (

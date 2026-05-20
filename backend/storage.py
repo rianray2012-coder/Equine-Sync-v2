@@ -194,7 +194,8 @@ def get_provider() -> StorageProvider:
     global _provider
     if _provider is not None:
         return _provider
-    kind = (os.environ.get("STORAGE_PROVIDER") or "").lower()    if kind in ("r2", "s3", "s3_compatible"):
+    kind = (os.environ.get("STORAGE_PROVIDER") or "").lower()
+    if kind in ("r2", "s3", "s3_compatible"):
         try:
             _provider = S3CompatibleStorage(
                 endpoint_url=os.environ["STORAGE_ENDPOINT_URL"],

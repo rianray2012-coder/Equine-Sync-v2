@@ -17,11 +17,11 @@ from pymongo import MongoClient
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://herd-hub-19.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
-ADMIN_EMAIL = "admin@equinesync.com"
-GROOM_EMAIL = "groom@equinesync.com"
-PASSWORD = "demo1234"
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "admin@equinesync.com")
+GROOM_EMAIL = os.environ.get("TEST_GROOM_EMAIL", "groom@equinesync.com")
+PASSWORD = os.environ.get("TEST_PASSWORD", "demo1234")
 
-OWNER_REAL_EMAIL = "rian.ray2012@gmail.com"  # Resend sandbox-allowed recipient
+OWNER_REAL_EMAIL = os.environ.get("TEST_OWNER_REAL_EMAIL", "rian.ray2012@gmail.com")  # Resend sandbox-allowed recipient
 
 
 # ---------- fixtures ----------
