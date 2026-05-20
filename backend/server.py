@@ -43,6 +43,14 @@ from notifications import (
     ensure_indexes as ensure_notification_indexes,
 )
 from routes.auth import build_router as build_auth_router
+from owner_digest import (
+    run_daily_digest_pass,
+    send_digest_to_owner,
+    build_digest_for_owner,
+    render_digest_html,
+    render_digest_text,
+    ensure_digest_indexes,
+)
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -510,6 +518,62 @@ async def create_sr(body: ServiceRequestIn, user=Depends(get_current_user)):
 async def approve_sr(sr_id: str, user=Depends(get_current_user)):
     await db.service_requests.update_one({"id": sr_id}, {"$set": {"status": "approved", "approved_at": iso(now_utc())}})
     return await db.service_requests.find_one({"id": sr_id}, {"_id": 0})
+
+
+class DeclineSRBody(BaseModel):
+    reason: Optional[str] = None
+
+
+@api_router.post("/service-requests/{sr_id}/decline")
+async def decline_sr(sr_id: str, body: Optional[DeclineSRBody] = None, user=Depends(get_current_user)):
+    reason = (body.reason if body else None) or "Request declined."
+    r = await db.service_requests.update_one(
+        {"id": sr_id},
+        {"$set": {
+            "status": "declined",
+            "declined_at": iso(now_utc()),
+            "declined_by_user_id": user["id"],
+            "decline_reason": reason[:500],
+        }},
+    )
+    if r.matched_count == 0:
+        raise HTTPException(404, "Service request not found")
+    return await db.service_requests.find_one({"id": sr_id}, {"_id": 0})
+
+
+# ---------------- Owner daily digest (Phase-C) ----------------
+
+@api_router.post("/notifications/digest/preview")
+async def digest_preview(user=Depends(get_current_user)):
+    """Owner: see what their next daily digest would look like."""
+    payload = await build_digest_for_owner(db, user["id"])
+    if not payload:
+        return {"empty": True, "reason": "no_updates_today"}
+    return {
+        "empty": False,
+        "payload": payload,
+        "html": render_digest_html(payload, app_base_url=os.environ.get("PUBLIC_APP_URL", "")),
+        "text": render_digest_text(payload),
+    }
+
+
+@api_router.post("/notifications/digest/send-me")
+async def digest_send_me(user=Depends(get_current_user)):
+    """Owner: trigger their own digest now (useful pre-domain-verification)."""
+    if user.get("role") != "horse_owner":
+        raise HTTPException(403, "Owner accounts only")
+    mailer_handle = {"send": send_email, "render": render_email}
+    res = await send_digest_to_owner(db, mailer_handle, user["id"])
+    return res
+
+
+@api_router.post("/admin/digest/run-now")
+async def digest_run_now(user=Depends(get_current_user)):
+    """Admin: force-run today's digest pass (idempotent — won't double-send)."""
+    if user.get("role") not in ("admin", "barn_manager"):
+        raise HTTPException(403, "Admin/Manager only")
+    mailer_handle = {"send": send_email, "render": render_email}
+    return await run_daily_digest_pass(db, mailer_handle)
 
 # ---------------- Incidents ----------------
 @api_router.get("/incidents")
@@ -1823,6 +1887,35 @@ async def on_startup():
     if os.environ.get("DISABLE_NOTIFICATIONS", "").lower() not in ("1", "true", "yes"):
         mailer_handle = {"send": send_email, "render": render_email}
         asyncio.create_task(start_notification_dispatcher(db, mailer_handle))
+
+    # ---------- Owner daily digest scheduler (Phase-C) ----------
+    if os.environ.get("DISABLE_OWNER_DIGEST", "").lower() not in ("1", "true", "yes"):
+        try:
+            await ensure_digest_indexes(db)
+        except Exception:
+            logger.exception("Could not create digest indexes")
+
+        async def _digest_loop():
+            # Default delivery hour is 07:00 barn-local; we use UTC offset for simplicity.
+            target_hour = int(os.environ.get("OWNER_DIGEST_HOUR_UTC", "7"))
+            mailer = {"send": send_email, "render": render_email}
+            await asyncio.sleep(30)  # let startup settle
+            while True:
+                try:
+                    now = datetime.now(timezone.utc)
+                    if now.hour == target_hour:
+                        res = await run_daily_digest_pass(db, mailer)
+                        if res.get("sent"):
+                            logger.info("Owner digest pass: sent=%d skipped=%d",
+                                        res["sent"], res["skipped"])
+                except Exception:
+                    logger.exception("Owner digest loop iteration failed")
+                # Sleep until top of next hour
+                now = datetime.now(timezone.utc)
+                seconds_to_next_hour = 3600 - (now.minute * 60 + now.second)
+                await asyncio.sleep(max(60, seconds_to_next_hour))
+
+        asyncio.create_task(_digest_loop())
 
     # Kick off the daily nudge scheduler (24h interval, 6h warm-up after boot).
     async def _nudge_loop():

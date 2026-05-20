@@ -48,6 +48,7 @@ class NotificationPrefsIn(BaseModel):
     inbox_enabled: bool = True
     email_enabled: bool = True
     push_enabled: bool = False
+    digest_enabled: bool = True  # owner-only; ignored for non-owner accounts
     # event_type -> categories list ([] = none, ["*"] = all)
     inbox_rules: dict | None = None
     email_rules: dict | None = None
@@ -81,16 +82,21 @@ def _rule_matches(rules: dict | None, event_type: str, category: Optional[str]) 
 
 async def _get_user_prefs(db, user_id: str) -> dict:
     rec = await db.notification_preferences.find_one({"user_id": user_id}, {"_id": 0})
-    if rec:
-        return rec
-    return {
+    defaults = {
         "user_id": user_id,
         "inbox_enabled": True,
         "email_enabled": True,
         "push_enabled": False,
+        "digest_enabled": True,
         "inbox_rules": DEFAULT_INBOX_RULES,
         "email_rules": DEFAULT_EMAIL_RULES,
     }
+    if rec:
+        # Merge in any new defaults that were added after this row was first saved.
+        for k, v in defaults.items():
+            rec.setdefault(k, v)
+        return rec
+    return defaults
 
 
 # ---------- channel handlers ----------
@@ -306,7 +312,7 @@ def build_router(db, get_current_user) -> APIRouter:
         # Fill any missing fields with defaults so the doc is complete.
         existing = await _get_user_prefs(db, user["id"])
         for key in ("inbox_enabled", "email_enabled", "push_enabled",
-                     "inbox_rules", "email_rules"):
+                     "digest_enabled", "inbox_rules", "email_rules"):
             doc.setdefault(key, existing.get(key))
         await db.notification_preferences.update_one(
             {"user_id": user["id"]}, {"$set": doc}, upsert=True,
