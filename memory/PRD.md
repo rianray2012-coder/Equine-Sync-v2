@@ -21,6 +21,17 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
+### Phase-F final sweep — `routes/care.py` extraction (Feb 20 2026)
+- **`routes/care.py`** (288 LOC) — every care record endpoint AND its Pydantic model lifted out of server.py together: horses, owners, riders, medications, medication-logs, feed-tasks, vet-records, farrier-history, injuries, wellness. Schemas unchanged; same dependency-injection pattern as the other route modules.
+- **`server.py` 1221 → 994 lines** (this iteration ~18% reduction; ~**49% cumulative** since Phase-F began).
+- Behaviour preserved: optional filters (`?horse_id` on meds/vet/farrier/injuries/wellness, `?date_str` on feed-tasks) untouched; the `POST /api/wellness` side-effect (heuristic bump of `horses.wellness_score`) verified live by the testing agent — all-5s payload sets the score to 100 as before.
+- **Tests**: full pytest suite 141/141 + 1 skipped + new `tests/test_care_routes.py` 11/11 (auth gate, CRUD per resource, query-param filters, wellness score side-effect). Zero regressions.
+
+### Setup Concierge & Onboarding reassurance copy (Feb 20 2026)
+- Dashboard's `SetupConciergeCard.jsx` now ends with a calm, non-pressuring guidance block (data-testid `setup-guidance`): *"Many barns begin with Horses and Feed Templates, then expand from there. You can complete the remaining steps any time from Settings — nothing is locked or required to start operations."*
+- `Onboarding.jsx` sticky sidebar adds a parallel reassurance note (data-testid `onboarding-reassurance`): *"Most barns revisit Inventory and Schedules after their first operational week. Nothing here is required to begin running daily care."*
+- Both surfaces hide cleanly when onboarding completes (verified by testing agent — POST `/api/onboarding/complete` removes the card AND the guidance from the DOM). Tone matches the platform's emotional-trust direction: reassuring, achievable, never pressuring.
+
 ### Frontend complexity reduction — Dashboard.jsx + Onboarding.jsx (Feb 20 2026)
 - **`Dashboard.jsx`**: 306 → 158 lines (**48%**). Extracted into `components/dashboard/`:
   - `SetupConciergeCard.jsx` — incomplete-onboarding tile grid (uses shared `STEP_META`).
