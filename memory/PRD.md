@@ -21,6 +21,38 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
+### Founder-Beta CRUD Sprint (Feb 20 2026 — operational continuity release)
+After the Trust Tightening subtraction sprint, the audit's seven critical workflow gaps were closed. Real barns can now operate on day 2 without re-running onboarding.
+
+**New surfaces:**
+- **`/inventory` page materialized** (was Placeholder). Calm category-grouped list, low-stock badge per item + header chip when any item is below `reorder_at`, delete-per-item, add via QuickAddSheet. Wires the existing fully-working backend `/api/inventory` CRUD + low-stock detection.
+- **`/owners` Add owner** — quick-add modal posts to `/api/owners` (full_name + email + phone).
+- **`/riders` Add rider** — full_name + age + skill_level select + goals + emergency contact.
+- **`/horses` Add horse** — full HorseIn shape with status select (active / stall_rest / rehab / retired). Empty-state CTA + 'Add horse' header button. Photo-less horses render a calm initial avatar.
+- **`/incidents` Report incident** — type + severity + horse association (optional, '__none__' sentinel coerced to null) + occurred_at datetime + description + follow-up. Calm Empty state copy ("A clean record is a good thing").
+- **`/lessons` Schedule lesson** — rider (required) + horse (optional) + start_time datetime-local converted to ISO + duration + focus. Add button disabled until at least one rider exists.
+- **`/training` Log session** — horse (required) + date + discipline + exercises + notes + rating + homework. Add button disabled until at least one horse exists.
+
+**Reusable primitive — `/app/frontend/src/components/QuickAddSheet.jsx`:**
+- Right-side slide-in sheet (max-w-md), backdrop click + ESC close, sticky header w/ eyebrow + title, Cancel + Submit buttons, Field/Select primitives reused from onboarding so the visual vocabulary matches Setup Concierge exactly.
+- Supports `text / number / date / datetime-local / email` input types + `kind: 'select' | 'textarea'`. `full: true` per-field for full-width.
+- **Defensive Radix-Select guard**: any option with `v === '' | undefined | null` is silently filtered. Callers must use a non-empty sentinel (e.g. `'__none__'`) and coerce it in their `transform()` before POST.
+
+**Backend changes (`/app/backend/routes/operations.py`):**
+- `POST /api/lessons`, `POST /api/training`, `POST /api/incidents` now resolve denormalised display names (`rider_name`, `horse_name`, `trainer_name`) server-side. Missing references are tolerated (`name=null`) so existing tests with ghost ids still pass.
+- `POST /api/incidents` defaults `status: 'open'` so the safety log doesn't depend on the caller setting it.
+
+**Recurring Schedules — hidden (audit §J.6):**
+- Frontend `Onboarding.jsx` filters the `'schedules'` step from the visible stepper. Backend `/api/onboarding/steps` STILL returns all 10 steps and the `recurring_schedules` collection + CRUD endpoints + model remain intact (data preserved for v1.1 when the materializer is wired). Percent calculation now derives from visible steps only, so the wizard can reach 100%.
+
+**Verification (testing_agent_v3_fork iteration_17 + iteration_18):**
+- Backend: 165/165 pytest pass (145 + 20 invites/analytics) + 8 new sprint regressions for name resolution and missing-ref tolerance.
+- Frontend: 12/12 CRUD flows green. Two critical Radix Select empty-string crashes (`/incidents`, `/lessons`) were caught in iter17 and fixed via sentinel + defensive filter in iter18.
+- Zero regressions on Today / Dashboard / Owner Portal / Horse Profile.
+- Audit gaps closed: Critical #1 (owners/riders add), #2 (inventory), #3 (schedules hidden), #6 (lessons + training add), #7 (incidents add). Plus the audit's recommended Add-Horse button (Option D).
+
+
+
 ### Founder-Beta Trust Tightening Sprint (Feb 20 2026 — subtraction-only release)
 A deliberate **pure-subtraction release** to reduce fake/demo trust risks before founder-barn onboarding. The release should feel **calmer, tighter, more trustworthy** — never smaller or less capable.
 
