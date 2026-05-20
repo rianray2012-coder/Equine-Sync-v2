@@ -27,6 +27,8 @@ import Onboarding from "./pages/Onboarding";
 import AcceptInvite from "./pages/AcceptInvite";
 import Reports from "./pages/Reports";
 import Today from "./pages/Today";
+import Rehab from "./pages/Rehab";
+import Turnout from "./pages/Turnout";
 
 const Protected = ({ children }) => {
   const { user, loading } = useAuth();
@@ -56,9 +58,10 @@ function App() {
               <Route path="/lessons" element={<Lessons />} />
               <Route path="/training" element={<Training />} />
               <Route path="/health" element={<Health />} />
-              <Route path="/stall-rest" element={<Placeholder title="Stall Rest & Rehab" description="Hand-walking schedules, icing, and daily rehab logs." />} />
+              <Route path="/stall-rest" element={<Rehab />} />
+              <Route path="/rehab" element={<Navigate to="/stall-rest" replace />} />
               <Route path="/medications" element={<Medications />} />
-              <Route path="/turnout" element={<Placeholder title="Turnout & Pastures" description="Herd compatibility, mud levels and rotation schedules." />} />
+              <Route path="/turnout" element={<Turnout />} />
               <Route path="/feed" element={<Feed />} />
               <Route path="/inventory" element={<Placeholder title="Inventory" description="Grain, hay, bedding, supplements with reorder alerts." />} />
               <Route path="/shows" element={<Placeholder title="Shows & Competitions" description="Show calendars, entries, stabling and packing lists." />} />

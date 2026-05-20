@@ -1,0 +1,43 @@
+{
+  "summary": "Phase-F onboarding extraction + Weekly Sunday recap + Phase-E Rehab/Turnout pages all verified. Backend pytest: 130 passed + 1 skipped (matches expected baseline of 130+1). All 12 new test_weekly_recap.py tests pass (8 pure composition + 4 live API). All 15 test_onboarding.py tests pass (regression on extracted routes/onboarding.py). Live curl checks: /api/reports/setup-health funnel returns 10 steps (barn, locations, owners, horses, riders, feed_templates, inventory, staff, schedules, review). Weekly recap idempotency confirmed — running POST /api/admin/weekly-recap/run-now twice in same ISO week (2026-W21) returned identical {sent:0, skipped:1} on both calls, no double-send. Role gating verified: groom POST /weekly-recap/run-now -> 403, groom POST /weekly-recap/send-me -> 403, owner POST /weekly-recap/send-me -> 200. Frontend: Owner Portal renders OwnerDigestCard with two tabs (digest-tab-daily, digest-tab-weekly) — both testids present and clickable, switching tabs works, single digest-enabled-toggle and digest-send-me-btn govern both surfaces. Empty state copy 'All quiet today — nothing meaningful to share yet. We'll write again when there's real news.' renders correctly on both tabs. /stall-rest renders rehab-page with 2 rehab-row-* items and rehab-summary. /turnout renders turnout-page with turnout-group-out + turnout-group-in cards and 8 turnout-row-* items. 0 console errors on turnout page. 8-route regression sweep (/dashboard, /today, /feed, /medications, /health, /horses, /owner-portal, /settings) all load with non-empty body.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "OwnerDigestCard tabs", "issues": ["digest-tab-daily and digest-tab-weekly buttons do not set aria-selected. Active state is visual-only (background swap). Nice-to-have a11y improvement: add aria-selected=true|false on the tab buttons so screen readers announce active state."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_weekly_recap.py",
+    "/app/backend/tests/test_onboarding.py",
+    "/app/test_reports/pytest/iter11_results.xml",
+    "/app/test_reports/pytest/iter11_full.xml"
+  ],
+  "action_items": [
+    "Optional a11y: add aria-selected attribute to digest-tab-daily / digest-tab-weekly in /app/frontend/src/components/OwnerDigestCard.jsx so screen readers can announce the active tab.",
+    "(Carry-over from iteration_10, NOT re-verified this run — still open) POST /api/service-requests/{sr_id}/decline and /approve have no role gating in server.py. Any authenticated user can call. Mirror the role check from /admin/digest/run-now.",
+    "(Carry-over from iteration_10) Onboarding.jsx copy fix: 'daily Barn Board' -> 'daily Today view'."
+  ],
+  "critical_code_review_comments": [
+    "routes/onboarding.py is a clean factory-style extraction (build_router with dependency injection of db, get_current_user, require_setup_role, list_collection, clean, new_id). ONBOARDING_STEPS is the single source of truth and is imported by server.py for reports/invites — verified the funnel still returns 10 steps. No behavior regression on /onboarding/{steps,progress,complete,reset}, /barn, /locations, /feed-templates, /inventory, /recurring-schedules, /staff-invites, /onboarding/csv-{preview,commit,template}.",
+    "owner_digest.py weekly recap composition is calm and discipline-correct: tests confirm <=3 lines per horse, 'rescheduled' framing (no 'missed'/'failed'), 'Looking ahead' block when upcoming_count>0, ISO-week key format 'YYYY-Www'.",
+    "Weekly recap idempotency via partial-filter index on (owner_user_id, for_week) works as advertised — confirmed by back-to-back live curl calls returning sent=0/skipped=1 both times.",
+    "Phase-E Rehab.jsx and Turnout.jsx are correctly engine-backed via useEngineTasksToday. Architectural guarantee holds: no new endpoints under /api/stall-rest or /api/turnout — every action posts to /api/tasks/{id}/complete or /skip via taskSync.",
+    "OwnerDigestCard.jsx tab implementation: single toggle and single send button correctly target the active tab's endpoint. Good UX consolidation."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "130/131 = 99.2% (130 passed + 1 skipped; matches baseline)",
+    "frontend": "100% on testable surfaces (digest tabs, rehab page, turnout page, 8-route regression)"
+  },
+  "test_credentials": "admin@equinesync.com, trainer@equinesync.com, owner@equinesync.com, groom@equinesync.com — all use demo1234. Logged in as owner and admin successfully.",
+  "seed_data_creation": "No new seed data created in this iteration. Existing TEST_turnout_in_* tasks created by previous test runs are visible in /turnout 'Bring in' group (8 items).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase-F extraction, Phase-E filtered views, and weekly recap are all solid. Main agent can self-verify any future tweak with: `cd /app/backend && export REACT_APP_BACKEND_URL=https://herd-hub-19.preview.emergentagent.com && python -m pytest tests/test_weekly_recap.py tests/test_onboarding.py -v`. For UI: open /owner-portal as owner@equinesync.com to confirm both digest tabs render; open /stall-rest and /turnout as any role to confirm engine-backed pages render. Weekly recap admin/run-now is idempotent on ISO-week — safe to call repeatedly. The /service-requests/{id}/{decline,approve} auth gap from iteration_10 is still open and was not in scope for this iteration; flag for main agent if not already addressed.",
+  "rca of the issue": "N/A — no failures in this iteration. All three deliverables (Phase-F onboarding extraction, weekly Sunday recap, Phase-E filtered Rehab/Turnout views) verified working as specified."
+}

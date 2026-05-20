@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { Card } from "./Primitives";
-import { Mail, Send, Loader2 } from "lucide-react";
+import { Mail, Send, Loader2, Calendar } from "lucide-react";
 import { toast } from "sonner";
 
 /**
  * Lightweight, owner-facing card that previews tomorrow morning's digest
- * and lets the owner opt in/out or trigger a copy now. Designed to feel
- * calm and composed — no analytics, no charts, no operational noise.
+ * and (optionally) this week's Sunday recap. Calm, composed — no analytics.
+ * One toggle governs both surfaces (digest_enabled).
  */
 export default function OwnerDigestCard() {
   const [preview, setPreview] = useState(null);
+  const [weekly, setWeekly] = useState(null);
+  const [tab, setTab] = useState("daily");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [enabled, setEnabled] = useState(true);
@@ -19,11 +21,13 @@ export default function OwnerDigestCard() {
   const load = async () => {
     setLoading(true);
     try {
-      const [prevR, prefR] = await Promise.all([
+      const [prevR, weeklyR, prefR] = await Promise.all([
         api.post("/notifications/digest/preview"),
+        api.post("/notifications/weekly-recap/preview"),
         api.get("/notifications/preferences"),
       ]);
       setPreview(prevR.data);
+      setWeekly(weeklyR.data);
       setEnabled(prefR.data?.digest_enabled !== false);
     } catch {
       // silent — keep card calm
@@ -34,15 +38,26 @@ export default function OwnerDigestCard() {
 
   useEffect(() => { load(); }, []);
 
+  const active = tab === "daily" ? preview : weekly;
+  const sendEndpoint = tab === "daily"
+    ? "/notifications/digest/send-me"
+    : "/notifications/weekly-recap/send-me";
+
   const sendNow = async () => {
     setSending(true);
     try {
-      const r = await api.post("/notifications/digest/send-me");
-      if (r.data?.sent) toast.success("Today's digest is on its way.");
-      else if (r.data?.reason === "no_updates") toast.message("Nothing new to share today.");
-      else toast.message("Digest queued.");
+      const r = await api.post(sendEndpoint);
+      if (r.data?.sent) {
+        toast.success(tab === "daily"
+          ? "Today's digest is on its way."
+          : "This week's recap is on its way.");
+      } else if (r.data?.reason === "no_updates") {
+        toast.message("Nothing new to share yet.");
+      } else {
+        toast.message("Queued.");
+      }
     } catch {
-      toast.error("Could not send digest.");
+      toast.error("Could not send.");
     } finally {
       setSending(false);
     }
@@ -53,7 +68,9 @@ export default function OwnerDigestCard() {
     setSavingPref(true);
     try {
       await api.put("/notifications/preferences", { digest_enabled: v });
-      toast.success(v ? "Daily digest enabled." : "Daily digest paused.");
+      toast.success(v
+        ? "Daily digest & weekly recap enabled."
+        : "Digest & recap paused.");
       if (v) load();
     } catch {
       setEnabled(!v);
@@ -71,9 +88,9 @@ export default function OwnerDigestCard() {
             <Mail strokeWidth={1.5} className="w-4 h-4 text-equine-navy" />
           </div>
           <div>
-            <h2 className="font-display text-2xl text-equine-ink">Morning digest</h2>
+            <h2 className="font-display text-2xl text-equine-ink">Owner updates</h2>
             <div className="text-[12.5px] text-equine-inkMuted">
-              A short, calm note from the barn each morning — only what matters for your horse.
+              A short morning digest plus a calm Sunday recap. Only what matters for your horse.
             </div>
           </div>
         </div>
@@ -98,21 +115,47 @@ export default function OwnerDigestCard() {
         </label>
       </div>
 
+      <div className="flex items-center gap-1.5 mb-3" data-testid="digest-tabs">
+        {[
+          { id: "daily", label: "Morning digest", icon: Mail },
+          { id: "weekly", label: "Sunday recap", icon: Calendar },
+        ].map((t) => {
+          const Icon = t.icon;
+          const isActive = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              data-testid={`digest-tab-${t.id}`}
+              onClick={() => setTab(t.id)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] tracking-wide border transition-colors ${
+                isActive
+                  ? "bg-equine-navy text-white border-equine-navy"
+                  : "bg-equine-card text-equine-inkMuted border-equine-hairline hover:border-equine-graphite"
+              }`}
+            >
+              <Icon className="w-3 h-3" /> {t.label}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="bg-equine-soft/60 border border-equine-hairline rounded-xl px-5 py-4" data-testid="digest-preview-body">
         {loading ? (
           <div className="text-[13px] text-equine-inkSoft inline-flex items-center gap-2">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Composing today's preview…
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Composing preview…
           </div>
-        ) : !preview || preview.empty ? (
+        ) : !active || active.empty ? (
           <div className="text-[13px] text-equine-inkSoft">
-            All quiet today — nothing meaningful to share yet. We&apos;ll write again when there&apos;s real news.
+            {tab === "daily"
+              ? "All quiet today — nothing meaningful to share yet. We'll write again when there's real news."
+              : "A quiet week — no recap needed. We'll be back when there's something to share."}
           </div>
         ) : (
           <div className="space-y-3">
             <div className="uppercase tracking-[0.22em] text-[10.5px] text-equine-inkSoft">
-              Preview · {preview.payload?.updates_count} update{preview.payload?.updates_count === 1 ? "" : "s"}
+              Preview · {active.payload?.updates_count} update{active.payload?.updates_count === 1 ? "" : "s"}
             </div>
-            {(preview.payload?.sections || []).map((sec) => (
+            {(active.payload?.sections || []).map((sec) => (
               <div key={sec.horse_id} className="border-t border-equine-hairline pt-2.5 first:border-0 first:pt-0">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-equine-inkSoft mb-1">
                   {sec.horse_name}
@@ -122,6 +165,16 @@ export default function OwnerDigestCard() {
                 ))}
               </div>
             ))}
+            {tab === "weekly" && active.payload?.upcoming_count > 0 && (
+              <div className="border-t border-equine-hairline pt-2.5">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-equine-inkSoft mb-1">
+                  Looking ahead
+                </div>
+                <p className="text-[14px] text-equine-ink leading-snug">
+                  {active.payload.upcoming_count} upcoming care appointment{active.payload.upcoming_count === 1 ? "" : "s"} scheduled in the next 7 days.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -130,7 +183,7 @@ export default function OwnerDigestCard() {
         <button
           data-testid="digest-send-me-btn"
           onClick={sendNow}
-          disabled={sending || !enabled || loading || preview?.empty}
+          disabled={sending || !enabled || loading || active?.empty}
           className="btn-secondary inline-flex items-center gap-2 disabled:opacity-50"
         >
           {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}

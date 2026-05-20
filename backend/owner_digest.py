@@ -363,3 +363,247 @@ async def run_daily_digest_pass(db, mailer) -> dict:
 
 async def ensure_digest_indexes(db):
     await db.notification_digest_log.create_index([("owner_user_id", 1), ("for_date", 1)], unique=True)
+    await db.notification_digest_log.create_index(
+        [("owner_user_id", 1), ("for_week", 1)],
+        unique=True,
+        partialFilterExpression={"for_week": {"$exists": True}},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Weekly recap — lightweight, calm Sunday-evening summary
+# ---------------------------------------------------------------------------
+
+def _iso_week_key(dt: datetime) -> str:
+    """Return ISO 8601 year-week (e.g. '2026-W08') used as idempotency key."""
+    iso = dt.isocalendar()
+    return f"{iso.year:04d}-W{iso.week:02d}"
+
+
+def _weekly_compose_section(horse: dict, events_7d: List[dict],
+                              upcoming_7d: List[dict]) -> Optional[dict]:
+    """Compose a calm per-horse weekly section. Limits itself to ≤ 3 lines
+    so the email stays scannable and reassuring.
+    """
+    horse_name = horse.get("name") or "Your horse"
+    lines: List[str] = []
+
+    # Medications — only surface positive adherence or notable refusal once.
+    med_completed = [e for e in events_7d
+                     if e.get("category") == "medication" and e["event_type"] == "task.completed"]
+    med_skipped = [e for e in events_7d
+                   if e.get("category") == "medication" and e["event_type"] == "task.skipped"]
+    if med_completed and not med_skipped:
+        lines.append(f"{horse_name} completed all scheduled medications this week.")
+    elif med_skipped:
+        # Frame softly — no operational guilt.
+        n = len(med_skipped)
+        lines.append(
+            f"{horse_name} had {n} medication{'s' if n != 1 else ''} rescheduled — "
+            f"the team has noted it for the vet."
+        )
+
+    # Farrier — single positive line if any completed visit
+    farrier = [e for e in events_7d
+               if e.get("category") == "farrier" and e["event_type"] == "task.completed"]
+    if farrier:
+        snap = farrier[0].get("payload_snapshot") or {}
+        if snap.get("farrier_name"):
+            lines.append(f"{horse_name} had a successful farrier visit with {snap['farrier_name']}.")
+        else:
+            lines.append(f"{horse_name} had a successful farrier follow-up.")
+
+    # Vet — single line if any completed visit
+    vet = [e for e in events_7d
+           if e.get("category") == "vet" and e["event_type"] == "task.completed"]
+    if vet:
+        snap = vet[0].get("payload_snapshot") or {}
+        title = (snap.get("title") or "vet visit").lower()
+        lines.append(f"{horse_name} had a {title} this week.")
+
+    # Rehab — single positive line
+    rehab = [e for e in events_7d
+             if e.get("category") == "rehab" and e["event_type"] == "task.completed"]
+    if rehab:
+        lines.append(f"{horse_name} completed {len(rehab)} rehab session{'s' if len(rehab) != 1 else ''}.")
+
+    if not lines:
+        return None
+
+    # Cap at 3 lines per horse to preserve calm signal-to-noise.
+    lines = lines[:3]
+    return {"horse_id": horse.get("id"), "horse_name": horse_name, "lines": lines}
+
+
+async def build_weekly_recap_for_owner(db, owner_user_id: str,
+                                         now: Optional[datetime] = None) -> Optional[dict]:
+    """Compose a calm weekly recap. Returns None if there's nothing meaningful."""
+    now = now or _now()
+    since_7d = now - timedelta(days=7)
+    until_7d = now + timedelta(days=7)
+
+    horses = await db.horses.find(
+        {"owner_id": owner_user_id}, {"_id": 0, "id": 1, "name": 1},
+    ).to_list(50)
+    if not horses:
+        return None
+    horse_ids = [h["id"] for h in horses]
+
+    events_7d = await db.task_events.find(
+        {
+            "subject_horse_ids": {"$in": horse_ids},
+            "category": {"$in": list(OWNER_DIGEST_CATEGORIES)},
+            "event_type": {"$in": ["task.completed", "task.skipped"]},
+            "occurred_at": {"$gte": _iso(since_7d)},
+        },
+        {"_id": 0},
+    ).sort("occurred_at", -1).to_list(2000)
+
+    upcoming = await db.tasks.find(
+        {
+            "linked_horse_ids": {"$in": horse_ids},
+            "category": {"$in": ["vet", "farrier", "rehab"]},
+            "status": {"$nin": ["completed", "skipped", "cancelled"]},
+            "scheduled_at": {"$gte": _iso(now), "$lte": _iso(until_7d)},
+        },
+        {"_id": 0},
+    ).sort("scheduled_at", 1).to_list(200)
+
+    sections: List[dict] = []
+    for h in horses:
+        e7 = [e for e in events_7d if h["id"] in (e.get("subject_horse_ids") or [])]
+        up = [t for t in upcoming if h["id"] in (t.get("linked_horse_ids") or [])]
+        sec = _weekly_compose_section(h, e7, up)
+        if sec:
+            sections.append(sec)
+
+    upcoming_total = len(upcoming)
+
+    # Only send if at least one section OR there's meaningful upcoming activity.
+    if not sections and upcoming_total == 0:
+        return None
+
+    return {
+        "owner_user_id": owner_user_id,
+        "kind": "weekly",
+        "generated_at": _iso(now),
+        "for_week": _iso_week_key(now),
+        "sections": sections,
+        "horse_count": len(horses),
+        "upcoming_count": upcoming_total,
+        "updates_count": sum(len(s["lines"]) for s in sections) + (1 if upcoming_total else 0),
+    }
+
+
+def render_weekly_recap_html(payload: dict, app_base_url: str = "") -> str:
+    """Render the weekly recap with the same calm visual language as the daily digest."""
+    parts = ['<!DOCTYPE html><html><head><meta charset="utf-8"><style>',
+             DIGEST_CSS, '</style></head><body><div class="wrap">']
+    parts.append('<div class="eyebrow">EquineSync · Weekly Recap</div>')
+    parts.append('<h1>This week at the barn</h1>')
+    for sec in payload["sections"]:
+        parts.append('<div class="horse">')
+        parts.append(f'<div class="horse-name">{sec["horse_name"]}</div>')
+        for line in sec["lines"]:
+            parts.append(f'<p>{line}</p>')
+        parts.append('</div>')
+    if payload.get("upcoming_count"):
+        n = payload["upcoming_count"]
+        parts.append('<div class="horse">')
+        parts.append('<div class="horse-name">Looking ahead</div>')
+        parts.append(
+            f'<p>{n} upcoming care appointment{"s" if n != 1 else ""} '
+            f'scheduled in the next 7 days.</p>'
+        )
+        parts.append('</div>')
+    settings_url = (app_base_url.rstrip("/") + "/settings") if app_base_url else "/settings"
+    parts.append(
+        f'<div class="footer">'
+        f'A short Sunday update from the barn. '
+        f'<a class="prefs" href="{settings_url}">Manage preferences</a>.'
+        f'</div></div></body></html>'
+    )
+    return "".join(parts)
+
+
+def render_weekly_recap_text(payload: dict) -> str:
+    out = ["EquineSync — This week at the barn", "=" * 36, ""]
+    for sec in payload["sections"]:
+        out.append(sec["horse_name"].upper())
+        for line in sec["lines"]:
+            out.append(f"  {line}")
+        out.append("")
+    if payload.get("upcoming_count"):
+        n = payload["upcoming_count"]
+        out.append("LOOKING AHEAD")
+        out.append(f"  {n} upcoming care appointment{'s' if n != 1 else ''} scheduled in the next 7 days.")
+        out.append("")
+    out.append("Manage preferences in Settings → Notifications.")
+    return "\n".join(out)
+
+
+async def already_sent_this_week(db, owner_user_id: str, for_week: str) -> bool:
+    rec = await db.notification_digest_log.find_one(
+        {"owner_user_id": owner_user_id, "for_week": for_week},
+        {"_id": 0, "id": 1},
+    )
+    return bool(rec)
+
+
+async def send_weekly_recap_to_owner(db, mailer, owner_user_id: str,
+                                       now: Optional[datetime] = None,
+                                       dry_run: bool = False) -> dict:
+    payload = await build_weekly_recap_for_owner(db, owner_user_id, now=now)
+    if not payload:
+        return {"sent": False, "reason": "no_updates"}
+    owner = await db.users.find_one({"id": owner_user_id}, {"_id": 0, "email": 1, "full_name": 1})
+    if not owner:
+        return {"sent": False, "reason": "owner_not_found"}
+    html = render_weekly_recap_html(payload, app_base_url=os.environ.get("PUBLIC_APP_URL", ""))
+    text = render_weekly_recap_text(payload)
+    if dry_run:
+        return {"sent": False, "reason": "dry_run",
+                "preview": {"html": html, "text": text, "payload": payload}}
+    subject = "EquineSync · This week at the barn"
+    try:
+        send_res = mailer["send"](to=owner["email"], subject=subject, html=html, text=text)
+        await db.notification_digest_log.insert_one({
+            "id": __import__("uuid").uuid4().hex,
+            "owner_user_id": owner_user_id,
+            "sent_at": _iso(_now()),
+            "for_week": payload["for_week"],
+            "kind": "weekly",
+            "updates_count": payload["updates_count"],
+            "result": send_res,
+        })
+        return {"sent": True, "updates_count": payload["updates_count"], "result": send_res}
+    except Exception:
+        logger.exception("weekly recap send failed for owner=%s", owner_user_id)
+        return {"sent": False, "reason": "send_error"}
+
+
+async def run_weekly_recap_pass(db, mailer, now: Optional[datetime] = None) -> dict:
+    """Run a weekly recap pass. Idempotent on (owner, ISO-week). Respects
+    digest_enabled toggle (shared with daily digest — one preference governs both).
+    """
+    now = now or _now()
+    week_key = _iso_week_key(now)
+    owners = await db.users.find({"role": "horse_owner"}, {"_id": 0, "id": 1}).to_list(500)
+    sent = 0
+    skipped = 0
+    for o in owners:
+        prefs = await db.notification_preferences.find_one(
+            {"user_id": o["id"]}, {"_id": 0},
+        )
+        if prefs and prefs.get("digest_enabled") is False:
+            skipped += 1
+            continue
+        if await already_sent_this_week(db, o["id"], week_key):
+            skipped += 1
+            continue
+        res = await send_weekly_recap_to_owner(db, mailer, o["id"], now=now)
+        if res.get("sent"):
+            sent += 1
+        else:
+            skipped += 1
+    return {"sent": sent, "skipped": skipped, "for_week": week_key, "kind": "weekly"}
