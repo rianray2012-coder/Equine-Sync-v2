@@ -48,6 +48,7 @@ from routes.reports import build_router as build_reports_router
 from routes.invites import build_router as build_invites_router
 from routes.onboarding import build_router as build_onboarding_router, ONBOARDING_STEPS
 from routes.care import build_router as build_care_router
+from routes.operations import build_router as build_operations_router
 from owner_digest import (
     run_daily_digest_pass,
     send_digest_to_owner,
@@ -131,58 +132,6 @@ class LoginBody(BaseModel):
     email: EmailStr
     password: str
 
-class LessonIn(BaseModel):
-    rider_id: str
-    horse_id: Optional[str] = None
-    trainer_id: Optional[str] = None
-    start_time: str
-    duration_min: int = 60
-    focus: Optional[str] = None
-    notes: Optional[str] = None
-    completed: bool = False
-
-class TrainingSessionIn(BaseModel):
-    horse_id: str
-    trainer_id: Optional[str] = None
-    date: str
-    discipline: Optional[str] = None
-    exercises: Optional[str] = None
-    notes: Optional[str] = None
-    rating: Optional[int] = None
-    homework: Optional[str] = None
-
-
-class InvoiceIn(BaseModel):
-    owner_id: str
-    horse_id: Optional[str] = None
-    items: List[Dict[str, Any]]
-    total: float
-    due_date: str
-    status: str = "open"  # open, paid, overdue
-    notes: Optional[str] = None
-
-class MessageIn(BaseModel):
-    to_role: Optional[str] = None
-    to_user_id: Optional[str] = None
-    subject: str
-    body: str
-    visibility: str = "staff_only"  # staff_only, owner_visible, parent_visible, admin_only
-
-class ServiceRequestIn(BaseModel):
-    horse_id: str
-    type: str  # extra_ride, grooming, body_clip, hand_walk, lesson, hauling, show_prep
-    details: Optional[str] = None
-    requested_date: Optional[str] = None
-
-class IncidentIn(BaseModel):
-    horse_id: Optional[str] = None
-    type: str  # injury, colic, loose_horse, fall, medication_error, weather, aggression
-    title: str
-    description: str
-    severity: str = "moderate"
-    occurred_at: str
-    follow_up: Optional[str] = None
-
 class AIRequest(BaseModel):
     kind: str  # wellness_insight, training_summary, owner_update
     context: Dict[str, Any]
@@ -217,123 +166,6 @@ async def list_collection(coll, query=None, sort_field=None, limit=500):
     if sort_field:
         cursor = cursor.sort(sort_field, -1)
     return await cursor.to_list(limit)
-
-# ---------------- Lessons ----------------
-@api_router.get("/lessons")
-async def list_lessons(user=Depends(get_current_user)):
-    return await list_collection("lessons", sort_field="start_time")
-
-@api_router.post("/lessons")
-async def create_lesson(body: LessonIn, user=Depends(get_current_user)):
-    doc = body.model_dump()
-    doc.update({"id": new_id(), "created_at": iso(now_utc())})
-    await db.lessons.insert_one(doc)
-    return clean(doc)
-
-# ---------------- Training ----------------
-@api_router.get("/training")
-async def list_training(horse_id: Optional[str] = None, user=Depends(get_current_user)):
-    q = {"horse_id": horse_id} if horse_id else {}
-    return await list_collection("training", q, sort_field="date")
-
-@api_router.post("/training")
-async def create_training(body: TrainingSessionIn, user=Depends(get_current_user)):
-    doc = body.model_dump()
-    doc.update({"id": new_id(), "created_at": iso(now_utc())})
-    await db.training.insert_one(doc)
-    return clean(doc)
-
-# ---------------- Invoices ----------------
-@api_router.get("/invoices")
-async def list_invoices(user=Depends(get_current_user)):
-    return await list_collection("invoices", sort_field="due_date")
-
-@api_router.post("/invoices")
-async def create_invoice(body: InvoiceIn, user=Depends(get_current_user)):
-    doc = body.model_dump()
-    doc.update({"id": new_id(), "created_at": iso(now_utc())})
-    await db.invoices.insert_one(doc)
-    return clean(doc)
-
-@api_router.post("/invoices/{invoice_id}/pay")
-async def pay_invoice(invoice_id: str, user=Depends(get_current_user)):
-    await db.invoices.update_one({"id": invoice_id}, {"$set": {"status": "paid", "paid_at": iso(now_utc())}})
-    return await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
-
-# ---------------- Messages ----------------
-@api_router.get("/messages")
-async def list_messages(user=Depends(get_current_user)):
-    return await list_collection("messages", sort_field="created_at")
-
-@api_router.post("/messages")
-async def create_message(body: MessageIn, user=Depends(get_current_user)):
-    doc = body.model_dump()
-    doc.update({
-        "id": new_id(),
-        "from_user_id": user["id"],
-        "from_name": user["full_name"],
-        "created_at": iso(now_utc()),
-        "read": False,
-    })
-    await db.messages.insert_one(doc)
-    return clean(doc)
-
-# ---------------- Service Requests ----------------
-@api_router.get("/service-requests")
-async def list_sr(user=Depends(get_current_user)):
-    return await list_collection("service_requests", sort_field="created_at")
-
-@api_router.post("/service-requests")
-async def create_sr(body: ServiceRequestIn, user=Depends(get_current_user)):
-    doc = body.model_dump()
-    doc.update({
-        "id": new_id(),
-        "requested_by": user["id"],
-        "requester_name": user["full_name"],
-        "status": "pending",
-        "created_at": iso(now_utc()),
-    })
-    await db.service_requests.insert_one(doc)
-    return clean(doc)
-
-@api_router.post("/service-requests/{sr_id}/approve")
-async def approve_sr(sr_id: str, user=Depends(get_current_user)):
-    if user.get("role") not in ("admin", "barn_manager", "trainer"):
-        raise HTTPException(403, "Insufficient role to approve service requests")
-    existing = await db.service_requests.find_one({"id": sr_id}, {"_id": 0, "status": 1})
-    if not existing:
-        raise HTTPException(404, "Service request not found")
-    if existing.get("status") != "pending":
-        raise HTTPException(409, f"Request is already {existing.get('status')}")
-    await db.service_requests.update_one({"id": sr_id}, {"$set": {"status": "approved", "approved_at": iso(now_utc()), "approved_by_user_id": user["id"]}})
-    return await db.service_requests.find_one({"id": sr_id}, {"_id": 0})
-
-
-class DeclineSRBody(BaseModel):
-    reason: Optional[str] = None
-
-
-@api_router.post("/service-requests/{sr_id}/decline")
-async def decline_sr(sr_id: str, body: Optional[DeclineSRBody] = None, user=Depends(get_current_user)):
-    if user.get("role") not in ("admin", "barn_manager", "trainer"):
-        raise HTTPException(403, "Insufficient role to decline service requests")
-    existing = await db.service_requests.find_one({"id": sr_id}, {"_id": 0, "status": 1})
-    if not existing:
-        raise HTTPException(404, "Service request not found")
-    if existing.get("status") != "pending":
-        raise HTTPException(409, f"Request is already {existing.get('status')}")
-    reason = (body.reason if body else None) or "Request declined."
-    await db.service_requests.update_one(
-        {"id": sr_id},
-        {"$set": {
-            "status": "declined",
-            "declined_at": iso(now_utc()),
-            "declined_by_user_id": user["id"],
-            "decline_reason": reason[:500],
-        }},
-    )
-    return await db.service_requests.find_one({"id": sr_id}, {"_id": 0})
-
 
 # ---------------- Owner daily digest (Phase-C) ----------------
 
@@ -403,17 +235,6 @@ async def weekly_recap_run_now(user=Depends(get_current_user)):
     mailer_handle = {"send": send_email, "render": render_email}
     return await run_weekly_recap_pass(db, mailer_handle)
 
-# ---------------- Incidents ----------------
-@api_router.get("/incidents")
-async def list_incidents(user=Depends(get_current_user)):
-    return await list_collection("incidents", sort_field="occurred_at")
-
-@api_router.post("/incidents")
-async def create_incident(body: IncidentIn, user=Depends(get_current_user)):
-    doc = body.model_dump()
-    doc.update({"id": new_id(), "reported_by": user["full_name"], "created_at": iso(now_utc())})
-    await db.incidents.insert_one(doc)
-    return clean(doc)
 
 # ---------------- Dashboard summary (extracted to routes/dashboard.py) ----------------
 # See routes/dashboard.py — included into api_router at the bottom of this file.
@@ -859,6 +680,15 @@ api_router.include_router(build_onboarding_router(
 
 # ---------------- Care records (extracted to routes/care.py) ----------------
 api_router.include_router(build_care_router(
+    db=db,
+    get_current_user=get_current_user,
+    list_collection=list_collection,
+    clean=clean,
+    new_id=new_id,
+))
+
+# ---------------- Operations (extracted to routes/operations.py) ----------------
+api_router.include_router(build_operations_router(
     db=db,
     get_current_user=get_current_user,
     list_collection=list_collection,

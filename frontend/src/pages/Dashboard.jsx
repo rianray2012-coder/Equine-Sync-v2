@@ -4,7 +4,7 @@ import { api, money } from "../lib/api";
 import { PageHeader, Stat, SectionEyebrow } from "../components/Primitives";
 import {
   Pill, GraduationCap, Heart, UtensilsCrossed, Cat,
-  Stethoscope, Receipt, BedDouble, Sunrise, ArrowRight,
+  Stethoscope, Receipt, BedDouble, Sunrise, ArrowRight, Compass,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -12,6 +12,7 @@ import SetupConciergeCard from "../components/dashboard/SetupConciergeCard";
 import ActionTile from "../components/dashboard/ActionTile";
 import AlertsCard from "../components/dashboard/AlertsCard";
 import { WeatherCard, OperationsCard, UpcomingCareCard } from "../components/dashboard/SmallCards";
+import FounderWalkthrough, { walkthroughSeen } from "../components/FounderWalkthrough";
 
 /**
  * Stable Command — operational glance, not an analytics board.
@@ -27,6 +28,7 @@ export default function Dashboard() {
   const [steps, setSteps] = useState([]);
   const [upcoming, setUpcoming] = useState([]);
   const [upcomingLoading, setUpcomingLoading] = useState(true);
+  const [walkthroughOpen, setWalkthroughOpen] = useState(false);
 
   useEffect(() => {
     api.get("/dashboard/summary").then((r) => setSummary(r.data)).catch(() => {});
@@ -55,6 +57,16 @@ export default function Dashboard() {
       .finally(() => setUpcomingLoading(false));
   }, []);
 
+  // Calm one-time founder walkthrough auto-open: only for setup roles who
+  // finished onboarding and haven't seen it yet. Never auto-shown again.
+  useEffect(() => {
+    if (!user) return;
+    if (!["admin", "barn_manager"].includes(user.role)) return;
+    if (walkthroughSeen()) return;
+    if (!progress?.completed) return;
+    setWalkthroughOpen(true);
+  }, [user, progress]);
+
   const firstName = user?.full_name?.split(" ")[0] || "there";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -65,6 +77,20 @@ export default function Dashboard() {
         eyebrow={`${greeting}, ${firstName}`}
         title="Stable Command"
         subtitle="A live overview of horses, daily care, alerts and operations across your facility."
+        action={
+          <button
+            data-testid="walkthrough-launch"
+            onClick={() => setWalkthroughOpen(true)}
+            className="inline-flex items-center gap-1.5 text-[11.5px] uppercase tracking-[0.2em] text-equine-brass/80 hover:text-equine-brassLight transition-colors px-3 py-1.5 rounded-full border border-equine-graphite/40 hover:border-equine-brass/50"
+          >
+            <Compass className="w-3.5 h-3.5" /> Founder tour
+          </button>
+        }
+      />
+
+      <FounderWalkthrough
+        open={walkthroughOpen}
+        onClose={() => setWalkthroughOpen(false)}
       />
 
       <SetupConciergeCard progress={progress} steps={steps} />
