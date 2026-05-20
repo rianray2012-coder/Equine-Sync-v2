@@ -21,6 +21,18 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
+### Phase-F COMPLETE — `routes/operations.py` extraction (Feb 20 2026)
+- **`routes/operations.py`** (233 LOC) — final care-side lift-and-shift: lessons, training, invoices, messages, service-requests (with role-gated `/approve` + `/decline` + 409 state guards), incidents. Eight Pydantic models migrated alongside their handlers.
+- **`server.py` is now 836 lines** — **cumulative 57% reduction** since Phase-F began (1949 → 836).
+- **Tests**: full suite **152/152 + 1 skipped + 13/13 new `tests/test_operations_routes.py`** regression assertions (lessons, training, invoices /pay, messages stamping, service-request happy/409/403/404 paths, incidents reported_by stamp). Zero regressions across every previous module.
+
+### Founder Walkthrough — calm, read-only, narrated barn-day tour (Feb 20 2026)
+- `/app/frontend/src/components/FounderWalkthrough.jsx` — 6-step modal: Today → Feed → Medications → Horse Timeline → Owner Digest → "you're ready". Two minutes max. Hospitality tone, never sales-y.
+- **Read-only by design**: each step calls one GET (`/tasks/today`, `/dashboard/summary`, `/horses`) and surfaces 2–3 live stat tiles — **zero non-GET API calls** during the entire traversal (verified by testing agent network audit).
+- **Auto-open guardrails**: admin/barn_manager only, gated on `onboarding.completed && !walkthroughSeen()`. Fires once, persists `equinesync.walkthrough.seen=1` in localStorage on finish. Manual "Founder tour" launcher (data-testid `walkthrough-launch`) remains in the Dashboard header for re-opens.
+- **Close paths**: Escape, backdrop click, X button, "I've got it" — all verified.
+- **Tone matches spec**: calm hospitality, never alarming, never pressuring; final step ends with *"We'll stay quiet from here. The Today view will be your home."*
+
 ### Phase-F final sweep — `routes/care.py` extraction (Feb 20 2026)
 - **`routes/care.py`** (288 LOC) — every care record endpoint AND its Pydantic model lifted out of server.py together: horses, owners, riders, medications, medication-logs, feed-tasks, vet-records, farrier-history, injuries, wellness. Schemas unchanged; same dependency-injection pattern as the other route modules.
 - **`server.py` 1221 → 994 lines** (this iteration ~18% reduction; ~**49% cumulative** since Phase-F began).
