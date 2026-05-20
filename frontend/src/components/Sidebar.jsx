@@ -2,8 +2,8 @@ import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Cat, UserCircle2, Users, GraduationCap, Dumbbell,
-  Stethoscope, BedDouble, Pill, Trees, UtensilsCrossed, Package, Trophy, Receipt,
-  FileText, AlertTriangle, Wrench, ClipboardList, MessageSquare, BarChart3, Settings,
+  Stethoscope, BedDouble, Pill, Trees, UtensilsCrossed, Package, Receipt,
+  AlertTriangle, MessageSquare, BarChart3, Settings,
   LogOut, Crown, Sparkles, ListChecks
 } from "lucide-react";
 import { Logo } from "./Logo";
@@ -34,7 +34,6 @@ const NAV_SECTIONS = [
       { to: "/riders", label: "Riders", icon: UserCircle2 },
       { to: "/lessons", label: "Lessons", icon: GraduationCap },
       { to: "/training", label: "Training", icon: Dumbbell },
-      { to: "/shows", label: "Shows", icon: Trophy },
     ],
   },
   {
@@ -50,10 +49,7 @@ const NAV_SECTIONS = [
     label: "Operations",
     items: [
       { to: "/inventory", label: "Inventory", icon: Package },
-      { to: "/maintenance", label: "Maintenance", icon: Wrench },
       { to: "/incidents", label: "Incidents", icon: AlertTriangle },
-      { to: "/staff", label: "Staff", icon: ClipboardList },
-      { to: "/documents", label: "Documents", icon: FileText },
     ],
   },
   {

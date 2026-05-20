@@ -49,8 +49,11 @@ def test_dashboard_barn_board(H):
     r = requests.get(f"{API}/dashboard/barn-board", headers=H, timeout=30)
     assert r.status_code == 200
     d = r.json()
-    for k in ["feed", "medications", "lessons", "stall_rest", "weather"]:
+    for k in ["feed", "medications", "lessons", "stall_rest"]:
         assert k in d
+    # Weather was a hardcoded fake surface — intentionally removed Feb 20 2026
+    # as part of the founder-beta trust-tightening sprint.
+    assert "weather" not in d
 
 
 # ---- Horses ----
@@ -139,9 +142,11 @@ def test_message_create(H):
     assert r.json()["from_name"]
 
 
-# ---- AI generate ----
-def test_ai_generate_owner_update(H):
-    body = {"kind": "owner_update", "context": {"horse": "Valentino", "session": "Light flatwork; sharp"}}
-    r = requests.post(f"{API}/ai/generate", json=body, headers=H, timeout=90)
-    assert r.status_code == 200, r.text
-    assert isinstance(r.json().get("text"), str) and len(r.json()["text"]) > 10
+# ---- AI generate (REMOVED Feb 20 2026 — founder-beta trust sprint) ----
+# The /ai/generate endpoint and its HorseProfile UI buttons were deleted to
+# match the agreed "no speculative AI / no pseudo-veterinary advice" direction.
+# Wellness Pulse remains the calm rule-based observational layer.
+def test_ai_generate_endpoint_is_gone(H):
+    body = {"kind": "owner_update", "context": {"horse": "Valentino"}}
+    r = requests.post(f"{API}/ai/generate", json=body, headers=H, timeout=10)
+    assert r.status_code == 404

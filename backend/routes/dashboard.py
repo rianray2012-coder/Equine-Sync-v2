@@ -106,7 +106,6 @@ def build_router(db, get_current_user, tenant_id: str) -> APIRouter:
             "lessons": lessons,
             "stall_rest": stall_rest,
             "urgent": incidents,
-            "weather": {"temp_f": 58, "condition": "Light Rain", "alert": "Wet footing — limit outdoor jumping"},
             "_deprecated": "Use /tasks/today; this endpoint will be removed.",
         }
 

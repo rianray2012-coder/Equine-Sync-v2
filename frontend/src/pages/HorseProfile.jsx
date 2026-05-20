@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, fmtDate, money } from "../lib/api";
 import { Card, StatusPill } from "../components/Primitives";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import CuratedTimeline from "../components/CuratedTimeline";
 
 const TABS = ["Overview", "Timeline", "Feed", "Training", "Health", "Injuries", "Medications", "Wellness", "Billing", "Owner"];
@@ -16,8 +16,6 @@ export default function HorseProfile() {
   const [wellness, setWellness] = useState([]);
   const [training, setTraining] = useState([]);
   const [tab, setTab] = useState("Overview");
-  const [aiText, setAiText] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
     api.get(`/horses/${id}`).then((r) => setHorse(r.data));
@@ -29,24 +27,6 @@ export default function HorseProfile() {
   }, [id]);
 
   if (!horse) return <div className="text-equine-platinum/60">Loading…</div>;
-
-  const generateInsight = async (kind) => {
-    setAiLoading(true); setAiText("");
-    try {
-      const r = await api.post("/ai/generate", {
-        kind,
-        context: {
-          horse: horse.name, breed: horse.breed, age: horse.age, discipline: horse.discipline,
-          wellness_score: horse.wellness_score, status: horse.status,
-          training_goals: horse.training_goals,
-          recent_training: training[0]?.notes || "Standard flatwork and gymnastic schooling.",
-          recent_injury: injuries[0] ? `${injuries[0].title} (${injuries[0].status})` : "None",
-        }
-      });
-      setAiText(r.data.text);
-    } catch (e) { setAiText("AI is unavailable right now."); }
-    finally { setAiLoading(false); }
-  };
 
   return (
     <div data-testid="horse-profile-page">
@@ -84,20 +64,6 @@ export default function HorseProfile() {
           <div className="mt-4">
             <div className="label-eyebrow mb-2">Emergency Notes</div>
             <p className="text-equine-silver/80">{horse.emergency_notes || "—"}</p>
-          </div>
-
-          <div className="mt-6 pt-5 hairline">
-            <div className="flex items-center justify-between mb-3">
-              <div className="label-eyebrow flex items-center gap-2"><Sparkles className="w-3.5 h-3.5" /> AI Insight</div>
-              <div className="flex gap-2">
-                <button onClick={() => generateInsight("wellness_insight")} data-testid="ai-wellness" disabled={aiLoading} className="btn-secondary text-[12px] !py-1.5 !px-3 disabled:opacity-50">Wellness</button>
-                <button onClick={() => generateInsight("training_summary")} data-testid="ai-training" disabled={aiLoading} className="btn-secondary text-[12px] !py-1.5 !px-3 disabled:opacity-50">Training</button>
-                <button onClick={() => generateInsight("owner_update")} data-testid="ai-owner" disabled={aiLoading} className="btn-primary text-[12px] !py-1.5 !px-3 disabled:opacity-50">Owner Update</button>
-              </div>
-            </div>
-            <div className="min-h-[60px] p-4 rounded-xl bg-equine-soft border border-equine-graphite/40 text-equine-silver/90 text-[14px] leading-relaxed">
-              {aiLoading ? "Crafting an insight…" : (aiText || "Generate a personalised update powered by Claude Sonnet 4.5.")}
-            </div>
           </div>
         </Card>
       </div>

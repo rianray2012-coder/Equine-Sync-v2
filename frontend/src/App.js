@@ -63,13 +63,16 @@ function App() {
               <Route path="/medications" element={<Medications />} />
               <Route path="/turnout" element={<Turnout />} />
               <Route path="/feed" element={<Feed />} />
+              {/* Inventory still goes through Placeholder pending Critical #2 wiring. */}
               <Route path="/inventory" element={<Placeholder title="Inventory" description="Grain, hay, bedding, supplements with reorder alerts." />} />
-              <Route path="/shows" element={<Placeholder title="Shows & Competitions" description="Show calendars, entries, stabling and packing lists." />} />
               <Route path="/billing" element={<Billing />} />
-              <Route path="/documents" element={<Placeholder title="Documents" description="Secure document vault for vaccines, insurance and contracts." />} />
               <Route path="/incidents" element={<Incidents />} />
-              <Route path="/maintenance" element={<Placeholder title="Maintenance" description="Tickets for fences, gates, waterers and arenas." />} />
-              <Route path="/staff" element={<Placeholder title="Staff Management" description="Workloads, certifications and shift scheduling." />} />
+              {/* Removed for founder beta — Shows / Documents / Maintenance / Staff
+                  redirect to safe destinations so old bookmarks don't 404. */}
+              <Route path="/shows" element={<Navigate to="/" replace />} />
+              <Route path="/documents" element={<Navigate to="/horses" replace />} />
+              <Route path="/maintenance" element={<Navigate to="/incidents" replace />} />
+              <Route path="/staff" element={<Navigate to="/settings" replace />} />
               <Route path="/messaging" element={<Messaging />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/owner-portal" element={<OwnerPortal />} />

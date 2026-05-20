@@ -1,0 +1,22 @@
+{
+  "summary": "Founder-Beta Trust Tightening subtraction sprint VERIFIED. All four deletes confirmed: (1) Weather card removed from /dashboard and weather key absent from /api/dashboard/barn-board response. (2) HorseProfile AI buttons + Sparkles + 'Crafting an insight'/'Claude Sonnet 4.5' copy fully removed; profile + all 10 tabs still functional. (3) /api/ai/generate returns 404. (4) Sidebar no longer shows Shows/Documents/Maintenance/Staff; Operations has only Inventory+Incidents; Program has only Riders+Lessons+Training. All four old routes redirect cleanly (no Placeholder UI). /inventory deliberately still on Placeholder. Full regression sweep of 18 surviving routes passed with zero console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_equinesync.py",
+    "/app/test_reports/pytest/iter16_equinesync.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Clean subtraction sprint — no leftover dead imports detected in Sidebar.jsx (Trophy/FileText/Wrench/ClipboardList all removed) or SmallCards.jsx (WeatherCard + CloudRain/StatusPill/Link/ChevronRight removed). Dashboard.jsx no longer fetches barn-board for weather. Sparkles import retained ONLY in legitimate locations (Today, Placeholder, Reports, SetupConciergeCard, FounderWalkthrough, CuratedTimeline). No orphaned references to /ai/generate or AIRequest model anywhere in the codebase.",
+    "Founder Walkthrough confirmed at 'STEP 1 OF 6' — matches the surviving-surfaces-only requirement."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (19/19 passed, 1 legacy skip)", "frontend": "100% (all 18 regression routes + redirects + dashboard + horse-profile checks passed)"},
+  "test_credentials": "admin@equinesync.com / demo1234 (used)",
+  "seed_data_creation": "None — used existing seed",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Sprint was a pure deletion sprint and all assertions verified end-to-end. /inventory is intentionally still a Placeholder (Critical #2 of separate sprint). Founder Walkthrough is 6 steps referencing Today/Feed/Medications/Horses/Owner Portal only — all surfaces preserved. Backend test_equinesync.py contains the canonical assertions: test_dashboard_barn_board (no weather key) + test_ai_generate_endpoint_is_gone (404).",
+  "rca of the issue": "N/A — no issues found."
+}

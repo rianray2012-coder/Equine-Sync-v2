@@ -1,33 +1,7 @@
 import React from "react";
-import { Link } from "react-router-dom";
-import { Card, StatusPill } from "../Primitives";
-import { CloudRain, GraduationCap, ChevronRight } from "lucide-react";
+import { Card } from "../Primitives";
+import { GraduationCap } from "lucide-react";
 import { money } from "../../lib/api";
-
-/** Weather advisory — sourced from /dashboard/barn-board until a real weather feed is wired. */
-export const WeatherCard = ({ board }) => (
-  <Card data-testid="weather-card">
-    <div className="flex items-start justify-between mb-4">
-      <div>
-        <div className="label-eyebrow">Weather Advisory</div>
-        <h3 className="font-display text-2xl text-equine-ivory mt-1">
-          {board?.weather?.condition || "—"}
-        </h3>
-      </div>
-      <CloudRain strokeWidth={1.4} className="text-equine-brassLight" />
-    </div>
-    <div className="text-equine-silver/80 text-sm space-y-2">
-      <div className="flex justify-between">
-        <span>Temperature</span>
-        <span className="text-equine-ivory">{board?.weather?.temp_f ?? "—"}°F</span>
-      </div>
-      <div className="py-1"><StatusPill tone="warning" dot>Caution</StatusPill></div>
-      <div className="text-equine-platinum/70 text-[12.5px] leading-relaxed">
-        {board?.weather?.alert}
-      </div>
-    </div>
-  </Card>
-);
 
 /** Operational counters — engine-derived. Calm, no fake percentages. */
 export const OperationsCard = ({ summary }) => (

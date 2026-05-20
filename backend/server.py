@@ -132,9 +132,6 @@ class LoginBody(BaseModel):
     email: EmailStr
     password: str
 
-class AIRequest(BaseModel):
-    kind: str  # wellness_insight, training_summary, owner_update
-    context: Dict[str, Any]
 
 def _user_safe(user: dict) -> dict:
     return {k: v for k, v in user.items() if k not in ("password_hash", "_id")}
@@ -238,39 +235,6 @@ async def weekly_recap_run_now(user=Depends(get_current_user)):
 
 # ---------------- Dashboard summary (extracted to routes/dashboard.py) ----------------
 # See routes/dashboard.py — included into api_router at the bottom of this file.
-
-# ---------------- AI assistant ----------------
-@api_router.post("/ai/generate")
-async def ai_generate(body: AIRequest, user=Depends(get_current_user)):
-    try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-    except Exception as e:
-        raise HTTPException(500, f"AI library unavailable: {e}")
-
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
-    if not api_key:
-        raise HTTPException(500, "Emergent LLM key not configured")
-
-    prompts = {
-        "wellness_insight": "You are an experienced equine wellness specialist. Given the horse's wellness data, write a concise 3-4 sentence professional insight noting trends, risks, and one practical recommendation. Be warm and authoritative.",
-        "training_summary": "You are a top-tier riding coach. Given the training session details, write a refined 3-4 sentence summary that captures progress, what was schooled, and the next priority for the horse. Use elegant, professional language.",
-        "owner_update": "You are the barn manager at a luxury show stable writing to a horse's owner. Compose a warm 3-5 sentence personalised update covering today's training, wellbeing, and one delightful observation. Keep tone refined and reassuring.",
-    }
-    system = prompts.get(body.kind, prompts["owner_update"])
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=f"equinesync-{user['id']}-{new_id()[:8]}",
-        system_message=system,
-    ).with_model("anthropic", "claude-sonnet-4-5-20250929")
-
-    ctx_text = "\n".join(f"{k}: {v}" for k, v in body.context.items())
-    msg = UserMessage(text=f"Context:\n{ctx_text}\n\nWrite the response now.")
-    try:
-        reply = await chat.send_message(msg)
-        return {"text": reply}
-    except Exception as e:
-        logging.exception("AI failed")
-        raise HTTPException(500, f"AI generation failed: {e}")
 
 # ---------------- Seed ----------------
 @api_router.post("/seed")

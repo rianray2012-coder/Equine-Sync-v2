@@ -11,7 +11,7 @@ import { useAuth } from "../context/AuthContext";
 import SetupConciergeCard from "../components/dashboard/SetupConciergeCard";
 import ActionTile from "../components/dashboard/ActionTile";
 import AlertsCard from "../components/dashboard/AlertsCard";
-import { WeatherCard, OperationsCard, UpcomingCareCard } from "../components/dashboard/SmallCards";
+import { OperationsCard, UpcomingCareCard } from "../components/dashboard/SmallCards";
 import FounderWalkthrough, { walkthroughSeen } from "../components/FounderWalkthrough";
 
 /**
@@ -23,7 +23,6 @@ export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [summary, setSummary] = useState(null);
-  const [board, setBoard] = useState(null);
   const [progress, setProgress] = useState(null);
   const [steps, setSteps] = useState([]);
   const [upcoming, setUpcoming] = useState([]);
@@ -32,7 +31,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     api.get("/dashboard/summary").then((r) => setSummary(r.data)).catch(() => {});
-    api.get("/dashboard/barn-board").then((r) => setBoard(r.data)).catch(() => {});
     api.get("/onboarding/progress").then((r) => setProgress(r.data)).catch(() => {});
     api.get("/onboarding/steps").then((r) => setSteps(r.data.steps)).catch(() => setSteps([]));
 
@@ -150,8 +148,7 @@ export default function Dashboard() {
 
       {/* SECTION 2 · Daily care workflows */}
       <SectionEyebrow>Daily Care · Workflows</SectionEyebrow>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-12 animate-fade-in-delay-1">
-        <WeatherCard board={board} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12 animate-fade-in-delay-1">
         <OperationsCard summary={summary} />
         <UpcomingCareCard upcoming={upcoming} loading={upcomingLoading} />
       </div>
