@@ -1,6 +1,22 @@
 # EquineSync — Production Readiness Tracker
 
-**Generated:** Feb 19 2026 · **Last updated:** Feb 19 2026 (Phase-A complete) · **Owner:** Engineering
+**Generated:** Feb 19 2026 · **Last updated:** Feb 20 2026 (Phase-B complete)
+
+## Phase-B Delta (Feb 20 2026 — vet/health completion loop)
+
+✅ **Vet completion writes to `vet_records`** — when a vet task is completed via the engine, a denormalized row is written to the legacy `vet_records` collection (`source: "task_engine"`). The existing Health page sees the outcome immediately without any read-path migration.
+✅ **Farrier completion writes to `farrier_history`** — same pattern. New `GET /api/farrier-history` endpoint exposed.
+✅ **Auto follow-up scheduling** — if `payload_actual.follow_up_due` (vet) or `next_visit_due` (farrier) is present, the engine creates a follow-up task at that date with `parent_task_id` linkage. Visible on the Health "Upcoming visits" card.
+✅ **TaskEvent payload_snapshot enriched** — completions now carry `vet_name`, `farrier_name`, `cost`, `vet_record_id`, `farrier_record_id`, `follow_up_task_id`. CuratedTimeline surfaces these as small footnote chips ("with Dr. Maren · $185 · next Jul 1").
+✅ **Health page redesigned** — Farrier History card added alongside Vet Records; both surface engine-projected data with `VIA ENGINE` badges.
+✅ **Coverage**: 4 new pytest cases (vet→record, farrier→history, follow-up auto-schedule, event enrichment). Suite at **17/17 task engine + 103 total, 0 failed**.
+
+**Tier movements:**
+- Health & Vet: Internal-Demo-Ready → **Beta-Ready**.
+
+**Beta-Ready or above: 43% → 47%.**
+
+---
 
 ## Phase-A Delta (Feb 19 2026 — engine consolidation)
 

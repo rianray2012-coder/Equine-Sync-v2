@@ -31,12 +31,14 @@ const UpcomingRow = ({ task, horseLookup, icon: Icon }) => {
 
 export default function Health() {
   const [vet, setVet] = useState([]);
+  const [farrier, setFarrier] = useState([]);
   const [injuries, setInjuries] = useState([]);
   const [upcoming, setUpcoming] = useState([]);
   const [horses, setHorses] = useState({});
 
   useEffect(() => {
     api.get("/vet-records").then((r) => setVet(r.data)).catch(() => {});
+    api.get("/farrier-history").then((r) => setFarrier(r.data)).catch(() => setFarrier([]));
     api.get("/injuries").then((r) => setInjuries(r.data)).catch(() => {});
     api.get("/horses").then((r) => {
       const map = {};
@@ -96,23 +98,68 @@ export default function Health() {
           {vet.length === 0 && (
             <div className="text-equine-inkSoft text-[13px] py-6 text-center">No vet records yet.</div>
           )}
-          {vet.map((v) => (
+          {vet.slice(0, 12).map((v) => (
             <div key={v.id} className="py-3 hairline">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-equine-ink">{v.horse_name} — {v.title}</div>
-                  <div className="text-[12.5px] text-equine-inkMuted">{fmtDate(v.date)} · {v.vet_name}</div>
+                  <div className="text-equine-ink">
+                    {(horses[v.horse_id]?.name) || v.horse_name || "Horse"} — {v.title}
+                  </div>
+                  <div className="text-[12.5px] text-equine-inkMuted">
+                    {fmtDate(v.date)}{v.vet_name ? ` · ${v.vet_name}` : ""}
+                    {v.source === "task_engine" && <span className="ml-2 text-equine-brass text-[10.5px] uppercase tracking-[0.18em]">via engine</span>}
+                  </div>
                 </div>
                 <div className="text-right">
                   <div className="text-equine-inkMuted text-[13px]">{money(v.cost)}</div>
-                  <StatusPill tone="neutral">{v.type}</StatusPill>
+                  {v.type && <StatusPill tone="neutral">{v.type}</StatusPill>}
                 </div>
               </div>
+              {v.follow_up_due && (
+                <div className="text-[11.5px] text-equine-saddle mt-1.5">
+                  Follow-up scheduled · {fmtDate(v.follow_up_due)}
+                </div>
+              )}
             </div>
           ))}
         </Card>
 
-        <Card>
+        <Card data-testid="farrier-history-card">
+          <h2 className="font-display text-2xl mb-4 text-equine-ink flex items-center gap-2">
+            <Hammer className="w-4 h-4 text-equine-navy" /> Farrier history
+          </h2>
+          {farrier.length === 0 ? (
+            <div className="text-equine-inkSoft text-[13px] py-6 text-center italic">
+              Farrier visits will appear here automatically when completed.
+            </div>
+          ) : (
+            farrier.slice(0, 12).map((f) => (
+              <div key={f.id} className="py-3 hairline">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-equine-ink">
+                      {(horses[f.horse_id]?.name) || "Horse"}
+                      {f.farrier_name && ` · ${f.farrier_name}`}
+                    </div>
+                    <div className="text-[12.5px] text-equine-inkMuted">
+                      {fmtDate(f.date)}
+                      {f.shoes_on?.length > 0 && ` · ${f.shoes_on.join("/")}`}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    {f.cost > 0 && <div className="text-equine-inkMuted text-[13px]">{money(f.cost)}</div>}
+                    {f.next_visit_due && (
+                      <div className="text-[11px] text-equine-saddle">next {fmtDate(f.next_visit_due)}</div>
+                    )}
+                  </div>
+                </div>
+                {f.trim_notes && <div className="text-[12px] text-equine-inkMuted mt-1 italic">{f.trim_notes}</div>}
+              </div>
+            ))
+          )}
+        </Card>
+
+        <Card className="lg:col-span-2">
           <h2 className="font-display text-2xl mb-4 text-equine-ink flex items-center gap-2">
             <Activity className="w-4 h-4 text-equine-navy" /> Injuries & rehab
           </h2>

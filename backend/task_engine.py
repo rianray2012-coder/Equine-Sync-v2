@@ -214,6 +214,11 @@ class TaskEngine:
         await self.db.task_events.create_index([("tenant_id", 1), ("subject_horse_ids", 1), ("occurred_at", -1)])
         await self.db.task_events.create_index([("tenant_id", 1), ("actor_user_id", 1), ("occurred_at", -1)])
         await self.db.task_events.create_index([("tenant_id", 1), ("event_type", 1), ("occurred_at", -1)])
+        # Phase-B: indexes for engine-projected health collections
+        await self.db.vet_records.create_index([("horse_id", 1), ("date", -1)])
+        await self.db.vet_records.create_index([("linked_task_id", 1)])
+        await self.db.farrier_history.create_index([("horse_id", 1), ("date", -1)])
+        await self.db.farrier_history.create_index([("linked_task_id", 1)])
 
     # -- materialization --------------------------------------------------
     def _expand_rrule(self, template: dict, horizon: datetime) -> List[datetime]:
@@ -397,6 +402,138 @@ class TaskEngine:
             {"id": canonical["id"]}, {"$set": {"notes": new_notes}},
         )
 
+    # -- category post-completion hooks ------------------------------
+    # Phase-B (Feb 20 2026): vet/farrier completions write back to the legacy
+    # historical collections so the existing Health page + analytics see the
+    # outcome immediately. Engine remains source of truth; these rows are
+    # denormalized projections for read-paths that haven't migrated yet.
+
+    @staticmethod
+    def _build_vet_record(task: dict, body: CompleteBody, completion_id: str) -> dict:
+        pa = body.payload_actual or {}
+        snap = task.get("payload") or {}
+        horse_ids = task.get("linked_horse_ids") or []
+        return {
+            "id": new_id(),
+            "horse_id": horse_ids[0] if horse_ids else None,
+            "horse_ids": horse_ids,  # multi-horse support without breaking single-horse readers
+            "type": pa.get("type") or snap.get("type") or "exam",
+            "title": task.get("title") or "Vet visit",
+            "date": (body.completed_at or iso(now_utc())).split("T")[0],
+            "vet_name": pa.get("vet_name") or snap.get("vet_name"),
+            "notes": pa.get("notes") or body.notes,
+            "document_url": pa.get("document_url"),
+            "cost": float(pa.get("cost") or 0),
+            "follow_up_due": pa.get("follow_up_due"),
+            "linked_task_id": task.get("id"),
+            "linked_completion_id": completion_id,
+            "source": "task_engine",
+            "created_at": iso(now_utc()),
+        }
+
+    @staticmethod
+    def _build_farrier_record(task: dict, body: CompleteBody, completion_id: str) -> dict:
+        pa = body.payload_actual or {}
+        snap = task.get("payload") or {}
+        horse_ids = task.get("linked_horse_ids") or []
+        return {
+            "id": new_id(),
+            "horse_id": horse_ids[0] if horse_ids else None,
+            "horse_ids": horse_ids,
+            "farrier_name": pa.get("farrier_name") or snap.get("farrier_name"),
+            "shoes_on": pa.get("shoes_on") or snap.get("shoes_on") or [],
+            "trim_notes": pa.get("trim_notes") or body.notes,
+            "cost": float(pa.get("cost") or 0),
+            "date": (body.completed_at or iso(now_utc())).split("T")[0],
+            "next_visit_due": pa.get("next_visit_due"),
+            "linked_task_id": task.get("id"),
+            "linked_completion_id": completion_id,
+            "source": "task_engine",
+            "created_at": iso(now_utc()),
+        }
+
+    async def _auto_schedule_follow_up(self, task: dict, follow_up_due: str,
+                                       tenant_id: str, actor_user_id: Optional[str]):
+        """Create a one-off task occurrence for the next scheduled vet/farrier visit."""
+        if not follow_up_due:
+            return None
+        # Parse to ISO; accept either YYYY-MM-DD or full ISO
+        try:
+            if "T" in follow_up_due:
+                sched = parse_iso(follow_up_due)
+            else:
+                sched = datetime.fromisoformat(f"{follow_up_due}T09:00:00+00:00")
+        except Exception:
+            logger.warning("follow_up_due unparseable: %r", follow_up_due)
+            return None
+        wb = 60 * 24  # 24h before
+        wa = 60 * 24 * 2  # 48h after — vet/farrier visits often slip
+        doc = {
+            "id": new_id(),
+            "tenant_id": tenant_id,
+            "template_id": None,
+            "category": task.get("category"),
+            "title": f"Follow-up: {task.get('title')}",
+            "linked_horse_ids": list(task.get("linked_horse_ids") or []),
+            "linked_location_id": task.get("linked_location_id"),
+            "assignee_user_id": task.get("assignee_user_id"),
+            "assignee_role": task.get("assignee_role"),
+            "scheduled_at": iso(sched),
+            "window_start": iso(sched - timedelta(minutes=wb)),
+            "window_end": iso(sched + timedelta(minutes=wa)),
+            "priority": task.get("priority", "standard"),
+            "status": "scheduled",
+            "payload": dict(task.get("payload") or {}),
+            "notes": "Auto-scheduled from prior visit",
+            "client_completion_id": None,
+            "created_at": iso(now_utc()),
+            "updated_at": iso(now_utc()),
+            "parent_task_id": task.get("id"),
+        }
+        await self.db.tasks.insert_one(doc)
+        await self.emit_event(
+            tenant_id=tenant_id,
+            event_type="task.created",
+            task=doc,
+            actor_user_id=actor_user_id,
+            extra={"reason": "follow_up_auto_scheduled"},
+        )
+        return doc["id"]
+
+    async def _post_complete_hooks(self, task: dict, body: CompleteBody,
+                                    completion: dict, user: dict, tenant_id: str) -> dict:
+        """Run category-specific side effects. All failures are logged but never
+        block the completion path — operational realism over strict consistency.
+        Returns a dict of side-effect outputs to enrich the TaskEvent snapshot.
+        """
+        side_effects: Dict[str, Any] = {}
+        cat = task.get("category")
+        try:
+            if cat == "vet" and body.outcome in ("done", "partial"):
+                rec = self._build_vet_record(task, body, completion["id"])
+                await self.db.vet_records.insert_one(rec)
+                side_effects["vet_record_id"] = rec["id"]
+                side_effects["cost"] = rec["cost"]
+                side_effects["vet_name"] = rec["vet_name"]
+                if rec["follow_up_due"]:
+                    side_effects["follow_up_task_id"] = await self._auto_schedule_follow_up(
+                        task, rec["follow_up_due"], tenant_id, user["id"],
+                    )
+            elif cat == "farrier" and body.outcome in ("done", "partial"):
+                rec = self._build_farrier_record(task, body, completion["id"])
+                await self.db.farrier_history.insert_one(rec)
+                side_effects["farrier_record_id"] = rec["id"]
+                side_effects["cost"] = rec["cost"]
+                side_effects["farrier_name"] = rec["farrier_name"]
+                if rec["next_visit_due"]:
+                    side_effects["follow_up_task_id"] = await self._auto_schedule_follow_up(
+                        task, rec["next_visit_due"], tenant_id, user["id"],
+                    )
+        except Exception:
+            logger.exception("post-complete hook failed for task=%s category=%s",
+                              task.get("id"), cat)
+        return side_effects
+
     # -- completion ------------------------------------------------------
     async def complete_task(self, task_id: str, body: CompleteBody, user: dict,
                             tenant_id: str = DEFAULT_TENANT_ID) -> dict:
@@ -443,6 +580,10 @@ class TaskEngine:
         )
         task["status"] = new_status
 
+        # Phase-B post-completion hooks (vet → vet_record; farrier → farrier_history;
+        # follow-up auto-scheduling). Side-effect outputs ride along on the event.
+        side_effects = await self._post_complete_hooks(task, body, completion, user, tenant_id)
+
         event_type = "task.skipped" if new_status == "skipped" else "task.completed"
         await self.emit_event(
             tenant_id=tenant_id,
@@ -450,7 +591,8 @@ class TaskEngine:
             task=task,
             actor_user_id=user["id"],
             extra={"outcome": body.outcome, "completion_id": completion["id"],
-                   "notes": body.notes},
+                   "notes": body.notes,
+                   **side_effects},
         )
         try:
             res = self._track(f"task.{body.outcome}", {"task_id": task_id, "category": task.get("category")}, user["id"])

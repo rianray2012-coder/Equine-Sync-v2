@@ -392,6 +392,13 @@ async def create_vet(body: VetRecordIn, user=Depends(get_current_user)):
     await db.vet_records.insert_one(doc)
     return clean(doc)
 
+# ---------------- Farrier history (engine-projected; Phase-B) ----------------
+@api_router.get("/farrier-history")
+async def list_farrier(horse_id: Optional[str] = None, user=Depends(get_current_user)):
+    q = {"horse_id": horse_id} if horse_id else {}
+    items = await db.farrier_history.find(q, {"_id": 0}).sort("date", -1).to_list(500)
+    return items
+
 # ---------------- Injuries ----------------
 @api_router.get("/injuries")
 async def list_injuries(horse_id: Optional[str] = None, user=Depends(get_current_user)):

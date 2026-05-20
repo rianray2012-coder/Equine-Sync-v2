@@ -194,3 +194,117 @@ def test_skip_idempotent(H):
                       json={"client_completion_id": ccid, "reason": "x", "refused": False})
     assert r2.status_code == 200
     assert r2.json()["deduped"] is True
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Phase-B: Vet/Farrier completion loop
+# ────────────────────────────────────────────────────────────────────────────
+
+def _ad_hoc(H, category, title_prefix, payload=None, follow_up_field=None):
+    horse_r = requests.get(f"{API}/horses", headers=H, timeout=30)
+    horse_id = horse_r.json()[0]["id"]
+    sched = datetime.now(timezone.utc).isoformat()
+    body = {
+        "category": category,
+        "title": f"{title_prefix}-{uuid.uuid4()}",
+        "linked_horse_ids": [horse_id],
+        "scheduled_at": sched,
+    }
+    if payload:
+        body["payload"] = payload
+    r = requests.post(f"{API}/tasks", headers=H, timeout=30, json=body)
+    assert r.status_code == 200, r.text
+    return r.json()["task"]["id"], horse_id
+
+
+def test_vet_completion_writes_vet_record(H):
+    tid, horse_id = _ad_hoc(H, "vet", "vet")
+    ccid = f"vet-{uuid.uuid4()}"
+    follow_up = (datetime.now(timezone.utc) + timedelta(days=42)).date().isoformat()
+    r = requests.post(f"{API}/tasks/{tid}/complete", headers=H, timeout=30, json={
+        "client_completion_id": ccid,
+        "outcome": "done",
+        "payload_actual": {
+            "vet_name": "Dr. Maren",
+            "type": "vaccine",
+            "cost": 185,
+            "notes": "Booster — uneventful",
+            "follow_up_due": follow_up,
+        },
+    })
+    assert r.status_code == 200
+    # The newly-written vet_record should appear in /vet-records for this horse
+    recs = requests.get(f"{API}/vet-records?horse_id={horse_id}",
+                        headers=H, timeout=30).json()
+    engine_rows = [v for v in recs if v.get("source") == "task_engine" and v.get("linked_task_id") == tid]
+    assert engine_rows, f"No vet_record written for task {tid}"
+    rec = engine_rows[0]
+    assert rec["vet_name"] == "Dr. Maren"
+    assert rec["cost"] == 185
+    assert rec["follow_up_due"] == follow_up
+
+
+def test_vet_completion_auto_schedules_follow_up(H):
+    tid, horse_id = _ad_hoc(H, "vet", "vetfu")
+    follow_up = (datetime.now(timezone.utc) + timedelta(days=21)).date().isoformat()
+    r = requests.post(f"{API}/tasks/{tid}/complete", headers=H, timeout=30, json={
+        "client_completion_id": f"vetfu-{uuid.uuid4()}",
+        "outcome": "done",
+        "payload_actual": {
+            "vet_name": "Dr. Maren", "cost": 0,
+            "follow_up_due": follow_up,
+        },
+    })
+    assert r.status_code == 200
+    # Search forward for a follow-up task on that horse within the next 30 days
+    start = (datetime.now(timezone.utc) + timedelta(days=20)).isoformat()
+    end = (datetime.now(timezone.utc) + timedelta(days=22)).isoformat()
+    qs = (f"category=vet&horse_id={horse_id}"
+          f"&start={start}&end={end}")
+    listing = requests.get(f"{API}/tasks?{qs}", headers=H, timeout=30).json()
+    titles = [t["title"] for t in listing["items"]]
+    assert any(t.startswith("Follow-up:") for t in titles), f"No follow-up scheduled, got: {titles}"
+
+
+def test_farrier_completion_writes_history_row(H):
+    tid, horse_id = _ad_hoc(H, "farrier", "shoeing")
+    ccid = f"far-{uuid.uuid4()}"
+    next_visit = (datetime.now(timezone.utc) + timedelta(weeks=6)).date().isoformat()
+    r = requests.post(f"{API}/tasks/{tid}/complete", headers=H, timeout=30, json={
+        "client_completion_id": ccid,
+        "outcome": "done",
+        "payload_actual": {
+            "farrier_name": "Jordan A.",
+            "shoes_on": ["fronts"],
+            "trim_notes": "Slight flare on the off fore",
+            "cost": 135,
+            "next_visit_due": next_visit,
+        },
+    })
+    assert r.status_code == 200
+    hist = requests.get(f"{API}/farrier-history?horse_id={horse_id}",
+                        headers=H, timeout=30).json()
+    rows = [h for h in hist if h.get("linked_task_id") == tid]
+    assert rows, "No farrier_history row written"
+    row = rows[0]
+    assert row["farrier_name"] == "Jordan A."
+    assert row["cost"] == 135
+    assert "fronts" in (row.get("shoes_on") or [])
+
+
+def test_event_payload_carries_engine_enrichments(H):
+    tid, horse_id = _ad_hoc(H, "vet", "vetev")
+    r = requests.post(f"{API}/tasks/{tid}/complete", headers=H, timeout=30, json={
+        "client_completion_id": f"vetev-{uuid.uuid4()}",
+        "outcome": "done",
+        "payload_actual": {"vet_name": "Dr. K", "cost": 90},
+    })
+    assert r.status_code == 200
+    tl = requests.get(f"{API}/horses/{horse_id}/timeline", headers=H, timeout=30).json()
+    matches = [ev for ev in tl["items"]
+               if ev.get("task_id") == tid and ev.get("event_type") == "task.completed"]
+    assert matches, "Expected task.completed event not found in timeline"
+    snap = matches[0].get("payload_snapshot") or {}
+    assert snap.get("vet_name") == "Dr. K"
+    assert snap.get("cost") == 90
+    assert snap.get("vet_record_id"), "vet_record_id should ride along on the event"

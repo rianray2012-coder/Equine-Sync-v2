@@ -26,13 +26,36 @@ const OUTCOME_PHRASING = {
   issue:   "noted as an issue",
 };
 
+const fmtFollowUp = (raw) => {
+  if (!raw) return null;
+  try {
+    const d = new Date(raw);
+    if (isNaN(d)) return null;
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } catch { return null; }
+};
+
 const phrase = (ev) => {
   const cat = CATEGORY_META[ev.category];
   if (!cat) return ev.payload_snapshot?.title || "Care update";
-  const title = ev.payload_snapshot?.title || cat.label;
-  const outcome = ev.payload_snapshot?.outcome;
+  const snap = ev.payload_snapshot || {};
+  const title = snap.title || cat.label;
+  const outcome = snap.outcome;
   const verb = outcome ? OUTCOME_PHRASING[outcome] || "completed" : "completed";
   return `${title} ${verb}`;
+};
+
+/** Returns small grey footnote lines underneath the headline. */
+const detailsFor = (ev) => {
+  const snap = ev.payload_snapshot || {};
+  const lines = [];
+  if (snap.vet_name) lines.push(`with ${snap.vet_name}`);
+  if (snap.farrier_name) lines.push(`with ${snap.farrier_name}`);
+  if (snap.cost && snap.cost > 0) lines.push(`$${Number(snap.cost).toLocaleString()}`);
+  const followUp = fmtFollowUp(snap.follow_up_due || snap.next_visit_due);
+  if (followUp) lines.push(`next due ${followUp}`);
+  if (snap.notes) lines.push(snap.notes);
+  return lines;
 };
 
 const groupByDay = (items) => {
@@ -108,14 +131,14 @@ export default function CuratedTimeline({ horseId, limit = 40, ownerView = true 
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-[13.5px] text-equine-ink font-medium">{phrase(ev)}</div>
-                        <div className="text-[11.5px] text-equine-inkMuted mt-0.5 flex items-center gap-2">
+                        <div className="text-[11.5px] text-equine-inkMuted mt-0.5 flex items-center gap-2 flex-wrap">
                           <span>{fmtTime(ev.occurred_at)}</span>
-                          {ev.payload_snapshot?.notes && (
-                            <>
+                          {detailsFor(ev).map((line, i) => (
+                            <React.Fragment key={i}>
                               <span className="text-equine-inkSoft">·</span>
-                              <span className="italic truncate">{ev.payload_snapshot.notes}</span>
-                            </>
-                          )}
+                              <span className="truncate max-w-[260px]">{line}</span>
+                            </React.Fragment>
+                          ))}
                         </div>
                       </div>
                     </div>
