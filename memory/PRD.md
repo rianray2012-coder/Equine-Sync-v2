@@ -21,6 +21,34 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
+### Founder-Beta Trust Tightening Sprint (Feb 20 2026 — subtraction-only release)
+A deliberate **pure-subtraction release** to reduce fake/demo trust risks before founder-barn onboarding. The release should feel **calmer, tighter, more trustworthy** — never smaller or less capable.
+
+**Deletes:**
+- **Weather card** — hardcoded `temp_f:58, "Light Rain"` removed from Dashboard. `WeatherCard` export removed from `SmallCards.jsx`. `weather` key stripped from `/api/dashboard/barn-board` response. Daily Care grid drops 3-col → 2-col (OperationsCard + UpcomingCareCard).
+- **HorseProfile speculative AI buttons** — `Wellness Insight`, `Training Summary`, `Owner Update` buttons + the entire AI Insight card removed. `/horses/{id}` still renders profile + 10 tabs + Curated Timeline + all care drill-downs.
+- **`/api/ai/generate` endpoint** — handler, `AIRequest` model, and `emergentintegrations` LLM call all deleted. Returns 404. Wellness Pulse remains the calm rule-based observational layer.
+- **Sidebar nav cleanup** — removed `/shows`, `/documents`, `/maintenance`, `/staff` items. Lucide icons `Trophy`, `FileText`, `Wrench`, `ClipboardList` removed. Operations section now contains only Inventory + Incidents; Program section contains only Riders + Lessons + Training.
+
+**Redirects** (so legacy bookmarks never 404 or render Placeholder UI):
+- `/shows` → `/`
+- `/documents` → `/horses`
+- `/maintenance` → `/incidents`
+- `/staff` → `/settings` (folded into Settings → Team direction)
+
+**`/inventory`** is **intentionally still on Placeholder** — it's Critical #2 of the post-sprint founder-beta-readiness list, scheduled separately.
+
+**Test updates:**
+- `test_dashboard_barn_board` now asserts NO `weather` key.
+- `test_ai_generate_owner_update` REPLACED by `test_ai_generate_endpoint_is_gone` asserting 404.
+
+**Verification (testing_agent_v3_fork iteration_16):**
+- Backend: 100% (19/19 + 1 legacy skip).
+- Frontend: 100% (all 18 surviving routes + redirects + dashboard + horse-profile assertions passed).
+- Zero leftover dead imports verified by code review (`Sidebar.jsx`, `SmallCards.jsx`, `Dashboard.jsx`, `HorseProfile.jsx` all clean).
+- Zero `/ai/generate` or `AIRequest` references remain in the codebase.
+- Founder Walkthrough still references only surviving surfaces (Today, Feed, Medications, Horses, Owner Portal).
+
 ### Phase-F COMPLETE — `routes/operations.py` extraction (Feb 20 2026)
 - **`routes/operations.py`** (233 LOC) — final care-side lift-and-shift: lessons, training, invoices, messages, service-requests (with role-gated `/approve` + `/decline` + 409 state guards), incidents. Eight Pydantic models migrated alongside their handlers.
 - **`server.py` is now 836 lines** — **cumulative 57% reduction** since Phase-F began (1949 → 836).
