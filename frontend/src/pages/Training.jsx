@@ -99,6 +99,19 @@ export default function Training() {
         testidPrefix="training-add"
         onCreated={load}
       />
+
+      {/* Mobile FAB — log the ride before you forget. Hidden if no horses. */}
+      {!horsesEmpty && (
+        <button
+          type="button"
+          onClick={() => setAddOpen(true)}
+          className="fab lg:hidden"
+          data-testid="training-fab"
+          aria-label="Log training session"
+        >
+          <Plus strokeWidth={1.8} className="w-7 h-7" />
+        </button>
+      )}
     </div>
   );
 }

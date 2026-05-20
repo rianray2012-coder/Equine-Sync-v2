@@ -133,6 +133,19 @@ export default function Lessons() {
         testidPrefix="lessons-add"
         onCreated={load}
       />
+
+      {/* Mobile FAB — quick aisle-side scheduling. Hidden when no riders. */}
+      {!ridersEmpty && (
+        <button
+          type="button"
+          onClick={() => setAddOpen(true)}
+          className="fab lg:hidden"
+          data-testid="lessons-fab"
+          aria-label="Schedule lesson"
+        >
+          <Plus strokeWidth={1.8} className="w-7 h-7" />
+        </button>
+      )}
     </div>
   );
 }

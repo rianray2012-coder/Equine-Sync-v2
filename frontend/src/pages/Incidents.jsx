@@ -110,6 +110,17 @@ export default function Incidents() {
         testidPrefix="incidents-add"
         onCreated={load}
       />
+
+      {/* Mobile FAB — fast in-the-moment safety logging */}
+      <button
+        type="button"
+        onClick={() => setAddOpen(true)}
+        className="fab lg:hidden"
+        data-testid="incidents-fab"
+        aria-label="Report incident"
+      >
+        <Plus strokeWidth={1.8} className="w-7 h-7" />
+      </button>
     </div>
   );
 }

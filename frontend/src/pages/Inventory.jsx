@@ -149,6 +149,17 @@ export default function Inventory() {
         testidPrefix="inventory-add"
         onCreated={load}
       />
+
+      {/* Mobile FAB — aisle-side quick add */}
+      <button
+        type="button"
+        onClick={() => setAddOpen(true)}
+        className="fab lg:hidden"
+        data-testid="inventory-fab"
+        aria-label="Add inventory item"
+      >
+        <Plus strokeWidth={1.8} className="w-7 h-7" />
+      </button>
     </div>
   );
 }
