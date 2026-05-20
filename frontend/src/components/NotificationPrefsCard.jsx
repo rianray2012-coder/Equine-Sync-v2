@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { Card } from "./Primitives";
-import { Bell, Mail, Inbox } from "lucide-react";
+import { Bell, Mail, Inbox, Sunrise } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "../context/AuthContext";
 
 const EVENT_TYPES = [
   { key: "task.completed", label: "Completed" },
@@ -33,6 +34,8 @@ const Toggle = ({ checked, onChange, testid }) => (
 );
 
 export default function NotificationPrefsCard() {
+  const { user } = useAuth();
+  const isOwner = user?.role === "horse_owner";
   const [prefs, setPrefs] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -78,6 +81,7 @@ export default function NotificationPrefsCard() {
         inbox_enabled: prefs.inbox_enabled,
         email_enabled: prefs.email_enabled,
         push_enabled: false,
+        digest_enabled: prefs.digest_enabled,
         inbox_rules: prefs.inbox_rules,
         email_rules: prefs.email_rules,
       });
@@ -126,6 +130,25 @@ export default function NotificationPrefsCard() {
           />
         </div>
       </div>
+
+      {isOwner && (
+        <div className="bg-equine-soft/70 border border-equine-hairline rounded-xl px-4 py-3.5 mb-6 flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-start gap-2 min-w-[220px] flex-1">
+            <Sunrise className="w-3.5 h-3.5 text-equine-navy mt-0.5" />
+            <div>
+              <div className="text-[13px] text-equine-ink">Morning digest</div>
+              <div className="text-[11.5px] text-equine-inkMuted max-w-md">
+                One calm email each morning summarising your horse&apos;s care. Pause anytime.
+              </div>
+            </div>
+          </div>
+          <Toggle
+            testid="toggle-digest-enabled"
+            checked={prefs.digest_enabled !== false}
+            onChange={(v) => setPrefs((p) => ({ ...p, digest_enabled: v }))}
+          />
+        </div>
+      )}
 
       <div className="overflow-x-auto scrollbar-luxe">
         <table className="w-full text-[12.5px] min-w-[640px]">

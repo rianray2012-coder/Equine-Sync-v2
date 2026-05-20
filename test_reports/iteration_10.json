@@ -1,0 +1,56 @@
+{
+  "summary": "Phase-C Owner Trust Loop verified end-to-end. Backend pytest: 9/9 PASS on test_owner_trust.py (digest preview, admin run-now, decline endpoint, prefs.digest_enabled toggle, plus 5 pure composition tests). Added new test_owner_trust_edges.py: 4/6 PASS — found 2 backend authorization gaps on /service-requests/{id}/decline and (by inspection) /service-requests/{id}/approve. Frontend: OwnerDigestCard renders for horse_owner above Care Timeline with calm 'All quiet today' empty state copy; digest-enabled-toggle persists (aria-pressed cycles true→false→true) and fires toast; digest-send-me-btn is correctly disabled when preview.empty=true; Settings notification prefs card shows toggle-digest-enabled ONLY for owners (verified hidden for admin); save-notification-prefs persists; admin sees decline-{sr_id} buttons, decline-modal opens with decline-reason-input + decline-confirm-btn, decline persists with 'declined' status pill and 'Note from the barn' visible to owner; groom and owner do NOT see approve/decline buttons in UI. Regression sweep (8 routes: /dashboard, /today, /feed, /medications, /health, /horses, /owner-portal, /settings) all load with 0 console errors, 0 error elements. Notifications bell+panel still works; prefs matrix checkboxes toggle and save fires 'Preferences saved' toast.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/service-requests/{sr_id}/decline",
+        "issue": "No role gating — any authenticated user (groom, owner, even the requester themselves) can decline any service request. Frontend hides the button for non-admin/manager/trainer, but backend has zero enforcement (server.py:527-541 just uses get_current_user). Reproduction: login as groom@equinesync.com, POST /api/service-requests/<any_pending_id>/decline with {reason:'nope'} → 200 OK, status flips to 'declined'. Same for owner@equinesync.com self-declining their own request.",
+        "priority": "HIGH"
+      },
+      {
+        "endpoint": "POST /api/service-requests/{sr_id}/approve",
+        "issue": "Same authorization gap as /decline — server.py:517-520 has no role check. Any authenticated user can approve any service request. Not covered by explicit pytest but confirmed by code inspection; identical pattern to /decline.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_owner_trust.py",
+    "/app/backend/tests/test_owner_trust_edges.py",
+    "/app/test_reports/pytest/phaseC_owner_trust.xml",
+    "/app/test_reports/pytest/phaseC_edges.xml"
+  ],
+  "action_items": [
+    "Add role gating to POST /api/service-requests/{sr_id}/decline in /app/backend/server.py — restrict to user.role in {admin, barn_manager, trainer}; return 403 otherwise. Mirror the pattern used by /admin/digest/run-now (server.py:573).",
+    "Add the same role check to POST /api/service-requests/{sr_id}/approve (server.py:517) — currently any authenticated user can approve. This is a parallel finding from code review; not explicitly UI-tested but identical authorization gap.",
+    "Optional hardening: also check the request is in 'pending' state before mutating; currently /decline silently re-mutates an already-approved or already-declined request to 'declined' (test_decline_idempotency_or_state_guard intentionally accepts 200/400/409 — backend currently returns 200 on re-decline, overwriting prior state).",
+    "(From iteration_9 carry-over, not re-flagged here) Onboarding.jsx:277 copy 'daily Barn Board' → 'daily Today view'."
+  ],
+  "critical_code_review_comments": [
+    "server.py:527-541 /decline endpoint trusts get_current_user without role check — defense-in-depth violation. Frontend gating alone is not a security boundary; any curl/Postman caller bypasses UI. Same applies to /approve at server.py:517-520.",
+    "server.py:528 decline_sr accepts Optional[DeclineSRBody] = None but FastAPI/Pydantic will fail-fast on malformed JSON; consider explicit body=Body(default=None) for clarity. Working as-is, but Optional+None default on body params can surprise.",
+    "server.py:540 returns the raw mongo doc via find_one with {_id:0} projection — correct ObjectId hygiene. Good.",
+    "OwnerDigestCard.jsx:132 disables send button when preview.empty=true — correct UX, but a fresh owner who just toggled digest_enabled back on after a long pause will see the send button stay disabled until the preview is rechecked. Consider re-running load() after toggleEnabled flips to true. Minor; not blocking.",
+    "NotificationPrefsCard.jsx:134 isOwner check is solid (user?.role === 'horse_owner'); digest toggle correctly hidden for other roles. Verified in UI.",
+    "OwnerPortal.jsx:194 canDecide gate on UI is right, but as noted the backend must also enforce — UI gating is for UX, not security."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_owner_trust_edges.py (new — role gating edge tests)"
+  ],
+  "success_rate": {
+    "backend": "13/15 = 86.7% (9/9 original Phase-C + 4/6 new role-gating edges; 2 failures both expose the same auth gap on /decline)",
+    "frontend": "100% (all 8 spec items + 8-route regression sweep pass)"
+  },
+  "test_credentials": "admin@equinesync.com, trainer@equinesync.com, owner@equinesync.com, groom@equinesync.com — all use demo1234. All four logged in successfully during this run.",
+  "seed_data_creation": "Created multiple TEST_ service-requests (type=grooming/hand_walk) as owner during pytest and UI runs; admin declined them. No cleanup needed — declined service-requests are inert. No new horses/users created.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase-C frontend is solid — re-test only if main agent edits OwnerDigestCard, NotificationPrefsCard, OwnerPortal decline modal, or the /decline+/approve endpoints. To re-verify backend auth fix after main agent patches server.py: `cd /app/backend && export REACT_APP_BACKEND_URL=https://herd-hub-19.preview.emergentagent.com && python -m pytest tests/test_owner_trust_edges.py -v` — expect 6/6 pass (groom_cannot_decline + owner_cannot_decline currently fail). The existing test_owner_trust.py also uses admin to decline so it will continue passing. Note: pytest must have REACT_APP_BACKEND_URL exported in shell env (not just in frontend/.env) — same caveat as iteration_9.",
+  "rca of the issue": "Root cause: server.py /service-requests/{id}/decline and /approve endpoints inherit only get_current_user (authentication) but no role-based authorization predicate. The frontend OwnerPortal.jsx gates buttons behind `canDecide = user.role in {admin, barn_manager, trainer}` (UI-only). Any user with a valid JWT can call the endpoint directly. Reproduction: 1) login as groom → get token. 2) POST /api/service-requests as owner to create a pending SR. 3) curl -X POST /api/service-requests/<id>/decline -H 'Authorization: Bearer <groom_token>' -d '{\"reason\":\"x\"}' → 200, status flips to declined. Mitigation: add `if user.get('role') not in ('admin','barn_manager','trainer'): raise HTTPException(403, 'Insufficient role')` at the top of both decline_sr and approve_sr. Reuse pattern from server.py:573 (digest_run_now)."
+}

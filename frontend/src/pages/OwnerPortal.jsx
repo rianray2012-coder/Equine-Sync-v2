@@ -2,13 +2,23 @@ import React, { useEffect, useMemo, useState } from "react";
 import { api, fmtDate } from "../lib/api";
 import { Card, PageHeader, StatusPill } from "../components/Primitives";
 import CuratedTimeline from "../components/CuratedTimeline";
-import { Heart } from "lucide-react";
+import OwnerDigestCard from "../components/OwnerDigestCard";
+import { useAuth } from "../context/AuthContext";
+import { Heart, X, Check } from "lucide-react";
+import { toast } from "sonner";
 
 export default function OwnerPortal() {
+  const { user } = useAuth();
+  const isOwner = user?.role === "horse_owner";
+  const canDecide = ["admin", "barn_manager", "trainer"].includes(user?.role);
+
   const [horses, setHorses] = useState([]);
   const [requests, setRequests] = useState([]);
   const [form, setForm] = useState({ horse_id: "", type: "extra_ride", details: "" });
   const [activeHorseId, setActiveHorseId] = useState("");
+  const [declineFor, setDeclineFor] = useState(null);
+  const [declineReason, setDeclineReason] = useState("");
+  const [submittingDecline, setSubmittingDecline] = useState(false);
 
   const load = () => {
     api.get("/horses").then((r) => {
@@ -32,6 +42,28 @@ export default function OwnerPortal() {
     load();
   };
 
+  const openDecline = (sr) => {
+    setDeclineFor(sr);
+    setDeclineReason("");
+  };
+
+  const submitDecline = async () => {
+    if (!declineFor) return;
+    setSubmittingDecline(true);
+    try {
+      await api.post(`/service-requests/${declineFor.id}/decline`, {
+        reason: declineReason.trim() || null,
+      });
+      toast.success("Request declined with a thoughtful note.");
+      setDeclineFor(null);
+      load();
+    } catch {
+      toast.error("Could not decline this request.");
+    } finally {
+      setSubmittingDecline(false);
+    }
+  };
+
   const activeHorse = useMemo(
     () => horses.find((h) => h.id === activeHorseId),
     [horses, activeHorseId],
@@ -44,6 +76,9 @@ export default function OwnerPortal() {
         title="Owner Portal"
         subtitle="Curated updates from the barn — medications, vet visits, farrier work, rehab and feeding — all in one calm stream."
       />
+
+      {/* ───── Daily Digest (owner only) ───────────────────────────────── */}
+      {isOwner && <OwnerDigestCard />}
 
       {/* ───── Curated Timeline ──────────────────────────────────────────── */}
       <Card className="mb-8" data-testid="owner-timeline-card">
@@ -138,29 +173,90 @@ export default function OwnerPortal() {
             </div>
           )}
           {requests.map((s) => (
-            <div key={s.id} className="py-3 hairline flex items-center gap-4">
-              <div className="flex-1">
+            <div key={s.id} className="py-3 hairline flex items-start gap-4 flex-wrap">
+              <div className="flex-1 min-w-[200px]">
                 <div className="text-equine-ink">
                   {s.horse_name} — <span className="capitalize">{s.type.replace('_', ' ')}</span>
                 </div>
                 <div className="text-[12.5px] text-equine-inkMuted">
                   {s.details || "No additional notes"} · {fmtDate(s.created_at)}
                 </div>
+                {s.status === "declined" && s.decline_reason && (
+                  <div className="text-[12.5px] text-equine-inkSoft mt-1 italic">
+                    Note from the barn: {s.decline_reason}
+                  </div>
+                )}
               </div>
-              <StatusPill tone={s.status === "approved" ? "success" : "warning"}>{s.status}</StatusPill>
-              {s.status === "pending" && (
-                <button
-                  onClick={() => approve(s.id)}
-                  data-testid={`approve-${s.id}`}
-                  className="btn-secondary !py-1.5 !px-4 text-[12.5px]"
-                >
-                  Approve
-                </button>
+              <StatusPill tone={
+                s.status === "approved" ? "success" :
+                s.status === "declined" ? "neutral" : "warning"
+              }>{s.status}</StatusPill>
+              {s.status === "pending" && canDecide && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => approve(s.id)}
+                    data-testid={`approve-${s.id}`}
+                    className="btn-secondary !py-1.5 !px-3 text-[12.5px] inline-flex items-center gap-1"
+                  >
+                    <Check className="w-3.5 h-3.5" /> Approve
+                  </button>
+                  <button
+                    onClick={() => openDecline(s)}
+                    data-testid={`decline-${s.id}`}
+                    className="!py-1.5 !px-3 text-[12.5px] inline-flex items-center gap-1 rounded-lg border border-equine-hairline text-equine-inkMuted hover:text-equine-ink hover:border-equine-graphite transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" /> Decline
+                  </button>
+                </div>
               )}
             </div>
           ))}
         </Card>
       </div>
+
+      {/* ───── Decline modal ──────────────────────────────────────────── */}
+      {declineFor && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-equine-navyDeep/40 backdrop-blur-sm px-4"
+          data-testid="decline-modal"
+          onClick={(e) => { if (e.target === e.currentTarget) setDeclineFor(null); }}
+        >
+          <div className="bg-equine-card border border-equine-hairline rounded-2xl shadow-xl max-w-md w-full p-6">
+            <div className="uppercase tracking-[0.22em] text-[10.5px] text-equine-inkSoft mb-1">Decline request</div>
+            <h3 className="font-display text-xl text-equine-ink mb-1">
+              {declineFor.horse_name} · <span className="capitalize">{declineFor.type.replace('_', ' ')}</span>
+            </h3>
+            <p className="text-[13px] text-equine-inkMuted mb-4">
+              Add a brief, owner-facing note (optional). Keep it warm and professional — the owner will see this in their portal.
+            </p>
+            <textarea
+              data-testid="decline-reason-input"
+              value={declineReason}
+              onChange={(e) => setDeclineReason(e.target.value)}
+              rows={3}
+              maxLength={500}
+              placeholder="e.g. Farrier visit scheduled the same morning — we'll book this for next week."
+              className="w-full bg-equine-soft border border-equine-hairline rounded-lg px-3 py-2 text-[13.5px] text-equine-ink placeholder:text-equine-inkSoft focus:outline-none focus:border-equine-navy"
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => setDeclineFor(null)}
+                className="px-4 py-2 text-[13px] text-equine-inkMuted hover:text-equine-ink"
+              >
+                Cancel
+              </button>
+              <button
+                data-testid="decline-confirm-btn"
+                onClick={submitDecline}
+                disabled={submittingDecline}
+                className="btn-primary !py-2 !px-4 text-[13px] disabled:opacity-60"
+              >
+                {submittingDecline ? "Declining…" : "Decline request"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
