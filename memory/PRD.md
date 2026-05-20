@@ -21,6 +21,25 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
+### Wellness Pulse — quiet operational intelligence (Feb 20 2026)
+- `/app/backend/wellness_pulse.py` (new) — **rule-based, pure-function** observational composer derived strictly from `task_events`.
+- Discipline:
+  - **One line maximum per horse** per pulse pass. Stays silent when nothing is confident enough.
+  - Ordered priority: medication adherence → rehab follow-through → turnout steadiness.
+  - Confidence thresholds (3 med / 2 rehab / 4 turnout completions in 7d) AND zero skips required.
+  - Confidence-limited language — no scoring, predictions, medical interpretation, or speculative phrasing (`recommend`, `diagnose`, `predict`, `likely`, `concerning`, `abnormal` all explicitly forbidden by tests).
+- Layered into the **existing daily digest** via `compose_horse_section(events_7d_all=...)`. Zero new endpoints, zero new toggles, zero analytics infrastructure. Try/except around the call means a pulse failure can never break the digest.
+- **Tests**: 11/11 in `test_wellness_pulse.py` (priority order, silence on skip, confidence floors, no medical language, irrelevant categories ignored).
+
+### Today.jsx complexity reduction (Feb 20 2026)
+- Sub-components extracted with **zero behaviour changes** (every data-testid preserved):
+  - `components/today/SyncBadges.jsx` (58 LOC) — `SyncDot` + `SyncHeaderBadge`.
+  - `components/today/TaskCard.jsx` (151 LOC) — swipe-to-complete + bulk-mode card.
+  - `components/today/TodayGroup.jsx` (62 LOC) — urgency band with collapse.
+  - `lib/todayMeta.js` (38 LOC) — `CATEGORY_META`, `GROUP_META`, `GROUP_ORDER`.
+- `Today.jsx` reduced **524 → 261 lines (50%)** and is now state + composition only. Optimistic overlay, periodic 60s refresh, and subscribeSyncState wiring remain in the parent.
+- Verified by testing agent: every original testid present, swipe thresholds unchanged, filter chips + bulk action bar + sync badge all functioning identically.
+
 ### Phase-E — Rehab + Turnout filtered Engine views (Feb 20 2026)
 - **No parallel scheduling**: both pages read the unified Task Engine through the existing `useEngineTasksToday` hook with category filters. Completions flow through the same offline-capable `taskSync` queue.
 - `/app/frontend/src/pages/Rehab.jsx` (new) at `/stall-rest` — engine-backed `category=rehab`, calm summary, empty-state messaging, complete/skip via taskSync.
