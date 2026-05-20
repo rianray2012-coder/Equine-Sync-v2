@@ -21,6 +21,34 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
+### Phase-E — Rehab + Turnout filtered Engine views (Feb 20 2026)
+- **No parallel scheduling**: both pages read the unified Task Engine through the existing `useEngineTasksToday` hook with category filters. Completions flow through the same offline-capable `taskSync` queue.
+- `/app/frontend/src/pages/Rehab.jsx` (new) at `/stall-rest` — engine-backed `category=rehab`, calm summary, empty-state messaging, complete/skip via taskSync.
+- `/app/frontend/src/pages/Turnout.jsx` (new) at `/turnout` — engine-backed `category∈{turnout_out, turnout_in}` with Turnout-out / Bring-in grouping (Sunrise / Sunset icons).
+- Sidebar nav unchanged; placeholders replaced. `/rehab` aliased to `/stall-rest` for forward compatibility.
+
+### Owner weekly recap — calm Sunday-evening update (Feb 20 2026)
+- Layered onto the existing digest pipeline in `owner_digest.py` (no parallel reporting infrastructure):
+  - Pure composition discipline — max 3 lines per horse, soft "rescheduled" framing for skipped meds (never "missed"), positive farrier/vet/rehab lines, optional "Looking ahead · N upcoming care appointments" tail block.
+  - ISO-week idempotency via partial-filter Mongo index on `(owner_user_id, for_week)`.
+  - Shares the single `digest_enabled` preference with the daily digest — one toggle governs both surfaces.
+- **Endpoints**: `POST /api/notifications/weekly-recap/{preview,send-me}` (owner) + `POST /api/admin/weekly-recap/run-now` (admin/manager).
+- **Scheduler**: Sunday 18:00 UTC (configurable via `OWNER_WEEKLY_RECAP_DOW` + `OWNER_WEEKLY_RECAP_HOUR_UTC`), gated by `DISABLE_OWNER_WEEKLY_RECAP`.
+- **Frontend**: `OwnerDigestCard.jsx` now tabbed — `digest-tab-daily` + `digest-tab-weekly` (with `role="tablist"` + `aria-selected`), single Send-to-me-now button targets the active tab.
+- **Tests**: 12/12 in `test_weekly_recap.py` (8 pure composition + 4 live API). Idempotency verified live — back-to-back admin run-now in the same ISO week returns identical `{sent:0, skipped:1}`.
+
+### Phase-F — Incremental `server.py` Refactor (Feb 20 2026 — IN PROGRESS)
+- **Goal**: reduce monolithic `server.py` toward the blueprint target (< 700 lines) without behavior changes. Strict no-rewrite policy — extractions only, with pytest gates between moves.
+- **Extracted (this session)**:
+  - `routes/dashboard.py` (113 LOC) — `/dashboard/summary` engine-derived + `/dashboard/barn-board` deprecated wrapper with RFC 8594 headers.
+  - `routes/reports.py` (258 LOC) — `/reports/setup-health`, `/reports/nudge-candidates`, `/admin/send-nudges`. Helpers (`setup_health_payload`, `nudge_candidates`, `send_nudges`) exposed on the router so the startup scheduler reuses them without re-implementation.
+  - `routes/invites.py` (290 LOC) — `/invites` CRUD + `/invites/verify` + `/invites/accept` with full dep-injection (mailer, base-url resolver, analytics tracker, jwt issuer, refresh-token, onboarding-steps constant).
+  - `routes/onboarding.py` (466 LOC) — wizard state + barn + locations + feed templates + inventory + recurring schedules + staff invites + CSV preview/commit/template. `ONBOARDING_STEPS` is now the authoritative source here; server.py re-imports for invites/reports.
+  - Auth gating + state-guard hardening on `/service-requests/{approve,decline}` (admin/barn_manager/trainer only; 409 on re-mutation).
+- **Server.py size**: 1949 → 1221 lines (**~37% reduction**, behavior preserved).
+- **Test coverage**: 130 passed + 1 skipped (was 118 — +12 weekly recap tests).
+- **Pending**: optional `routes/tasks.py` thin wrapper. Frontend sub-component splits for `Today.jsx`/`Dashboard.jsx`/`Onboarding.jsx` remain on the deferred list.
+
 ### Phase-C — Owner Trust Loop COMPLETE (Feb 20 2026)
 - **Daily owner digest** (`/app/backend/owner_digest.py`): calm composition (no analytics) over the last 24h + 7d of curated TaskEvents (`{medication, farrier, vet, rehab, feed}`), idempotent daily pass keyed on `(owner_user_id, for_date)`, branded HTML + text renderers, unique index on `notification_digest_log`.
 - **Endpoints**: `POST /api/notifications/digest/{preview,send-me}` (owner), `POST /api/admin/digest/run-now` (admin/manager).

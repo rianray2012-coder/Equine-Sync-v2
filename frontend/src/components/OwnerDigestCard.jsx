@@ -115,7 +115,7 @@ export default function OwnerDigestCard() {
         </label>
       </div>
 
-      <div className="flex items-center gap-1.5 mb-3" data-testid="digest-tabs">
+      <div className="flex items-center gap-1.5 mb-3" data-testid="digest-tabs" role="tablist">
         {[
           { id: "daily", label: "Morning digest", icon: Mail },
           { id: "weekly", label: "Sunday recap", icon: Calendar },
@@ -127,6 +127,8 @@ export default function OwnerDigestCard() {
               key={t.id}
               data-testid={`digest-tab-${t.id}`}
               onClick={() => setTab(t.id)}
+              role="tab"
+              aria-selected={isActive}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] tracking-wide border transition-colors ${
                 isActive
                   ? "bg-equine-navy text-white border-equine-navy"
