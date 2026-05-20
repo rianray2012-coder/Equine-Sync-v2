@@ -1,0 +1,34 @@
+{
+  "summary": "Retested the two CRITICAL Radix Select empty-string bugs from iteration 17 (Incidents + Lessons QuickAddSheet). Both fixes verified end-to-end on the deployed preview URL. Frontend now at 100% for the Founder-Beta CRUD sprint surfaces. No regressions on Horses / Owners / Riders / Inventory / Training. Backend was already green in iter17 and was not rerun per request.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_17.json",
+    "/app/backend/tests/test_founder_crud_sprint.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Incidents.jsx and Lessons.jsx now use sentinel '__none__' for placeholder Select options; their transform() correctly coerces '__none__' → null before POST. Backend accepts null horse_id and falls back to 'Facility' (incidents) or omits horse_name (lessons) — verified visually.",
+    "QuickAddSheet.jsx defensive filter (.filter(o => o.v !== '' && o.v !== undefined && o.v !== null)) prevents future callers from reproducing the Radix crash even if they accidentally pass v:''. Solid hardening.",
+    "Training.jsx empty-state branch was also audited — uses sentinel pattern, no v:'' anywhere.",
+    "Resolved data correctly: created incident with horse 'Valentino' rendered the horse name on the card; created lesson with horse 'Valentino' renders 'on Valentino' on the lesson row; rider 'Amelia Vance' resolved on the lesson card."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (per iter17 — not rerun this iteration as instructed)",
+    "frontend": "100% (12/12 Founder-Beta CRUD flows green — Incidents x2 (facility + horse), Lessons x2 (TBD + horse), plus 5 regression sheets open clean)"
+  },
+  "test_credentials": "admin@equinesync.com / demo1234",
+  "seed_data_creation": "Created via UI: 2 TEST_ incidents (one facility-wide, one with horse 'Valentino'), 2 TEST_ lessons (one with horse 'TBD' default, one with horse 'Valentino'). No backend seed mutation.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iter17 critical Radix Select empty-string bugs are fully resolved. Both Incidents 'Report incident' and Lessons 'Schedule lesson' sheets open without crash and submit successfully both with and without an associated horse. QuickAddSheet now defensively strips empty-string opts so similar bugs cannot recur. Zero uncaught page errors observed across /incidents, /lessons, /horses, /owners, /riders, /inventory, /training. Founder-Beta CRUD sprint is shippable from a testing standpoint.",
+  "rca of the issue": "Original RCA (iter17): Radix Select throws if any <Select.Item> has value=''. Fix verified: Incidents.jsx uses {v:'__none__', l:'— Facility-wide (no horse) —'} and coerces to null in transform; Lessons.jsx does the same for both rider_id (No riders state) and horse_id ('— TBD —'). QuickAddSheet.jsx adds belt-and-braces filter for empty/undefined/null values. End-to-end retest confirms both POSTs succeed and the records render with correct name resolution."
+}

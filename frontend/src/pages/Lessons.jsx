@@ -31,12 +31,12 @@ export default function Lessons() {
     {
       key: "rider_id", label: "Rider", kind: "select", required: true, full: true,
       opts: riders.length === 0
-        ? [{ v: "", l: "— No riders yet —" }]
+        ? [{ v: "__none__", l: "— No riders yet —" }]
         : riders.map((r) => ({ v: r.id, l: r.full_name })),
     },
     {
       key: "horse_id", label: "Horse", kind: "select", full: true,
-      opts: [{ v: "", l: "— TBD —" }, ...horses.map((h) => ({ v: h.id, l: h.name }))],
+      opts: [{ v: "__none__", l: "— TBD —" }, ...horses.map((h) => ({ v: h.id, l: h.name }))],
     },
     { key: "start_time", label: "Start time", type: "datetime-local", required: true },
     { key: "duration_min", label: "Duration (min)", type: "number", placeholder: "60" },
@@ -47,7 +47,7 @@ export default function Lessons() {
     ...form,
     start_time: form.start_time ? new Date(form.start_time).toISOString() : new Date().toISOString(),
     duration_min: form.duration_min ? Number(form.duration_min) : 60,
-    horse_id: form.horse_id || null,
+    horse_id: form.horse_id && form.horse_id !== "__none__" ? form.horse_id : null,
   });
 
   const ridersEmpty = riders.length === 0;

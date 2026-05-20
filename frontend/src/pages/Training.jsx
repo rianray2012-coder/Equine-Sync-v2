@@ -23,7 +23,7 @@ export default function Training() {
     {
       key: "horse_id", label: "Horse", kind: "select", required: true, full: true,
       opts: horses.length === 0
-        ? [{ v: "", l: "— No horses yet —" }]
+        ? [{ v: "__none__", l: "— No horses yet —" }]
         : horses.map((h) => ({ v: h.id, l: h.name })),
     },
     { key: "date", label: "Date", type: "date", required: true },

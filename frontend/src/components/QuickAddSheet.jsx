@@ -109,15 +109,20 @@ export default function QuickAddSheet({
             {fields.map((f) => {
               const wrapperCls = f.full ? "sm:col-span-2" : "";
               if (f.kind === "select") {
+                // Radix Select disallows value="" — silently strip empty options so
+                // future callers can't crash the modal by trying to add a
+                // "— None —" placeholder row. Use a non-empty sentinel
+                // (e.g. "__none__") and coerce it in your transform() instead.
+                const opts = f.opts
+                  .map((o) => (typeof o === "string" ? { v: o, l: o.replace(/_/g, " ") } : o))
+                  .filter((o) => o.v !== "" && o.v !== undefined && o.v !== null);
                 return (
                   <div key={f.key} className={wrapperCls}>
                     <Select
                       label={f.label}
                       value={form[f.key] || ""}
                       onChange={(v) => setForm((s) => ({ ...s, [f.key]: v }))}
-                      options={f.opts.map((o) =>
-                        typeof o === "string" ? { v: o, l: o.replace(/_/g, " ") } : o
-                      )}
+                      options={opts}
                       testid={`${prefix}-${f.key}`}
                     />
                   </div>

@@ -26,7 +26,10 @@ export default function Incidents() {
   }, [load]);
 
   const horseOptions = useMemo(
-    () => [{ v: "", l: "— Facility-wide (no horse) —" }, ...horses.map((h) => ({ v: h.id, l: h.name }))],
+    () => [
+      { v: "__none__", l: "— Facility-wide (no horse) —" },
+      ...horses.map((h) => ({ v: h.id, l: h.name })),
+    ],
     [horses],
   );
 
@@ -44,7 +47,7 @@ export default function Incidents() {
     ...form,
     // datetime-local → ISO with seconds
     occurred_at: form.occurred_at ? new Date(form.occurred_at).toISOString() : new Date().toISOString(),
-    horse_id: form.horse_id || null,
+    horse_id: form.horse_id && form.horse_id !== "__none__" ? form.horse_id : null,
   });
 
   return (
