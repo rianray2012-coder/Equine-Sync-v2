@@ -1,0 +1,43 @@
+{
+  "summary": "Wellness Pulse + Today.jsx refactor verified end-to-end. Backend pytest: 141 passed + 1 skipped (was 130+1 baseline → grew exactly by the 11 new wellness_pulse tests; zero regressions). All 11 test_wellness_pulse.py cases green: priority order (med > rehab > turnout), confidence thresholds (3 med / 2 rehab / 4 turnout), single skip silences the category, no medical/predictive language (recommend, diagnos, predict, likely, probably, expect, concerning, abnormal all absent), irrelevant categories ignored, one line max ever emitted. test_owner_trust.py (9) and test_weekly_recap.py (12) also fully green — confirming compose_horse_section signature change (added events_7d_all kwarg) and build_digest_for_owner's 7d projection fetch did not break existing digest composition. Live curl on POST /api/notifications/digest/preview as owner@equinesync.com returns {empty:true, reason:'no_updates_today'} — expected because the seeded barn has no curated 7d task_events for this owner (confirms 'restrained / silent when nothing meaningful' contract). Today.jsx refactor verified: /today renders the today-page testid; 5 group testids (group-overdue_critical, group-due_now, group-upcoming_next_4h, group-later_today, group-completed_today) all present; 51 task-row-*, 51 complete-btn-*, 51 skip-btn-*, 10 filter-chip-* (1 'all' + 9 categories), bulk-mode-toggle present. Entering bulk mode swaps 51 icons to bulk-toggle-* checkboxes; selecting one row surfaces bulk-action-bar + bulk-complete-confirm. Filter chip toggle works (clicks category then 'All' restore). Regression sweep across /dashboard, /owner-portal, /stall-rest, /turnout — all load with 0 error nodes and non-empty body (235k-639k chars).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_wellness_pulse.py",
+    "/app/backend/tests/test_owner_trust.py",
+    "/app/backend/tests/test_weekly_recap.py",
+    "/app/test_reports/pytest/iter12_pulse.xml",
+    "/app/test_reports/pytest/iter12_full.xml"
+  ],
+  "action_items": [
+    "(Carry-over from iter_10 / iter_11 — NOT re-verified, NOT in scope this iteration, still flagged as open) POST /api/service-requests/{sr_id}/approve and /decline lack role gating. Mirror the role check used on /admin/digest/run-now so groom/trainer cannot approve/decline owner-facing requests.",
+    "(Optional, carry-over) Add aria-selected to digest-tab-daily / digest-tab-weekly in OwnerDigestCard.jsx for screen-reader announcement of active tab.",
+    "(Cosmetic, observed) Many seeded tasks in /today show raw task IDs as title (e.g., 't-54878e2b-6a6d-...'). Pre-existing seed data quirk — not related to this iteration's refactor, but worth a one-line seed fix if owner cares about preview fidelity."
+  ],
+  "critical_code_review_comments": [
+    "wellness_pulse.py is exemplary discipline-first design: pure function, no I/O, no DB, no LLM, constant thresholds at module top, single early-return per branch, ordered priority (med > rehab > turnout) is intentional and documented in comments. Zero speculative/medical vocabulary — verified by test_no_medical_or_predictive_language across all 3 confident-output paths.",
+    "owner_digest.compose_horse_section integrates the pulse correctly: events_7d_all is Optional[List[dict]] (default None preserves prior signature for any caller that hasn't migrated), pulse line is only appended if (a) events_7d_all was passed AND (b) at least one care line already exists AND (c) compose_pulse returns non-None. Try/except around the import + call means a pulse failure cannot break the digest. Good defensive layering.",
+    "build_digest_for_owner fetches the 7d window with a lightweight projection and slices it per-horse before passing to compose_horse_section — single round-trip, no N+1.",
+    "Today.jsx refactor is a clean state+composition file at 261 LOC (was 524). Public surface unchanged: every data-testid from the original (today-page, filter-chip-all, filter-chip-{cat}, bulk-mode-toggle, bulk-action-bar, bulk-complete-confirm, group-{key}, task-row-{id}, complete-btn-{id}, skip-btn-{id}, bulk-toggle-{id}, sync-dot-*, sync-header-badge, sync-retry-now) is preserved in the extracted children. Optimistic overlay, periodic 60s refresh, and subscribeSyncState wiring stay in the parent — correct separation of concerns.",
+    "components/today/SyncBadges.jsx exports BOTH SyncDot (named) and SyncHeaderBadge (named) — matches the import shape in Today.jsx + TaskCard.jsx. lib/todayMeta.js exports CATEGORY_META + GROUP_META + GROUP_ORDER as named exports — matches consumers.",
+    "TaskCard.jsx swipe-to-complete preserved with identical thresholds (>90px right = complete, <-70px left = skip), 180ms settle delay, and onTouchEnd guard against bulkMode/completed states."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "141/142 = 99.3% (141 passed + 1 skipped; +11 vs iter_11 baseline, no regressions)",
+    "frontend": "100% on Today.jsx surfaces + 4-route regression sweep"
+  },
+  "test_credentials": "admin@equinesync.com / demo1234 (used for /today UI test); owner@equinesync.com / demo1234 (used for live digest preview curl). All from /app/memory/test_credentials.md.",
+  "seed_data_creation": "None. Note for next agent: to exercise the wellness pulse line end-to-end via the live API you'd need to insert >=3 'task.completed' task_events with category='medication' (or >=2 rehab, or >=4 turnout) on a horse belonging to owner@equinesync.com, with subject_horse_ids matching that horse, within the last 7 days. Pure-function coverage in test_wellness_pulse.py is comprehensive and already exercises every branch.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Both deliverables in iteration_12 are green and disciplined. Wellness Pulse is correctly silent on seeded data (per design — needs curated 7d task_events to surface a line). Today.jsx refactor preserved every testid + behavior. To re-verify: `cd /app/backend && export REACT_APP_BACKEND_URL=https://herd-hub-19.preview.emergentagent.com && python -m pytest tests/test_wellness_pulse.py tests/test_owner_trust.py tests/test_weekly_recap.py -v` (expect 32 passed). Full sweep: `python -m pytest tests/` (expect 141 passed, 1 skipped). UI: login as admin, hit /today, expect today-page + 5 group-* testids + filter/bulk controls. The /service-requests approve/decline auth gap remains open from iter_10 — flag again if main agent has not yet addressed.",
+  "rca of the issue": "N/A — no failures in this iteration. Both deliverables (Wellness Pulse rule-based composer + Today.jsx complexity reduction) verified working as specified."
+}

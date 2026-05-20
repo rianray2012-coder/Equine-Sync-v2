@@ -133,8 +133,14 @@ def _upcoming_phrase(tasks: List[dict], horse_name: str) -> Optional[str]:
 
 def compose_horse_section(horse: dict, events_24h: List[dict],
                           events_7d_meds: List[dict],
-                          upcoming_7d: List[dict]) -> Optional[dict]:
-    """Returns {horse_name, lines: [string], muted: bool} or None if nothing meaningful."""
+                          upcoming_7d: List[dict],
+                          events_7d_all: Optional[List[dict]] = None) -> Optional[dict]:
+    """Returns {horse_name, lines: [string], muted: bool} or None if nothing meaningful.
+
+    If `events_7d_all` is provided, an optional calm 7-day pulse line may
+    be appended via wellness_pulse.compose_pulse — strictly observational,
+    only when confidence is high enough.
+    """
     horse_name = horse.get("name") or "Your horse"
     lines: List[str] = []
 
@@ -162,6 +168,19 @@ def compose_horse_section(horse: dict, events_24h: List[dict],
 
     if not lines:
         return None
+
+    # Optional wellness-pulse line (observational, restrained — only added
+    # when there's something meaningful to say AND the section already has
+    # at least one care line to anchor it).
+    if events_7d_all is not None:
+        try:
+            from wellness_pulse import compose_pulse
+            pulse = compose_pulse(horse_name, events_7d_all)
+            if pulse:
+                lines.append(pulse)
+        except Exception:
+            logger.exception("wellness pulse composition failed for horse=%s", horse.get("id"))
+
     return {"horse_id": horse.get("id"), "horse_name": horse_name, "lines": lines}
 
 
@@ -210,6 +229,19 @@ async def build_digest_for_owner(db, owner_user_id: str,
         {"_id": 0},
     ).to_list(2000)
 
+    # 3b. Broader 7d window across all curated categories — feeds the
+    # optional wellness-pulse observation. Kept lightweight: projection
+    # is just event_type + category + subject_horse_ids.
+    events_7d_all = await db.task_events.find(
+        {
+            "subject_horse_ids": {"$in": horse_ids},
+            "category": {"$in": list(OWNER_DIGEST_CATEGORIES) + ["turnout_out", "turnout_in"]},
+            "event_type": {"$in": ["task.completed", "task.skipped"]},
+            "occurred_at": {"$gte": _iso(since_7d)},
+        },
+        {"_id": 0, "category": 1, "event_type": 1, "subject_horse_ids": 1},
+    ).to_list(5000)
+
     # 4. Upcoming curated tasks in the next 7 days
     upcoming = await db.tasks.find(
         {
@@ -226,8 +258,9 @@ async def build_digest_for_owner(db, owner_user_id: str,
     for h in horses:
         e24 = [e for e in events_24h if h["id"] in (e.get("subject_horse_ids") or [])]
         e7 = [e for e in events_7d_meds if h["id"] in (e.get("subject_horse_ids") or [])]
+        e7_all = [e for e in events_7d_all if h["id"] in (e.get("subject_horse_ids") or [])]
         up = [t for t in upcoming if h["id"] in (t.get("linked_horse_ids") or [])]
-        sec = compose_horse_section(h, e24, e7, up)
+        sec = compose_horse_section(h, e24, e7, up, events_7d_all=e7_all)
         if sec:
             sections.append(sec)
 
