@@ -99,6 +99,19 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
     @router.post("/lessons")
     async def create_lesson(body: LessonIn, user=Depends(get_current_user)):
         doc = body.model_dump()
+        # Best-effort name resolution so list views render without an extra
+        # lookup hop. Missing references are tolerated (operationally a
+        # rider record may be added later, after the lesson is sketched in).
+        rider = await db.riders.find_one({"id": body.rider_id}, {"_id": 0, "full_name": 1})
+        doc["rider_name"] = rider["full_name"] if rider else None
+        if body.horse_id:
+            horse = await db.horses.find_one({"id": body.horse_id}, {"_id": 0, "name": 1})
+            doc["horse_name"] = horse["name"] if horse else None
+        if body.trainer_id:
+            trainer = await db.users.find_one({"id": body.trainer_id}, {"_id": 0, "full_name": 1})
+            doc["trainer_name"] = trainer["full_name"] if trainer else None
+        else:
+            doc["trainer_name"] = user.get("full_name")
         doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
         await db.lessons.insert_one(doc)
         return clean(doc)
@@ -113,6 +126,13 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
     @router.post("/training")
     async def create_training(body: TrainingSessionIn, user=Depends(get_current_user)):
         doc = body.model_dump()
+        horse = await db.horses.find_one({"id": body.horse_id}, {"_id": 0, "name": 1})
+        doc["horse_name"] = horse["name"] if horse else None
+        if body.trainer_id:
+            trainer = await db.users.find_one({"id": body.trainer_id}, {"_id": 0, "full_name": 1})
+            doc["trainer_name"] = trainer["full_name"] if trainer else None
+        else:
+            doc["trainer_name"] = user.get("full_name")
         doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
         await db.training.insert_one(doc)
         return clean(doc)
@@ -224,7 +244,13 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
     @router.post("/incidents")
     async def create_incident(body: IncidentIn, user=Depends(get_current_user)):
         doc = body.model_dump()
+        if body.horse_id:
+            horse = await db.horses.find_one({"id": body.horse_id}, {"_id": 0, "name": 1})
+            doc["horse_name"] = horse["name"] if horse else None
+        else:
+            doc["horse_name"] = None
         doc.update({"id": new_id(),
+                    "status": "open",
                     "reported_by": user["full_name"],
                     "created_at": _iso(_now_utc())})
         await db.incidents.insert_one(doc)

@@ -1,0 +1,59 @@
+{
+  "summary": "Founder-Beta CRUD sprint tested end-to-end. Backend: 36/36 tests pass (28 existing ops/onboarding + 8 new sprint regressions covering name resolution, missing-ref tolerance, schedules-in-payload). Frontend: 10/12 flows working (Inventory, Owners, Riders, Horses, Training add flows + onboarding hides 'Recurring Schedules' (Step 2 of 9, 11% progress observed) + required-field validation + low-stock badge all PASS). CRITICAL: /incidents and /lessons throw uncaught React runtime errors on opening their QuickAddSheet — Radix <Select.Item /> rejects empty-string value props injected by horse_id 'Facility-wide' / '— TBD —' placeholder options. Both Add flows are blocked.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Incidents.jsx",
+        "issue": "Opening 'Report incident' sheet crashes the page with 'A <Select.Item /> must have a value prop that is not an empty string'. Root cause: line 29 horseOptions injects {v: \"\", l: \"— Facility-wide (no horse) —\"} which Radix Select disallows. Sheet never renders, so admin cannot file an incident.",
+        "selector": "[data-testid=\"incidents-add-sheet\"]",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "Lessons.jsx",
+        "issue": "Opening 'Schedule lesson' sheet crashes with the same Radix Select empty-string error. Root cause: line 39 horse_id opts begin with {v: \"\", l: \"— TBD —\"}. Sheet never renders.",
+        "selector": "[data-testid=\"lessons-add-sheet\"]",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_founder_crud_sprint.py",
+    "/app/backend/tests/test_operations_routes.py",
+    "/app/backend/tests/test_onboarding.py",
+    "/app/test_reports/pytest/iter17_crud.xml",
+    "/app/test_reports/pytest/iter17_results.xml"
+  ],
+  "action_items": [
+    "Replace empty-string placeholder option in Incidents.jsx (line 29) — either drop the empty option entirely (use 'no selection' = no row in opts) or use a sentinel value like '__none__' and strip it in the transform before POST.",
+    "Apply the same fix in Lessons.jsx (line 39) — '— TBD —' option must not use v:\"\" .",
+    "Audit Training.jsx and any other QuickAddSheet caller for the same pattern — Training did NOT crash in this run because horses.length>0 produces a non-empty opts list, but the 'No horses yet — add a horse first.' branch at line 25-26 should be checked for the same empty-string trap.",
+    "Recommended QuickAddSheet hardening: in components/onboarding/FormPrimitives Select, filter or warn when an option has value === '' so future callers cannot reproduce this bug."
+  ],
+  "critical_code_review_comments": [
+    "QuickAddSheet design is clean and reusable — calm aesthetic, ESC + backdrop + Cancel + required-field toast all working. The two crashes are caller bugs, not sheet bugs.",
+    "Onboarding step filter at Onboarding.jsx line 51 correctly removes 'schedules' from visibleSteps while preserving the backend payload. Stepper now reads 'Step 2 of 9' and progress percent (11%) recalculates against visible steps — exactly per spec.",
+    "Backend test_lessons_list_and_create + new tolerance tests confirm POST /api/lessons and POST /api/training accept ghost rider_id / horse_id and return rider_name/horse_name = null, matching the documented behaviour. POST /api/incidents defaults status='open' and resolves horse_name when horse_id is provided.",
+    "GET /api/onboarding/steps still returns all 10 steps (incl. 'schedules') — backend model preservation verified by test_onboarding_steps_still_has_schedules_in_backend.",
+    "Inventory.jsx correctly groups by category and surfaces low_stock badge from the backend low_stock flag (verified with quantity=5, reorder_at=10 — badge rendered, count=1).",
+    "Lessons.jsx and Training.jsx 'Add' buttons correctly disabled when no riders / no horses — verified by code path (was not disabled in this run because seed data already provides riders + horses)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_founder_crud_sprint.py (NEW — 8 sprint regression tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (36/36 — 28 existing ops/onboarding + 8 new CRUD sprint)",
+    "frontend": "83% (10/12 — Incidents + Lessons Add sheets crash on open; remaining flows verified)"
+  },
+  "test_credentials": "admin@equinesync.com / demo1234 (used). owner@equinesync.com tested for non-crash on /horses /owners /inventory.",
+  "seed_data_creation": "Used existing seed. Test fixtures created TEST_-prefixed inventory item, owner, rider, horse, lesson (ghost rider), training (ghost horse), and incident via API.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "After main agent fixes the empty-string Select.Item issue in Incidents.jsx and Lessons.jsx, retest only /incidents 'Report incident' and /lessons 'Schedule lesson' end-to-end (open sheet, fill required fields incl. horse_id 'no selection', submit, verify item appears). All other Founder-Beta CRUD surfaces are already green. Backend pytest suite (/app/backend/tests/test_founder_crud_sprint.py) can be rerun as-is.",
+  "rca of the issue": "Radix UI Select (used by shadcn) explicitly throws when a SelectItem has value=''. Incidents.jsx:29 and Lessons.jsx:39 each prepend {v:\"\", l:\"placeholder\"} into the opts array to give a 'no selection' choice. When QuickAddSheet mounts these as <SelectItem value=\"\" />, React throws and renders the redbox overlay instead of the sheet. Fix: use a non-empty sentinel (e.g. '__none__') in opts and have the page-level transform() coerce that sentinel back to null before POST — or simply omit the placeholder row and let an unset Select represent the 'no horse' case (the backend already accepts horse_id=null for both endpoints — verified by test_lessons_tolerates_missing_rider and test_incidents_resolves_horse_name_and_open_status)."
+}

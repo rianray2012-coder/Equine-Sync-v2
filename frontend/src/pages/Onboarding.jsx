@@ -44,9 +44,17 @@ export default function Onboarding() {
   useEffect(() => {
     Promise.all([api.get("/onboarding/steps"), api.get("/onboarding/progress")])
       .then(([s, p]) => {
-        setSteps(s.data.steps);
+        // Founder-beta: recurring schedules collection is intentionally hidden
+        // until the scheduler is wired to materialize tasks (see audit §J.6).
+        // Backend model + endpoints remain intact so data persists across
+        // releases — only the founder-facing step is removed.
+        const visibleSteps = s.data.steps.filter((step) => step.id !== "schedules");
+        setSteps(visibleSteps);
         setProgress(p.data);
-        setCurrentId(p.data.current_step || s.data.steps[0].id);
+        const startId = p.data.current_step === "schedules"
+          ? (visibleSteps.find((st) => p.data.steps?.[st.id] !== "complete")?.id || visibleSteps[0].id)
+          : (p.data.current_step || visibleSteps[0].id);
+        setCurrentId(startId);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -68,7 +76,11 @@ export default function Onboarding() {
   const stepIndex = steps.findIndex((s) => s.id === currentId);
   const current = steps[stepIndex];
   const Icon = STEP_META[current?.id]?.icon || Building2;
-  const percent = progress.percent || 0;
+  // Founder-beta: compute percent off visible steps only (hidden ones don't count).
+  const completedVisible = steps.filter((s) =>
+    (progress.steps?.[s.id] || "pending") === "complete"
+  ).length;
+  const percent = steps.length === 0 ? 0 : Math.round(100 * completedVisible / steps.length);
 
   const next = async () => {
     await setStepStatus(currentId, "complete");

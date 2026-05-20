@@ -21,6 +21,7 @@ import Billing from "./pages/Billing";
 import Messaging from "./pages/Messaging";
 import OwnerPortal from "./pages/OwnerPortal";
 import Incidents from "./pages/Incidents";
+import Inventory from "./pages/Inventory";
 import Settings from "./pages/Settings";
 import Placeholder from "./pages/Placeholder";
 import Onboarding from "./pages/Onboarding";
@@ -63,8 +64,7 @@ function App() {
               <Route path="/medications" element={<Medications />} />
               <Route path="/turnout" element={<Turnout />} />
               <Route path="/feed" element={<Feed />} />
-              {/* Inventory still goes through Placeholder pending Critical #2 wiring. */}
-              <Route path="/inventory" element={<Placeholder title="Inventory" description="Grain, hay, bedding, supplements with reorder alerts." />} />
+              <Route path="/inventory" element={<Inventory />} />
               <Route path="/billing" element={<Billing />} />
               <Route path="/incidents" element={<Incidents />} />
               {/* Removed for founder beta — Shows / Documents / Maintenance / Staff
