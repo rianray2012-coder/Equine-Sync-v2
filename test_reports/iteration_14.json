@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration_14 verifies (a) the Phase-F final-sweep extraction of all care endpoints from server.py into routes/care.py and (b) the new reassurance copy testids on SetupConciergeCard and Onboarding sidebar. Backend: 141 passed + 1 skipped across the full pytest suite (test_equinesync, test_invites_and_analytics, test_onboarding, test_owner_trust, test_owner_trust_edges, test_phase2, test_reports_and_nudges, test_task_engine, test_weekly_recap, test_wellness_pulse) — zero regressions post-extraction. Added a dedicated /app/backend/tests/test_care_routes.py with 11 targeted assertions covering every endpoint moved into routes/care.py: auth gate (401/403), GET/POST/PATCH/404 for /api/horses, GET+POST for /api/owners, /api/riders, /api/medications (and ?horse_id filter), /api/medication-logs, /api/feed-tasks (and ?date_str filter), /api/vet-records (and ?horse_id filter), /api/farrier-history, /api/injuries, /api/wellness — all 11 PASS. Critically the POST /api/wellness side-effect (heuristic bump of horses.wellness_score) is preserved: posting all-5s correctly sets the horse's wellness_score to 100. Frontend: logged in as admin, called POST /api/onboarding/reset, then visited /dashboard — the data-testid='setup-guidance' element is present and its text matches verbatim: 'Many barns begin with Horses and Feed Templates, then expand from there. You can complete the remaining steps any time from Settings — nothing is locked or required to start operations.' Visited /onboarding — data-testid='onboarding-reassurance' is present and matches verbatim: 'Most barns revisit Inventory and Schedules after their first operational week. Nothing here is required to begin running daily care.' After POST /api/onboarding/complete and re-visiting /dashboard, BOTH setup-guidance AND setup-concierge-card disappear from the DOM as required. server.py is now 1003 LOC, routes/care.py is 277 LOC (handlers + Pydantic models extracted together with no shape changes). build_care_router is correctly wired after the onboarding router in server.py.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_care_routes.py",
+    "/app/test_reports/pytest/iter14_full.xml",
+    "/app/test_reports/pytest/iter14_care.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/care.py is a clean lift-and-shift: Pydantic models (HorseIn, OwnerIn, RiderIn, MedicationIn, MedLogIn, VetRecordIn, InjuryIn, WellnessIn, FeedTaskIn) and their handlers all moved together, schemas unchanged, and the dependency-injected helpers (db, get_current_user, list_collection, clean, new_id) match the pattern already used by routes/dashboard.py, reports.py, invites.py, onboarding.py. Good consistency.",
+    "POST /api/wellness still applies the same heuristic (avg = (appetite + water_intake + energy + coat_quality) * 5; min(100, avg)) and updates horses.wellness_score — verified live (test_wellness_bumps_horse_score asserts 100 after all-5s payload).",
+    "Optional-filter query params (?horse_id on medications/vet-records/farrier-history/injuries/wellness; ?date_str on feed-tasks) preserved verbatim — verified by curl-equivalent pytest assertions.",
+    "SetupConciergeCard.jsx: setup-guidance block is correctly placed beneath the step-tile grid, mt-5/pt-4 with hairline border-top, and the entire card (including the guidance block) is hidden when onboarding is complete — verified live by re-rendering /dashboard after POST /api/onboarding/complete (both selectors absent).",
+    "Onboarding.jsx: onboarding-reassurance lives inside the sticky sidebar under the autosave note and uses calm muted styling — text-equine-platinum/55 and a subtle border-top divider. Copy is verbatim (no apostrophe normalization, period in correct place, word order preserved).",
+    "server.py reduction since Phase-F start is real: 1221 → 1003 LOC (~18% in this iteration alone, ~49% cumulative as stated). No leftover Horse/Owner/Rider/Medication/Vet/Injury/Wellness Pydantic models remain in server.py — confirmed via grep."
+  ],
+  "updated_files": ["/app/backend/tests/test_care_routes.py"],
+  "success_rate": {
+    "backend": "141/141 (pytest, 1 skipped) + 11/11 dedicated care-route regression = 100%",
+    "frontend": "100% — both reassurance testids resolve with verbatim copy; concierge card hides cleanly post-complete"
+  },
+  "test_credentials": "admin@equinesync.com / demo1234 (per /app/memory/test_credentials.md)",
+  "seed_data_creation": "Used POST /api/onboarding/reset on admin to force SetupConciergeCard visibility, then POST /api/onboarding/complete to restore. Test_care_routes.py creates TEST_-prefixed horses/owners/riders/medications/vet/injury/wellness entries; collections grow by a handful per run but no destructive ops.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Care endpoints now live in /app/backend/routes/care.py (288 LOC including Pydantic models). server.py is at 1003 LOC. The reassurance testids are 'setup-guidance' (on SetupConciergeCard, hidden when onboarding.completed=true) and 'onboarding-reassurance' (on /onboarding sticky sidebar). Both copies are verbatim per spec. To exercise the SetupConciergeCard on /dashboard for admin, POST /api/onboarding/reset first. /app/backend/tests/test_care_routes.py is now the regression file for the care lift-and-shift — keep running it alongside the existing suite. No outstanding bugs.",
+  "rca of the issue": "N/A — no failures. Pure refactor + restraint-copy delivery; zero behavioral diff observed across backend pytest and live frontend testid scan."
+}

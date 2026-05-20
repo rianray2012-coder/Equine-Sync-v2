@@ -47,6 +47,7 @@ from routes.dashboard import build_router as build_dashboard_router
 from routes.reports import build_router as build_reports_router
 from routes.invites import build_router as build_invites_router
 from routes.onboarding import build_router as build_onboarding_router, ONBOARDING_STEPS
+from routes.care import build_router as build_care_router
 from owner_digest import (
     run_daily_digest_pass,
     send_digest_to_owner,
@@ -130,84 +131,6 @@ class LoginBody(BaseModel):
     email: EmailStr
     password: str
 
-class HorseIn(BaseModel):
-    name: str
-    barn_name: Optional[str] = None
-    breed: Optional[str] = None
-    age: Optional[int] = None
-    color: Optional[str] = None
-    height_hands: Optional[float] = None
-    discipline: Optional[str] = None
-    owner_id: Optional[str] = None
-    rider_id: Optional[str] = None
-    trainer_id: Optional[str] = None
-    stall: Optional[str] = None
-    photo_url: Optional[str] = None
-    allergies: Optional[List[str]] = []
-    emergency_notes: Optional[str] = None
-    insurance: Optional[str] = None
-    wellness_score: Optional[int] = 85
-    status: Optional[str] = "active"  # active, stall_rest, rehab
-    training_goals: Optional[str] = None
-    feed_plan: Optional[str] = None
-    turnout_group: Optional[str] = None
-    behavior_flags: Optional[List[str]] = []
-
-class MedicationIn(BaseModel):
-    horse_id: str
-    name: str
-    dosage: str
-    route: Optional[str] = "oral"
-    frequency: str
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    prescribing_vet: Optional[str] = None
-    notes: Optional[str] = None
-    times: Optional[List[str]] = []  # e.g. ["08:00", "20:00"]
-
-class MedLogIn(BaseModel):
-    medication_id: str
-    scheduled_time: str
-    status: str  # given, missed, skipped
-    notes: Optional[str] = None
-
-class FeedTaskIn(BaseModel):
-    horse_id: str
-    meal: str  # morning, midday, evening
-    ration: str
-    instructions: Optional[str] = None
-    completed: bool = False
-    completed_by: Optional[str] = None
-
-class VetRecordIn(BaseModel):
-    horse_id: str
-    type: str  # vaccine, dental, exam, xray, lab, coggins, prescription
-    title: str
-    date: str
-    vet_name: Optional[str] = None
-    notes: Optional[str] = None
-    document_url: Optional[str] = None
-    cost: Optional[float] = 0
-
-class InjuryIn(BaseModel):
-    horse_id: str
-    title: str
-    description: Optional[str] = None
-    status: str = "active"  # active, improving, monitoring, resolved, chronic
-    severity: str = "mild"
-    start_date: Optional[str] = None
-    rehab_plan: Optional[str] = None
-
-class WellnessIn(BaseModel):
-    horse_id: str
-    appetite: int = 5
-    water_intake: int = 5
-    energy: int = 5
-    body_condition: float = 5.0
-    coat_quality: int = 5
-    notes: Optional[str] = None
-    status: str = "normal"  # normal, watch, concern, urgent
-
 class LessonIn(BaseModel):
     rider_id: str
     horse_id: Optional[str] = None
@@ -228,21 +151,6 @@ class TrainingSessionIn(BaseModel):
     rating: Optional[int] = None
     homework: Optional[str] = None
 
-class RiderIn(BaseModel):
-    full_name: str
-    age: Optional[int] = None
-    skill_level: str = "beginner"  # beginner, intermediate, advanced
-    goals: Optional[str] = None
-    trainer_id: Optional[str] = None
-    emergency_contact: Optional[str] = None
-    photo_url: Optional[str] = None
-
-class OwnerIn(BaseModel):
-    full_name: str
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-    horses: Optional[List[str]] = []
-    photo_url: Optional[str] = None
 
 class InvoiceIn(BaseModel):
     owner_id: str
@@ -309,141 +217,6 @@ async def list_collection(coll, query=None, sort_field=None, limit=500):
     if sort_field:
         cursor = cursor.sort(sort_field, -1)
     return await cursor.to_list(limit)
-
-# ---------------- Horses ----------------
-@api_router.get("/horses")
-async def list_horses(user=Depends(get_current_user)):
-    return await list_collection("horses")
-
-@api_router.post("/horses")
-async def create_horse(body: HorseIn, user=Depends(get_current_user)):
-    doc = body.model_dump()
-    doc.update({"id": new_id(), "created_at": iso(now_utc())})
-    await db.horses.insert_one(doc)
-    return clean(doc)
-
-@api_router.get("/horses/{horse_id}")
-async def get_horse(horse_id: str, user=Depends(get_current_user)):
-    h = await db.horses.find_one({"id": horse_id}, {"_id": 0})
-    if not h:
-        raise HTTPException(404, "Horse not found")
-    return h
-
-@api_router.patch("/horses/{horse_id}")
-async def update_horse(horse_id: str, body: Dict[str, Any], user=Depends(get_current_user)):
-    await db.horses.update_one({"id": horse_id}, {"$set": body})
-    return await db.horses.find_one({"id": horse_id}, {"_id": 0})
-
-# ---------------- Owners ----------------
-@api_router.get("/owners")
-async def list_owners(user=Depends(get_current_user)):
-    return await list_collection("owners")
-
-@api_router.post("/owners")
-async def create_owner(body: OwnerIn, user=Depends(get_current_user)):
-    doc = body.model_dump()
-    doc.update({"id": new_id(), "created_at": iso(now_utc())})
-    await db.owners.insert_one(doc)
-    return clean(doc)
-
-# ---------------- Riders ----------------
-@api_router.get("/riders")
-async def list_riders(user=Depends(get_current_user)):
-    return await list_collection("riders")
-
-@api_router.post("/riders")
-async def create_rider(body: RiderIn, user=Depends(get_current_user)):
-    doc = body.model_dump()
-    doc.update({"id": new_id(), "created_at": iso(now_utc())})
-    await db.riders.insert_one(doc)
-    return clean(doc)
-
-# ---------------- Medications ----------------
-@api_router.get("/medications")
-async def list_meds(horse_id: Optional[str] = None, user=Depends(get_current_user)):
-    q = {"horse_id": horse_id} if horse_id else {}
-    return await list_collection("medications", q)
-
-@api_router.post("/medications")
-async def create_med(body: MedicationIn, user=Depends(get_current_user)):
-    doc = body.model_dump()
-    doc.update({"id": new_id(), "created_at": iso(now_utc())})
-    await db.medications.insert_one(doc)
-    return clean(doc)
-
-@api_router.get("/medication-logs")
-async def list_med_logs(user=Depends(get_current_user)):
-    return await list_collection("medication_logs", sort_field="scheduled_time")
-
-@api_router.post("/medication-logs")
-async def create_med_log(body: MedLogIn, user=Depends(get_current_user)):
-    doc = body.model_dump()
-    doc.update({"id": new_id(), "completed_by": user["id"], "completed_at": iso(now_utc())})
-    await db.medication_logs.insert_one(doc)
-    return clean(doc)
-
-# ---------------- Feed Tasks ----------------
-@api_router.get("/feed-tasks")
-async def list_feed(date_str: Optional[str] = None, user=Depends(get_current_user)):
-    q = {"date": date_str} if date_str else {}
-    return await list_collection("feed_tasks", q)
-
-@api_router.post("/feed-tasks/{task_id}/complete")
-async def complete_feed(task_id: str, user=Depends(get_current_user)):
-    await db.feed_tasks.update_one(
-        {"id": task_id},
-        {"$set": {"completed": True, "completed_by": user["full_name"], "completed_at": iso(now_utc())}}
-    )
-    return await db.feed_tasks.find_one({"id": task_id}, {"_id": 0})
-
-# ---------------- Vet records ----------------
-@api_router.get("/vet-records")
-async def list_vet(horse_id: Optional[str] = None, user=Depends(get_current_user)):
-    q = {"horse_id": horse_id} if horse_id else {}
-    return await list_collection("vet_records", q, sort_field="date")
-
-@api_router.post("/vet-records")
-async def create_vet(body: VetRecordIn, user=Depends(get_current_user)):
-    doc = body.model_dump()
-    doc.update({"id": new_id(), "created_at": iso(now_utc())})
-    await db.vet_records.insert_one(doc)
-    return clean(doc)
-
-# ---------------- Farrier history (engine-projected; Phase-B) ----------------
-@api_router.get("/farrier-history")
-async def list_farrier(horse_id: Optional[str] = None, user=Depends(get_current_user)):
-    q = {"horse_id": horse_id} if horse_id else {}
-    items = await db.farrier_history.find(q, {"_id": 0}).sort("date", -1).to_list(500)
-    return items
-
-# ---------------- Injuries ----------------
-@api_router.get("/injuries")
-async def list_injuries(horse_id: Optional[str] = None, user=Depends(get_current_user)):
-    q = {"horse_id": horse_id} if horse_id else {}
-    return await list_collection("injuries", q)
-
-@api_router.post("/injuries")
-async def create_injury(body: InjuryIn, user=Depends(get_current_user)):
-    doc = body.model_dump()
-    doc.update({"id": new_id(), "created_at": iso(now_utc())})
-    await db.injuries.insert_one(doc)
-    return clean(doc)
-
-# ---------------- Wellness ----------------
-@api_router.get("/wellness")
-async def list_wellness(horse_id: Optional[str] = None, user=Depends(get_current_user)):
-    q = {"horse_id": horse_id} if horse_id else {}
-    return await list_collection("wellness", q, sort_field="created_at")
-
-@api_router.post("/wellness")
-async def create_wellness(body: WellnessIn, user=Depends(get_current_user)):
-    doc = body.model_dump()
-    doc.update({"id": new_id(), "created_at": iso(now_utc())})
-    await db.wellness.insert_one(doc)
-    # Also bump horse wellness_score
-    avg = (body.appetite + body.water_intake + body.energy + body.coat_quality) * 5
-    await db.horses.update_one({"id": body.horse_id}, {"$set": {"wellness_score": min(100, avg)}})
-    return clean(doc)
 
 # ---------------- Lessons ----------------
 @api_router.get("/lessons")
@@ -1079,6 +852,15 @@ api_router.include_router(build_onboarding_router(
     get_current_user=get_current_user,
     require_setup_role=require_setup_role,
     roles=ROLES,
+    list_collection=list_collection,
+    clean=clean,
+    new_id=new_id,
+))
+
+# ---------------- Care records (extracted to routes/care.py) ----------------
+api_router.include_router(build_care_router(
+    db=db,
+    get_current_user=get_current_user,
     list_collection=list_collection,
     clean=clean,
     new_id=new_id,

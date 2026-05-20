@@ -83,6 +83,16 @@ const SetupConciergeCard = ({ progress, steps }) => {
           );
         })}
       </div>
+
+      {/* Reassuring, non-pressuring guidance. Avoid checklist guilt. */}
+      <div
+        data-testid="setup-guidance"
+        className="mt-5 pt-4 border-t border-equine-hairline/60 text-[12px] text-equine-platinum/65 leading-relaxed"
+      >
+        Many barns begin with <span className="text-equine-ivory">Horses</span> and{" "}
+        <span className="text-equine-ivory">Feed Templates</span>, then expand from there.
+        You can complete the remaining steps any time from Settings — nothing is locked or required to start operations.
+      </div>
     </Card>
   );
 };

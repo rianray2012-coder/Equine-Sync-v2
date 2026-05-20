@@ -151,6 +151,12 @@ export default function Onboarding() {
           <div className="hairline mt-2 pt-3 px-3 pb-1 text-[11px] text-equine-platinum/60">
             Autosave on · You can leave &amp; resume any time.
           </div>
+          <div
+            data-testid="onboarding-reassurance"
+            className="px-3 pb-3 pt-1 text-[11px] text-equine-platinum/55 leading-relaxed"
+          >
+            Most barns revisit Inventory and Schedules after their first operational week. Nothing here is required to begin running daily care.
+          </div>
         </Card>
 
         {/* ───── Content ───── */}
