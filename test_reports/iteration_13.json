@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration_13 verifies (a) Dashboard.jsx + Onboarding.jsx complexity reduction refactors and (b) the new /app/backend/seed_pulse_demo.py demo seeder. Backend pytest 85/85 passed (test_wellness_pulse.py + test_owner_trust.py + test_owner_trust_edges.py + test_weekly_recap.py + test_onboarding.py + test_invites_and_analytics.py + test_reports_and_nudges.py). Demo seeder confirmed isolated and reversible: `python -m seed_pulse_demo --apply --link-first-horse` inserted exactly 7 task_events tagged demo_marker='pulse-demo-v1' (5 medication + 2 rehab) and temporarily relinked the first horse (Valentino) to owner@equinesync.com. While linked, POST /api/notifications/digest/preview returned a NON-EMPTY payload (1 horse section, 5 lines, including the pulse line 'Valentino completed all scheduled rehab sessions this week.'). The medication pulse line was correctly suppressed by an existing 24h med-skip preempt — designed restraint, matches spec. Verified no documents outside demo_marker are touched; cleanup deletes all 7 events and restores the horse linkage. Frontend regression on /dashboard and /onboarding: every requested data-testid resolves; the old WellnessPulseCard (62%/22%) is GONE (page text scan: '62%'=False, '22%'=False, 'Wellness Pulse'=False); the new upcoming-care-card renders real engine-derived rows (Rehab Hand-walk, Spring Vaccinations) sourced from /api/tasks?start=...&end=...; SetupConciergeCard renders only when onboarding incomplete (admin still in progress so it shows; testid resolves). Onboarding regression: all 10 step-nav-* testids present, all step-* body testids present, step-back / step-next render, step-skip renders only on optional steps (riders confirmed), typing in barn-name + step-next auto-advances to locations (PATCH /onboarding/progress success). CSV flow on owners works end-to-end via {kind}-prefixed testids (owners-csv-toggle, owners-csv-text, owners-csv-preview, owners-csv-commit); horses-csv-toggle also present. Role gating now in place on /api/service-requests/{id}/approve and /decline — groom token returns HTTP 403 (was an open carry-over from iter_10).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "seed_pulse_demo.py (script ordering)", "issue": "When run as `--apply --reset` WITHOUT --link-first-horse, the reset path correctly removes events + restores horse linkage, but the script proceeds to immediately re-insert 7 events targeting the just-restored horse id; the events end up tied to a horse the demo owner no longer owns, so a subsequent digest preview cannot see them. Workaround: pair --reset with --link-first-horse for refresh, or run --reset alone (no --apply) once to clean, then a fresh --apply --link-first-horse. Not blocking — script is dev-tooling and the documented usage in the docstring (`--apply --link-first-horse`, `--apply --reset`) reads as two separate workflows."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_wellness_pulse.py",
+    "/app/backend/tests/test_owner_trust.py",
+    "/app/backend/tests/test_owner_trust_edges.py",
+    "/app/backend/tests/test_weekly_recap.py",
+    "/app/backend/tests/test_onboarding.py",
+    "/app/backend/tests/test_invites_and_analytics.py",
+    "/app/backend/tests/test_reports_and_nudges.py",
+    "/app/test_reports/pytest/iter13_full.xml"
+  ],
+  "action_items": [
+    "(Optional polish) In seed_pulse_demo.py, consider running the reset BEFORE the horse-selection block so that `--apply --reset` (without --link-first-horse) results in a clean-only outcome (no re-insert) — current behaviour is harmless but slightly counter-intuitive.",
+    "(Note for spec/docs) The CSV testids in onboarding RecordsStep.jsx are kind-prefixed (`owners-csv-toggle`, `horses-csv-toggle`, etc.) not bare `csv-toggle`. The review-request shorthand was misleading; implementation is correct and namespaced. No code change needed.",
+    "(Carry-over from prior iterations, now RESOLVED in this iteration) Role gating on /api/service-requests/{id}/approve and /decline — verified 403 for groom token."
+  ],
+  "critical_code_review_comments": [
+    "Dashboard.jsx is now 158 LOC of pure state+composition — exactly as described. All widget logic correctly extracted under components/dashboard/*. The /api/tasks fetch with start/end + 7d window + client-side filter to [vet, farrier, rehab] reuses the existing Task Engine endpoint instead of inventing a new one — good restraint. Filter excludes completed/skipped/cancelled, slices to 8 items, and a calm empty state is visible in the loading=false case.",
+    "Onboarding.jsx at 211 LOC is now a stepper+router only. STEP_META is correctly centralised in lib/onboardingMeta.js and reused by SetupConciergeCard on Dashboard — single source of truth honored. PATCH /onboarding/progress on barn-name → step-next is idempotent (verified live: status flipped from in_progress → complete and auto-advanced to locations, no errors).",
+    "seed_pulse_demo.py is exemplary demo tooling: dry-run by default, idempotent (existing demo events block re-insert without --reset), reversible (--reset restores both task_events and any horse _demo_marker linkages it created), tag-isolated (every write carries demo_marker='pulse-demo-v1' or _demo_marker on horses), and NOT imported by server.py (confirmed). Counts verified end-to-end: 7 events (5 med + 2 rehab), exactly one horse marked, and full cleanup restores both to 0/0.",
+    "The medication pulse silence on the demo owner (due to a 24h med-skip preempt) confirms the wellness_pulse priority discipline (med-skip > pulse-line) is working as designed in production — the rehab pulse line correctly surfaced instead.",
+    "No regressions detected on /dashboard, /onboarding. No console errors observed during testing."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "85/85 = 100% pytest; 100% on live curl (digest preview, login, service-requests role gating)",
+    "frontend": "100% on dashboard testid surface, 100% on onboarding testid surface + CSV flow + state preservation"
+  },
+  "test_credentials": "From /app/memory/test_credentials.md — admin@equinesync.com, owner@equinesync.com, groom@equinesync.com (all demo1234).",
+  "seed_data_creation": "Used seed_pulse_demo.py to insert 7 demo task_events and link Valentino → owner@equinesync.com to drive a non-empty digest preview, then fully cleaned via direct db.task_events.delete_many({'demo_marker':'pulse-demo-v1'}). Final state verified: 0 demo events, 0 horses marked, Valentino's owner_id restored to original.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Both refactor deliverables (Dashboard.jsx, Onboarding.jsx) and the demo seeder are green. The OLD WellnessPulseCard (62%/22%/12%/4%) is fully removed and replaced by UpcomingCareCard (testid='upcoming-care-card') that reads from /api/tasks?start=...&end=... and filters client-side to vet/farrier/rehab. STEP_META is shared via lib/onboardingMeta.js. The seed_pulse_demo script is standalone — to surface the pulse line in a live digest run `cd /app/backend && export REACT_APP_BACKEND_URL=<url> && python -m seed_pulse_demo --apply --link-first-horse`, then call POST /api/notifications/digest/preview as owner. Clean up after with --apply --reset (best paired with --link-first-horse for a clean refresh; see action_items for the minor ordering note). Role gating on /service-requests/{approve,decline} is now in place and returns 403 for groom.",
+  "rca of the issue": "N/A — no failures. One minor design/UX note on seed_pulse_demo.py reset-without-link sequence documented above but not blocking."
+}
