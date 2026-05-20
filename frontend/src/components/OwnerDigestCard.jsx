@@ -54,6 +54,7 @@ export default function OwnerDigestCard() {
     try {
       await api.put("/notifications/preferences", { digest_enabled: v });
       toast.success(v ? "Daily digest enabled." : "Daily digest paused.");
+      if (v) load();
     } catch {
       setEnabled(!v);
       toast.error("Could not update preference.");

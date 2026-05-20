@@ -43,6 +43,9 @@ from notifications import (
     ensure_indexes as ensure_notification_indexes,
 )
 from routes.auth import build_router as build_auth_router
+from routes.dashboard import build_router as build_dashboard_router
+from routes.reports import build_router as build_reports_router
+from routes.invites import build_router as build_invites_router
 from owner_digest import (
     run_daily_digest_pass,
     send_digest_to_owner,
@@ -516,7 +519,14 @@ async def create_sr(body: ServiceRequestIn, user=Depends(get_current_user)):
 
 @api_router.post("/service-requests/{sr_id}/approve")
 async def approve_sr(sr_id: str, user=Depends(get_current_user)):
-    await db.service_requests.update_one({"id": sr_id}, {"$set": {"status": "approved", "approved_at": iso(now_utc())}})
+    if user.get("role") not in ("admin", "barn_manager", "trainer"):
+        raise HTTPException(403, "Insufficient role to approve service requests")
+    existing = await db.service_requests.find_one({"id": sr_id}, {"_id": 0, "status": 1})
+    if not existing:
+        raise HTTPException(404, "Service request not found")
+    if existing.get("status") != "pending":
+        raise HTTPException(409, f"Request is already {existing.get('status')}")
+    await db.service_requests.update_one({"id": sr_id}, {"$set": {"status": "approved", "approved_at": iso(now_utc()), "approved_by_user_id": user["id"]}})
     return await db.service_requests.find_one({"id": sr_id}, {"_id": 0})
 
 
@@ -526,8 +536,15 @@ class DeclineSRBody(BaseModel):
 
 @api_router.post("/service-requests/{sr_id}/decline")
 async def decline_sr(sr_id: str, body: Optional[DeclineSRBody] = None, user=Depends(get_current_user)):
+    if user.get("role") not in ("admin", "barn_manager", "trainer"):
+        raise HTTPException(403, "Insufficient role to decline service requests")
+    existing = await db.service_requests.find_one({"id": sr_id}, {"_id": 0, "status": 1})
+    if not existing:
+        raise HTTPException(404, "Service request not found")
+    if existing.get("status") != "pending":
+        raise HTTPException(409, f"Request is already {existing.get('status')}")
     reason = (body.reason if body else None) or "Request declined."
-    r = await db.service_requests.update_one(
+    await db.service_requests.update_one(
         {"id": sr_id},
         {"$set": {
             "status": "declined",
@@ -536,8 +553,6 @@ async def decline_sr(sr_id: str, body: Optional[DeclineSRBody] = None, user=Depe
             "decline_reason": reason[:500],
         }},
     )
-    if r.matched_count == 0:
-        raise HTTPException(404, "Service request not found")
     return await db.service_requests.find_one({"id": sr_id}, {"_id": 0})
 
 
@@ -587,105 +602,8 @@ async def create_incident(body: IncidentIn, user=Depends(get_current_user)):
     await db.incidents.insert_one(doc)
     return clean(doc)
 
-# ---------------- Dashboard summary ----------------
-@api_router.get("/dashboard/summary")
-async def dashboard(user=Depends(get_current_user)):
-    """Engine-derived dashboard counts. Phase-A migration (Feb 19 2026):
-    Feed/meds/lesson counts now come from the unified Task Engine instead of
-    legacy `feed_tasks` and `medication_logs` collections.
-    """
-    today_start = now_utc().replace(hour=0, minute=0, second=0, microsecond=0)
-    today_end = today_start + timedelta(days=1)
-    today_start_iso = today_start.isoformat()
-    today_end_iso = today_end.isoformat()
-
-    total_horses = await db.horses.count_documents({})
-    stall_rest = await db.horses.count_documents({"status": {"$in": ["stall_rest", "rehab"]}})
-    active_injuries = await db.injuries.count_documents({"status": {"$in": ["active", "monitoring", "improving"]}})
-
-    # Engine-backed counts. Tasks are tenant-scoped + filtered to today.
-    feed_q = {"tenant_id": TASK_TENANT_ID, "category": "feed",
-              "scheduled_at": {"$gte": today_start_iso, "$lt": today_end_iso}}
-    feed_today_total = await db.tasks.count_documents(feed_q)
-    feed_pending = await db.tasks.count_documents({**feed_q, "status": {"$nin": ["completed", "skipped", "cancelled"]}})
-
-    med_q = {"tenant_id": TASK_TENANT_ID, "category": "medication",
-             "scheduled_at": {"$gte": today_start_iso, "$lt": today_end_iso}}
-    meds_due = await db.tasks.count_documents({**med_q, "status": {"$nin": ["completed", "skipped", "cancelled"]}})
-    # Missed = a completion with outcome=refused OR a task overdue beyond its window.
-    meds_missed = await db.task_completions.count_documents({
-        "tenant_id": TASK_TENANT_ID, "voided": {"$ne": True},
-        "outcome": {"$in": ["refused", "skipped"]},
-        "completed_at": {"$gte": today_start_iso, "$lt": today_end_iso},
-    })
-
-    pending_sr = await db.service_requests.count_documents({"status": "pending"})
-    open_incidents = await db.incidents.count_documents({"status": {"$ne": "closed"}})
-    lessons_today = await db.lessons.count_documents({"start_time": {"$regex": f"^{now_utc().date().isoformat()}"}})
-
-    overdue_list = await db.invoices.find(
-        {"status": {"$in": ["open", "overdue"]}}, {"_id": 0, "total": 1},
-    ).to_list(1000)
-    overdue_invoices = len(overdue_list)
-    overdue_amount = sum(i.get("total", 0) for i in overdue_list)
-
-    wellness_list = await db.horses.find({}, {"_id": 0, "wellness_score": 1}).to_list(1000)
-    avg_wellness = round(sum(h.get("wellness_score", 0) for h in wellness_list) / max(1, len(wellness_list))) if wellness_list else 0
-
-    return {
-        "total_horses": total_horses,
-        "feed_pending": feed_pending,
-        "feed_today_total": feed_today_total,
-        "meds_due": meds_due,
-        "meds_missed": meds_missed,
-        "stall_rest": stall_rest,
-        "active_injuries": active_injuries,
-        "overdue_invoices": overdue_invoices,
-        "overdue_amount": overdue_amount,
-        "pending_service_requests": pending_sr,
-        "open_incidents": open_incidents,
-        "lessons_today": lessons_today,
-        "avg_wellness": avg_wellness,
-        "_source": "engine",
-    }
-
-
-@api_router.get("/dashboard/barn-board")
-async def barn_board(response: Response, user=Depends(get_current_user)):
-    """DEPRECATED Phase-A (Feb 19 2026): kept for backward compatibility while
-    callers migrate to /tasks/today. New code should not use this endpoint.
-
-    Now backed by the unified Task Engine instead of legacy collections.
-    """
-    # RFC 8594 deprecation signaling for HTTP clients.
-    response.headers["Deprecation"] = "true"
-    response.headers["Sunset"] = "Wed, 30 Apr 2026 00:00:00 GMT"
-    response.headers["Link"] = '</api/tasks/today>; rel="successor-version"'
-    today_start = now_utc().replace(hour=0, minute=0, second=0, microsecond=0)
-    today_end = today_start + timedelta(days=1)
-    today_str = now_utc().date().isoformat()
-
-    feed = await db.tasks.find({
-        "tenant_id": TASK_TENANT_ID, "category": "feed",
-        "scheduled_at": {"$gte": today_start.isoformat(), "$lt": today_end.isoformat()},
-    }, {"_id": 0}).sort("scheduled_at", 1).to_list(200)
-    meds = await db.tasks.find({
-        "tenant_id": TASK_TENANT_ID, "category": "medication",
-        "scheduled_at": {"$gte": today_start.isoformat(), "$lt": today_end.isoformat()},
-    }, {"_id": 0}).sort("scheduled_at", 1).to_list(200)
-    lessons = await db.lessons.find({"start_time": {"$regex": f"^{today_str}"}}, {"_id": 0}).to_list(200)
-    stall_rest = await db.horses.find({"status": {"$in": ["stall_rest", "rehab"]}}, {"_id": 0}).to_list(100)
-    incidents = await db.incidents.find({}, {"_id": 0}).sort("occurred_at", -1).to_list(5)
-    return {
-        "date": today_str,
-        "feed": feed,
-        "medications": meds,
-        "lessons": lessons,
-        "stall_rest": stall_rest,
-        "urgent": incidents,
-        "weather": {"temp_f": 58, "condition": "Light Rain", "alert": "Wet footing — limit outdoor jumping"},
-        "_deprecated": "Use /tasks/today; this endpoint will be removed.",
-    }
+# ---------------- Dashboard summary (extracted to routes/dashboard.py) ----------------
+# See routes/dashboard.py — included into api_router at the bottom of this file.
 
 # ---------------- AI assistant ----------------
 @api_router.post("/ai/generate")
@@ -1363,32 +1281,7 @@ async def csv_template(kind: str):
         raise HTTPException(400, "Unknown template")
     return {"text": text, "filename": f"equinesync_{kind}_template.csv"}
 
-# ---------------- Magic-link Invites ----------------
-ROLE_LABELS = {
-    "admin": "Stable Owner / Admin", "barn_manager": "Barn Manager", "trainer": "Trainer",
-    "groom": "Groom", "working_student": "Working Student", "horse_owner": "Horse Owner",
-    "rider": "Rider", "parent": "Parent / Guardian", "veterinarian": "Veterinarian", "farrier": "Farrier",
-}
-
-class InviteCreate(BaseModel):
-    email: EmailStr
-    full_name: Optional[str] = None
-    role: str
-    barn_id: Optional[str] = "primary"
-    message: Optional[str] = None
-
-class InviteAccept(BaseModel):
-    token: str
-    password: str
-    full_name: Optional[str] = None
-
-def _hash_token(t: str) -> str:
-    return hashlib.sha256(t.encode("utf-8")).hexdigest()
-
-def _new_token() -> tuple[str, str]:
-    raw = secrets.token_urlsafe(32)
-    return raw, _hash_token(raw)
-
+# ---------------- Shared analytics + url helpers (used across modules) ----------------
 async def _track(name: str, props: Dict[str, Any], user_id: Optional[str] = None):
     """Internal: record an analytics event server-side."""
     try:
@@ -1399,11 +1292,6 @@ async def _track(name: str, props: Dict[str, Any], user_id: Optional[str] = None
     except Exception:
         logger.exception("Failed to record event %s", name)
 
-@api_router.get("/invites")
-async def list_invites_full(user=Depends(get_current_user)):
-    require_setup_role(user)
-    items = await db.invites.find({}, {"_id": 0, "token_hash": 0}).sort("created_at", -1).to_list(500)
-    return items
 
 def _base_url(request: Optional[Request] = None) -> str:
     env_url = (os.environ.get("APP_BASE_URL") or "").strip().rstrip("/")
@@ -1418,189 +1306,13 @@ def _base_url(request: Optional[Request] = None) -> str:
             return f"{proto}://{host}"
     return "https://herd-hub-19.emergent.host"
 
-@api_router.post("/invites")
-async def create_invite_with_link(body: InviteCreate, request: Request, user=Depends(get_current_user)):
-    require_setup_role(user)
-    if body.role not in ROLES:
-        raise HTTPException(400, "Invalid role")
-    email_l = body.email.lower()
-    # de-dupe by email — active (pending, non-expired) invites or existing users
-    if await db.users.find_one({"email": email_l}):
-        raise HTTPException(409, "A user with this email already exists")
-    existing = await db.invites.find_one({"email": email_l, "status": "pending"})
-    if existing:
-        raise HTTPException(409, "An invite for this email is already pending — resend or revoke it first")
 
-    raw_token, token_hash = _new_token()
-    ttl_days = int(os.environ.get("INVITE_TTL_DAYS", "7"))
-    expires_at = now_utc() + timedelta(days=ttl_days)
-    barn = await db.barn.find_one({"id": body.barn_id or "primary"}, {"_id": 0, "name": 1}) or {}
-
-    invite = {
-        "id": new_id(),
-        "email": email_l,
-        "full_name": body.full_name,
-        "role": body.role,
-        "barn_id": body.barn_id or "primary",
-        "token_hash": token_hash,
-        "status": "pending",
-        "message": body.message,
-        "invited_by_id": user["id"],
-        "invited_by_name": user["full_name"],
-        "expires_at": iso(expires_at),
-        "created_at": iso(now_utc()),
-        "sends": [],
-    }
-    await db.invites.insert_one(invite)
-
-    accept_url = f"{_base_url(request)}/accept-invite?token={raw_token}"
-
-    mail = await send_email(
-        to=email_l,
-        subject=f"You're invited to {barn.get('name') or 'EquineSync'}",
-        template="onboarding_invite",
-        variables={
-            "barn_name": barn.get("name") or "EquineSync",
-            "invitee_name": (body.full_name or email_l.split('@')[0]).strip() or "rider",
-            "inviter_name": user["full_name"],
-            "role_label": ROLE_LABELS.get(body.role, body.role.replace('_', ' ')),
-            "accept_url": accept_url,
-            "ttl_days": ttl_days,
-        },
-    )
-    await db.invites.update_one({"id": invite["id"]},
-        {"$push": {"sends": {"at": iso(now_utc()), "status": mail.get("status"), "id": mail.get("id")}}})
-    await _track("invite.sent", {"invite_id": invite["id"], "role": body.role, "dev_mode": mail.get("dev", False)}, user["id"])
-
-    out = await db.invites.find_one({"id": invite["id"]}, {"_id": 0, "token_hash": 0})
-    # Surface the magic link to the inviter in dev mode so they can share it manually if email is disabled.
-    if mail.get("dev"):
-        out["dev_accept_url"] = accept_url
-    return out
-
-@api_router.post("/invites/{invite_id}/resend")
-async def resend_invite(invite_id: str, request: Request, user=Depends(get_current_user)):
-    require_setup_role(user)
-    inv = await db.invites.find_one({"id": invite_id})
-    if not inv: raise HTTPException(404, "Invite not found")
-    if inv.get("status") != "pending":
-        raise HTTPException(400, f"Invite is {inv.get('status')}")
-    raw_token, token_hash = _new_token()
-    ttl_days = int(os.environ.get("INVITE_TTL_DAYS", "7"))
-    expires_at = now_utc() + timedelta(days=ttl_days)
-    await db.invites.update_one({"id": invite_id},
-        {"$set": {"token_hash": token_hash, "expires_at": iso(expires_at), "updated_at": iso(now_utc())}})
-
-    barn = await db.barn.find_one({"id": inv.get("barn_id", "primary")}, {"_id": 0, "name": 1}) or {}
-    accept_url = f"{_base_url(request)}/accept-invite?token={raw_token}"
-    mail = await send_email(
-        to=inv["email"],
-        subject=f"Reminder: your invitation to {barn.get('name') or 'EquineSync'}",
-        template="onboarding_invite",
-        variables={
-            "barn_name": barn.get("name") or "EquineSync",
-            "invitee_name": (inv.get("full_name") or inv["email"].split('@')[0]),
-            "inviter_name": user["full_name"],
-            "role_label": ROLE_LABELS.get(inv["role"], inv["role"].replace('_', ' ')),
-            "accept_url": accept_url,
-            "ttl_days": ttl_days,
-        },
-    )
-    await db.invites.update_one({"id": invite_id},
-        {"$push": {"sends": {"at": iso(now_utc()), "status": mail.get("status"), "id": mail.get("id"), "resend": True}}})
-    await _track("invite.resent", {"invite_id": invite_id}, user["id"])
-    out = await db.invites.find_one({"id": invite_id}, {"_id": 0, "token_hash": 0})
-    if mail.get("dev"):
-        out["dev_accept_url"] = accept_url
-    return out
-
-@api_router.post("/invites/{invite_id}/revoke")
-async def revoke_invite(invite_id: str, user=Depends(get_current_user)):
-    require_setup_role(user)
-    res = await db.invites.update_one(
-        {"id": invite_id, "status": "pending"},
-        {"$set": {"status": "revoked", "revoked_at": iso(now_utc()), "revoked_by": user["full_name"]}}
-    )
-    if res.matched_count == 0:
-        raise HTTPException(404, "No pending invite found")
-    await _track("invite.revoked", {"invite_id": invite_id}, user["id"])
-    return {"ok": True}
-
-@api_router.get("/invites/verify")
-async def verify_invite(token: str):
-    inv = await db.invites.find_one({"token_hash": _hash_token(token)}, {"_id": 0, "token_hash": 0})
-    if not inv:
-        raise HTTPException(404, "Invalid invitation link")
-    if inv.get("status") != "pending":
-        raise HTTPException(410, f"This invitation is {inv.get('status')}")
-    try:
-        exp = datetime.fromisoformat(inv["expires_at"])
-        if exp.tzinfo is None: exp = exp.replace(tzinfo=timezone.utc)
-        if exp < now_utc():
-            await db.invites.update_one({"id": inv["id"]}, {"$set": {"status": "expired"}})
-            raise HTTPException(410, "This invitation has expired")
-    except KeyError:
-        pass
-    barn = await db.barn.find_one({"id": inv.get("barn_id", "primary")}, {"_id": 0, "name": 1, "facility_type": 1}) or {}
-    inv["barn"] = barn
-    return inv
-
-@api_router.post("/invites/accept")
-async def accept_invite(body: InviteAccept, request: Request):
-    inv = await db.invites.find_one({"token_hash": _hash_token(body.token)})
-    if not inv:
-        raise HTTPException(404, "Invalid invitation")
-    if inv.get("status") != "pending":
-        raise HTTPException(410, f"Invitation is {inv.get('status')}")
-    exp = datetime.fromisoformat(inv["expires_at"])
-    if exp.tzinfo is None: exp = exp.replace(tzinfo=timezone.utc)
-    if exp < now_utc():
-        await db.invites.update_one({"id": inv["id"]}, {"$set": {"status": "expired"}})
-        raise HTTPException(410, "Invitation expired")
-    if len(body.password) < 8:
-        raise HTTPException(400, "Password must be at least 8 characters")
-    if await db.users.find_one({"email": inv["email"]}):
-        raise HTTPException(409, "A user already exists for this email — please sign in")
-
-    full_name = (body.full_name or inv.get("full_name") or inv["email"].split('@')[0]).strip()
-    user = {
-        "id": new_id(),
-        "email": inv["email"],
-        "full_name": full_name,
-        "role": inv["role"],
-        "password_hash": hash_pwd(body.password),
-        "created_at": iso(now_utc()),
-        "via_invite_id": inv["id"],
-    }
-    await db.users.insert_one(user)
-    await db.invites.update_one({"id": inv["id"]},
-        {"$set": {"status": "accepted", "accepted_at": iso(now_utc()), "accepted_user_id": user["id"]}})
-
-    # Pre-create an onboarding progress doc so wizard auto-launches and resumes cleanly.
-    has_setup_role = inv["role"] in ("admin", "barn_manager")
-    progress = {
-        "user_id": user["id"],
-        "steps": {s["id"]: "pending" for s in ONBOARDING_STEPS},
-        "current_step": ONBOARDING_STEPS[0]["id"],
-        "data": {},
-        "completed": not has_setup_role,  # non-setup roles don't see the wizard
-        "auto_launch": has_setup_role,
-        "created_at": iso(now_utc()),
-        "updated_at": iso(now_utc()),
-    }
-    await db.onboarding_progress.insert_one(progress)
-
-    token = create_token(user["id"], user["role"])
-    ua, ip = await _client_meta(request)
-    refresh = await issue_refresh_token(db, user["id"], user_agent=ua, ip=ip)
-    await _track("invite.accepted", {"invite_id": inv["id"], "role": inv["role"]}, user["id"])
-    return {
-        "token": token,
-        "refresh_token": refresh,
-        "expires_in_seconds": JWT_EXP_HOURS * 3600,
-        "user": _user_safe(user),
-        "auto_launch_onboarding": has_setup_role,
-    }
+# ---------------- Magic-link Invites (extracted to routes/invites.py) ----------------
+ROLE_LABELS = {
+    "admin": "Stable Owner / Admin", "barn_manager": "Barn Manager", "trainer": "Trainer",
+    "groom": "Groom", "working_student": "Working Student", "horse_owner": "Horse Owner",
+    "rider": "Rider", "parent": "Parent / Guardian", "veterinarian": "Veterinarian", "farrier": "Farrier",
+}
 
 # ---------------- Analytics ----------------
 class EventIn(BaseModel):
@@ -1626,165 +1338,21 @@ async def onboarding_funnel(user=Depends(get_current_user)):
     rows = await db.events.aggregate(pipeline).to_list(100)
     return [{"event": r["_id"], "count": r["count"]} for r in rows]
 
-# ---------------- Setup Health Reports ----------------
-async def _setup_health_payload() -> Dict[str, Any]:
-    """Aggregate everything the Setup Health report needs in a single payload."""
-    total_progress = await db.onboarding_progress.count_documents({})
-    completed_progress = await db.onboarding_progress.count_documents({"completed": True})
-
-    # Funnel by step
-    progresses = await db.onboarding_progress.find({}, {"_id": 0, "steps": 1, "data": 1, "updated_at": 1, "created_at": 1, "completed": 1, "completed_at": 1, "user_id": 1}).to_list(2000)
-    funnel = {s["id"]: {"label": s["label"], "complete": 0, "in_progress": 0, "skipped": 0, "pending": 0} for s in ONBOARDING_STEPS}
-    durations: List[float] = []
-    for p in progresses:
-        for sid, status in (p.get("steps") or {}).items():
-            if sid in funnel and status in funnel[sid]:
-                funnel[sid][status] += 1
-        if p.get("completed") and p.get("created_at") and p.get("completed_at"):
-            try:
-                a = datetime.fromisoformat(p["created_at"]); b = datetime.fromisoformat(p["completed_at"])
-                if a.tzinfo is None: a = a.replace(tzinfo=timezone.utc)
-                if b.tzinfo is None: b = b.replace(tzinfo=timezone.utc)
-                durations.append((b - a).total_seconds() / 3600.0)  # hours
-            except Exception:
-                pass
-
-    def _median(xs):
-        if not xs: return None
-        xs = sorted(xs); n = len(xs)
-        return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2
-
-    median_hours = _median(durations)
-
-    # Invite metrics
-    total_invites = await db.invites.count_documents({})
-    accepted = await db.invites.count_documents({"status": "accepted"})
-    pending_invites = await db.invites.count_documents({"status": "pending"})
-    revoked = await db.invites.count_documents({"status": "revoked"})
-    expired = await db.invites.count_documents({"status": "expired"})
-    acceptance_rate = round(100 * accepted / total_invites) if total_invites else 0
-
-    return {
-        "total_setups": total_progress,
-        "completed_setups": completed_progress,
-        "in_progress_setups": total_progress - completed_progress,
-        "completion_rate": round(100 * completed_progress / total_progress) if total_progress else 0,
-        "median_hours_to_launch": round(median_hours, 1) if median_hours else None,
-        "median_days_to_launch": round(median_hours / 24, 1) if median_hours else None,
-        "funnel": [{"step": sid, **counts} for sid, counts in funnel.items()],
-        "invites": {
-            "total": total_invites, "accepted": accepted, "pending": pending_invites,
-            "revoked": revoked, "expired": expired, "acceptance_rate": acceptance_rate,
-        },
-    }
-
-@api_router.get("/reports/setup-health")
-async def setup_health(user=Depends(get_current_user)):
-    require_setup_role(user)
-    return await _setup_health_payload()
-
-async def _nudge_candidates(min_days: int = 3) -> List[Dict[str, Any]]:
-    """Users with onboarding in progress whose last update is N days old."""
-    cutoff = now_utc() - timedelta(days=min_days)
-    cursor = db.onboarding_progress.find({"completed": {"$ne": True}}, {"_id": 0})
-    rows = await cursor.to_list(2000)
-    out = []
-    for p in rows:
-        try:
-            updated = datetime.fromisoformat(p.get("updated_at") or p.get("created_at"))
-            if updated.tzinfo is None: updated = updated.replace(tzinfo=timezone.utc)
-        except Exception:
-            continue
-        if updated > cutoff:
-            continue
-        u = await db.users.find_one({"id": p["user_id"]}, {"_id": 0, "email": 1, "full_name": 1, "role": 1})
-        if not u or not u.get("email"):
-            continue
-        steps = p.get("steps") or {}
-        completed = sum(1 for v in steps.values() if v == "complete")
-        next_step = next((s for s in ONBOARDING_STEPS if steps.get(s["id"]) not in ("complete", "skipped")), None)
-        days_stalled = max(1, int((now_utc() - updated).total_seconds() / 86400))
-        out.append({
-            "user_id": p["user_id"], "email": u["email"], "full_name": u.get("full_name", ""), "role": u.get("role"),
-            "percent_done": round(100 * completed / len(ONBOARDING_STEPS)),
-            "next_step": next_step["id"] if next_step else "review",
-            "next_step_label": next_step["label"] if next_step else "Review & Launch",
-            "days_stalled": days_stalled, "updated_at": p.get("updated_at"),
-            "current_step": p.get("current_step"),
-            "last_nudged_at": p.get("last_nudged_at"),
-        })
-    return out
-
-@api_router.get("/reports/nudge-candidates")
-async def nudge_candidates(min_days: int = 3, user=Depends(get_current_user)):
-    require_setup_role(user)
-    return await _nudge_candidates(min_days)
-
-class SendNudgesBody(BaseModel):
-    min_days: int = 3
-    cooldown_hours: int = 24  # don't nudge same user within N hours
-    user_ids: Optional[List[str]] = None  # restrict to subset
-
-async def _send_nudges(request: Optional[Request], inviter_name: str, min_days: int = 3, cooldown_hours: int = 24, user_ids: Optional[List[str]] = None) -> Dict[str, Any]:
-    candidates = await _nudge_candidates(min_days)
-    if user_ids is not None:
-        wanted = set(user_ids)
-        candidates = [c for c in candidates if c["user_id"] in wanted]
-    barn = await db.barn.find_one({"id": "primary"}, {"_id": 0, "name": 1}) or {}
-    sent = 0; skipped = 0; errors = 0; detail = []
-    cooldown = now_utc() - timedelta(hours=cooldown_hours)
-    base = _base_url(request) if request else (os.environ.get("APP_BASE_URL", "").rstrip("/") or "https://herd-hub-19.emergent.host")
-    for c in candidates:
-        last = c.get("last_nudged_at")
-        if last:
-            try:
-                dt = datetime.fromisoformat(last)
-                if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
-                if dt > cooldown:
-                    skipped += 1
-                    detail.append({"email": c["email"], "result": "cooldown"}); continue
-            except Exception:
-                pass
-        mail = await send_email(
-            to=c["email"],
-            subject=f"Pick up where you left off at {barn.get('name') or 'EquineSync'}",
-            template="onboarding_nudge",
-            variables={
-                "barn_name": barn.get("name") or "EquineSync",
-                "invitee_name": (c["full_name"].split(" ")[0] if c["full_name"] else c["email"].split("@")[0]),
-                "days_stalled": c["days_stalled"],
-                "percent_done": c["percent_done"],
-                "next_step_label": c["next_step_label"],
-                "resume_url": f"{base}/onboarding",
-                "ttl_days": 7,
-            },
-        )
-        sent_ok = mail.get("status") in ("sent", "sandbox", "dev_logged")
-        if mail.get("status") == "sent":
-            sent += 1
-            detail.append({"email": c["email"], "result": "sent"})
-        elif mail.get("dev"):
-            skipped += 1
-            detail.append({"email": c["email"], "result": mail.get("status")})
-        else:
-            errors += 1
-            detail.append({"email": c["email"], "result": "error", "error": mail.get("error", "")[:120]})
-        # Only persist cooldown if the message was at least attempted successfully — transient
-        # errors should NOT lock the recipient out of nudges for 24h.
-        if sent_ok:
-            await db.onboarding_progress.update_one(
-                {"user_id": c["user_id"]},
-                {"$set": {"last_nudged_at": iso(now_utc())}, "$inc": {"nudges_sent": 1}}
-            )
-        await _track("onboarding.nudge_sent", {"user_id": c["user_id"], "days_stalled": c["days_stalled"], "result": mail.get("status")}, None)
-    return {"candidates": len(candidates), "sent": sent, "skipped": skipped, "errors": errors, "detail": detail}
-
-@api_router.post("/admin/send-nudges")
-async def admin_send_nudges(body: SendNudgesBody, request: Request, user=Depends(get_current_user)):
-    require_setup_role(user)
-    result = await _send_nudges(request, user["full_name"], body.min_days, body.cooldown_hours, body.user_ids)
-    await _track("admin.nudges_run", {"trigger": "manual", **{k: v for k, v in result.items() if k != "detail"}}, user["id"])
-    return result
+# ---------------- Setup Health Reports (extracted to routes/reports.py) ----------------
+# See routes/reports.py — included into api_router below. The helpers
+# (setup_health_payload, nudge_candidates, send_nudges) are exposed on the
+# router instance via _reports_helpers so the startup auto-nudge scheduler can
+# reuse send_nudges without duplicating the implementation.
+_reports_router = build_reports_router(
+    db=db,
+    get_current_user=get_current_user,
+    onboarding_steps=ONBOARDING_STEPS,
+    mailer_send=send_email,
+    track=lambda *a, **kw: _track(*a, **kw),
+    base_url_from_request=lambda req: _base_url(req),
+    require_setup_role=require_setup_role,
+)
+_send_nudges = _reports_router._reports_helpers["send_nudges"]
 
 # ---------------- Tenant Reset (admin support) ----------------
 class TenantResetBody(BaseModel):
@@ -1824,6 +1392,32 @@ api_router.include_router(build_auth_router(db))
 
 # ---------------- Notifications ----------------
 api_router.include_router(build_notifications_router(db, get_current_user))
+
+# ---------------- Dashboard (extracted to routes/dashboard.py) ----------------
+api_router.include_router(build_dashboard_router(db, get_current_user, TASK_TENANT_ID))
+
+# ---------------- Reports (extracted to routes/reports.py) ----------------
+api_router.include_router(_reports_router)
+
+# ---------------- Invites (extracted to routes/invites.py) ----------------
+api_router.include_router(build_invites_router(
+    db=db,
+    get_current_user=get_current_user,
+    require_setup_role=require_setup_role,
+    roles=ROLES,
+    role_labels=ROLE_LABELS,
+    onboarding_steps=ONBOARDING_STEPS,
+    mailer_send=send_email,
+    track=_track,
+    base_url_from_request=_base_url,
+    create_token=create_token,
+    hash_pwd=hash_pwd,
+    user_safe=_user_safe,
+    client_meta=_client_meta,
+    issue_refresh_token=issue_refresh_token,
+    jwt_exp_hours=JWT_EXP_HOURS,
+    new_id=new_id,
+))
 
 app.include_router(api_router)
 
