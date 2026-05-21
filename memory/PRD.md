@@ -21,6 +21,36 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
+### Operational Hardening Sprint — Batches A + B + E (Feb 20 2026)
+Pure refinement sprint after the CRUD sprint. No new feature surface. Focus on: interruption recovery, trust under poor signal, aisle-side usability, calm error recovery, real-barn-day survivability.
+
+**Batch A — QuickAddSheet hardening:**
+- **Auto-focus** lands on the first focusable element (input / textarea / Radix Select trigger) ~320ms after open via `formRef.querySelector('input,textarea,button[role="combobox"]')`. Works for sheets whose first field is a Select (e.g. Incidents starting on `type`).
+- **Enter-to-submit** via native `<form onSubmit>` (textareas excluded by browser default).
+- **Smart defaults** wired through new `initialValues` prop:
+  - `/incidents` → `occurred_at = now` (datetime-local) + `severity = "moderate"`
+  - `/lessons` → `start_time = next half-hour` + `duration_min = 60`
+  - `/training` → `date = today` (YYYY-MM-DD)
+- **Draft preservation** via `sessionStorage["equine_draft_<endpoint>"]` — debounced save on form change, silent restore on reopen (no banner, no toast — matches founder direction "subtle, automatic, calm"), cleared after a successful POST.
+- **Defensive Radix Select guard**: ignores `onValueChange("")` events fired by Radix during its first 600ms of mount (these would otherwise clobber the smart-default). Tracked via `openedAtRef.current` timestamp.
+- **shallowEqual gate** on `initialValues` prevents parent re-renders with a new object literal from blowing away in-progress user input.
+- **Sticky footer** (Cancel + Save) at the bottom of the sheet so the primary action stays above the fold on tall forms (Incidents on iPhone SE class viewports).
+
+**Batch B — Operational error recovery:**
+- POST failure → sheet STAYS OPEN with form intact, calm inline message in `data-testid="<prefix>-error"` reading either the backend's `detail` or the fallback "Saved as draft — try again when you have signal." Toast is no longer the only failure surface.
+- New `/app/frontend/src/components/today/LastSyncedBadge.jsx` — quietly dependable "Synced just now / N min ago / HH:mm" pill rendered next to the existing `SyncHeaderBadge` on the Today page. Tap to manually refresh (`onRefresh = reload`). Auto-rerenders every 30s for accurate relative time. Strictly no alarming connectivity banners.
+
+**Batch E — Operational Simulation report:**
+- New artifact `/app/memory/OPERATIONAL_SIMULATION.md` (~280 lines) — a movement audit not a feature audit. Walks through a real Monday barn-day across Sophia (groom), Marcus (trainer), Eleanor (admin), Charlotte (owner). Includes tap counts per persona per surface, interruption-recovery scorecard, scheduling realism audit, speed-under-pressure analysis, owner-communication timing, phone-in-one-hand usability matrix, stale-state risk map, list of places staff still revert to texting/paper, founder-barn prep checklist, and the post-batches mobile hardening roadmap (Waves 1-7).
+- Document serves as product refinement guide, founder-barn prep guide, and mobile hardening roadmap as requested by user.
+
+**Verification (testing_agent_v3_fork iterations 19 → 20):**
+- Backend: unchanged (165 pytest still green from iter17).
+- Frontend iter19 caught two HIGH bugs (auto-focus on non-focusable div + severity default clobbered by Radix mount onValueChange) — both fixed in iter20.
+- Frontend iter20: **8/8 hardening checks pass**. Auto-focus correct, smart defaults applied, draft preservation + restore + clear-on-success verified, inline error path works under simulated POST 500, Enter-to-submit closes sheet on success, LastSyncedBadge renders and refreshes on tap.
+
+
+
 ### Founder-Beta CRUD Sprint (Feb 20 2026 — operational continuity release)
 After the Trust Tightening subtraction sprint, the audit's seven critical workflow gaps were closed. Real barns can now operate on day 2 without re-running onboarding.
 

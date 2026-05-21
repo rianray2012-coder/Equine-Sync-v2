@@ -283,7 +283,7 @@ export default function QuickAddSheet({
             </div>
           )}
 
-          <div className="pt-3 flex items-center justify-end gap-2 hairline mt-4">
+          <div className="sticky bottom-0 -mx-6 px-6 pt-3 pb-1 mt-4 bg-equine-navy/95 backdrop-blur-md border-t border-white/[0.06] flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
