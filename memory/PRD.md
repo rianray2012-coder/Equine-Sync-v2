@@ -21,6 +21,28 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
+### Operational Hardening — Batch D (Soft scheduling conflicts) + Bulk Select-Group (Feb 20 2026)
+Refinement of operational realism per OPERATIONAL_SIMULATION.md §3.1 and §3.3. No new feature surface. Strict adherence to founder direction: "supportive, not corrective — real barns intentionally overlap operations constantly. Help users notice, not enforce rigidity."
+
+**Soft scheduling conflicts (Batch D):**
+- New reusable `/app/frontend/src/components/SoftWarning.jsx` — calm slate informational note (NOT amber/red/yellow) with Info icon. Distinct from the existing error banner. Tone separation: supportive vs corrective.
+- `QuickAddSheet.jsx` gained a new optional `renderWarnings(form, { prefix }) => ReactNode` prop, rendered between the error banner and the sticky footer. Backward-compatible — existing sheets unaffected.
+- **`/lessons` Schedule lesson** now checks the proposed `start_time` against existing lessons within ±60 minutes for both the chosen rider AND the chosen horse (independent — both can fire). Each fires a SoftWarning with calm copy: _"<Rider/Horse name> already has a lesson scheduled nearby in time (May 17, 2026 2:00 PM)."_ NEVER blocks submission. NEVER uses the words "Conflict", "Warning", "Double-booking", or "Error".
+- **`/training` Log session** now checks the proposed `date` against existing sessions for the chosen horse. Date-keyed (no time window). Copy: _"<Horse name> already has training logged for <date>."_ Also never blocks.
+- `CONFLICT_WINDOW_MIN = 60` constant in Lessons.jsx for future tuning.
+
+**Bulk Select-Group (simulation §3.1):**
+- `/today` TodayGroup headers now render a tiny `Select all` / `All selected` chip ONLY when `bulkMode === true`. Operates on the group's already-filtered items prop, so the chip naturally respects the active filter chip. Reversible — second tap deselects all. Saves 6–8 taps per turnout round.
+- New `selectGroup(groupKey, items, makeSelected)` callback in Today.jsx uses functional setSelected (race-safe under rapid taps).
+
+**Verification (testing_agent_v3_fork iteration 22):**
+- **13/13 Batch D checks pass.** Zero ui_bugs, zero integration_issues, zero design_issues.
+- Rider + horse conflict warnings render with the exact expected calm copy; clear when start_time moves >±60 min away; submit always remained enabled in every test.
+- Calm-tone audit verified: no banned strings ("Conflict", "Warning:", "Error", "Double-booking") in any warning text. SoftWarning class confirmed slate (`bg-equine-soft/40 border-equine-graphite/40 text-equine-silver`) — NOT amber.
+- Select-all chip: hidden in non-bulk mode (count=0), visible per non-empty group in bulk mode (5 chips on demo data), bulk-action-bar count matched items.length, reversible toggle confirmed, filter-respect automatic via upstream-filtered items prop.
+
+
+
 ### Operational Hardening — Batch F (Thumb-zone polish) + Dashboard LastSyncedBadge (Feb 20 2026)
 Refinement pass per the OPERATIONAL_SIMULATION.md findings. No new feature surface. Focus on one-handed reachability, interruption recovery, and stale-state trust.
 

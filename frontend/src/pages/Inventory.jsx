@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { api } from "../lib/api";
 import { Card, PageHeader, StatusPill, Empty } from "../components/Primitives";
 import QuickAddSheet from "../components/QuickAddSheet";
+import SoftWarning from "../components/SoftWarning";
 
 const CATEGORIES = ["grain", "hay", "bedding", "supplements", "medical", "blankets", "tack", "other"];
 
@@ -52,6 +53,26 @@ export default function Inventory() {
   }, {});
 
   const lowStockCount = items.filter((i) => i.low_stock).length;
+
+  // Soft duplicate-detection: a similar name + same category already exists.
+  // Informational only — never blocks the add. Helps prevent the
+  // "I forgot we already had timothy in another row" fragmentation
+  // surfaced in OPERATIONAL_SIMULATION §3.4.
+  const renderWarnings = useCallback((form) => {
+    if (!form?.name || !form?.category) return null;
+    const target = form.name.trim().toLowerCase();
+    if (!target) return null;
+    const dupe = items.find(
+      (i) => i.category === form.category
+             && (i.name || "").trim().toLowerCase() === target,
+    );
+    if (!dupe) return null;
+    return (
+      <SoftWarning testid="inventory-add-duplicate">
+        {`A similar inventory item ("${dupe.name}") already exists in ${form.category}. You can still add this one — or close and edit the existing row instead.`}
+      </SoftWarning>
+    );
+  }, [items]);
 
   return (
     <div data-testid="inventory-page">
@@ -147,6 +168,7 @@ export default function Inventory() {
         endpoint="/inventory"
         submitLabel="Add item"
         testidPrefix="inventory-add"
+        renderWarnings={renderWarnings}
         onCreated={load}
       />
 

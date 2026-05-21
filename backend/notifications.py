@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 POLL_INTERVAL_SECONDS = int(os.environ.get("NOTIFY_POLL_SECONDS", "10"))
 BATCH_SIZE = int(os.environ.get("NOTIFY_BATCH_SIZE", "50"))
+MAX_DISPATCH_ATTEMPTS = int(os.environ.get("NOTIFY_MAX_ATTEMPTS", "3"))
 
 # Defaults: which event_type × category should ship by channel, when a user
 # has no explicit preferences saved.
@@ -227,7 +228,14 @@ async def _dispatch_event(db, event: dict, mailer):
 
 
 async def drain_once(db, mailer=None) -> int:
-    """One pass: dispatch up to BATCH_SIZE undispatched events. Returns count."""
+    """One pass: dispatch up to BATCH_SIZE undispatched events. Returns count.
+
+    Transient-error tolerance (Batch C, Feb 2026): events that raise during
+    dispatch are retried up to MAX_DISPATCH_ATTEMPTS times across polling
+    cycles. Only after the cap do we mark them dispatched-with-error, so a
+    momentary DB hiccup or email-provider blip no longer permanently drops
+    an in-app notification.
+    """
     cursor = db.task_events.find(
         {"dispatched_at": {"$exists": False}},
         {"_id": 0},
@@ -237,13 +245,30 @@ async def drain_once(db, mailer=None) -> int:
         try:
             await _dispatch_event(db, ev, mailer)
         except Exception:
-            logger.exception("Notification dispatch failed for event=%s", ev.get("id"))
-            # Still mark as dispatched (with error) so we don't loop forever
-            await db.task_events.update_one(
-                {"id": ev["id"]},
-                {"$set": {"dispatched_at": _iso(_now()),
-                          "dispatched_channels": ["error"]}},
+            attempts = int(ev.get("dispatch_attempts") or 0) + 1
+            logger.exception(
+                "Notification dispatch failed for event=%s (attempt %d/%d)",
+                ev.get("id"), attempts, MAX_DISPATCH_ATTEMPTS,
             )
+            if attempts >= MAX_DISPATCH_ATTEMPTS:
+                # Cap reached — finalise so we don't loop forever.
+                await db.task_events.update_one(
+                    {"id": ev["id"]},
+                    {"$set": {
+                        "dispatched_at": _iso(_now()),
+                        "dispatched_channels": ["error"],
+                        "dispatch_attempts": attempts,
+                    }},
+                )
+            else:
+                # Leave dispatched_at unset so the next poll picks it up again.
+                await db.task_events.update_one(
+                    {"id": ev["id"]},
+                    {"$set": {
+                        "dispatch_attempts": attempts,
+                        "last_attempt_at": _iso(_now()),
+                    }},
+                )
     return len(events)
 
 
