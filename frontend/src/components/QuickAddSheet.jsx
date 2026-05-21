@@ -2,9 +2,23 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { X, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
-import { Field, Select } from "./onboarding/FormPrimitives";
+import { Select } from "./onboarding/FormPrimitives";
 
 const DRAFT_KEY = (endpoint) => `equine_draft_${endpoint}`;
+
+/**
+ * Shallow-equal for primitive object comparisons — used to gate the
+ * "reset form to initial" effect so that parent re-renders that produce
+ * a new object literal but the same VALUES don't blow away in-progress edits.
+ */
+const shallowEqual = (a, b) => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const ak = Object.keys(a), bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  for (const k of ak) if (a[k] !== b[k]) return false;
+  return true;
+};
 
 /**
  * QuickAddSheet — calm right-side modal for "Add X" flows.
@@ -49,18 +63,38 @@ export default function QuickAddSheet({
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const firstFieldRef = useRef(null);
+  // We don't attach a ref directly to one field — Radix Select wraps inside
+  // a div that isn't focusable. Instead we ref the whole form and query
+  // for the first focusable element on open. This works for input,
+  // textarea, and the Radix Select trigger button (role="combobox").
+  const formRef = useRef(null);
+  // Track the last "applied" initialValues by VALUE not by reference so
+  // a parent that re-allocates the object literal every render doesn't
+  // wipe in-progress user input.
+  const appliedInitialRef = useRef(null);
+  // Timestamp of last open — used to guard against Radix Select firing
+  // onValueChange("") on its own mount, which would otherwise wipe the
+  // smart-default we just set.
+  const openedAtRef = useRef(0);
   const draftKey = DRAFT_KEY(endpoint);
 
-  // Reset + smart-default + draft-restore on open.
+  // Reset + smart-default + draft-restore on open (or when initial values change in *value*).
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      appliedInitialRef.current = null;
+      return undefined;
+    }
+    // Skip if these initialValues (by value) were already applied during this open cycle.
+    if (shallowEqual(appliedInitialRef.current, initialValues)) return undefined;
+    appliedInitialRef.current = initialValues || {};
+    openedAtRef.current = Date.now();
+
     let initial = { ...(initialValues || {}) };
     try {
       const stored = sessionStorage.getItem(draftKey);
       if (stored) {
         const parsed = JSON.parse(stored);
-        // Only restore if the draft has actual user-entered content beyond defaults.
+        // Restore only if the draft has user content beyond defaults.
         const hasUserContent = Object.entries(parsed).some(
           ([k, v]) => v !== undefined && v !== "" && v !== (initialValues || {})[k],
         );
@@ -71,9 +105,13 @@ export default function QuickAddSheet({
     }
     setForm(initial);
     setError(null);
+
     // Defer focus so the slide-in animation completes first.
     const t = setTimeout(() => {
-      firstFieldRef.current?.focus?.();
+      const el = formRef.current?.querySelector(
+        'input:not([type="hidden"]), textarea, button[role="combobox"]',
+      );
+      el?.focus?.();
     }, 320);
     return () => clearTimeout(t);
   }, [open, draftKey, initialValues]);
@@ -102,6 +140,19 @@ export default function QuickAddSheet({
   const prefix = testidPrefix || `${endpoint.replace(/^\//, "").replace(/[^a-z]+/gi, "-")}-add`;
 
   const update = useCallback((key, val) => {
+    // Defensive guard: Radix Select can fire onValueChange("") during its
+    // own mount even when given a non-empty controlled value. Within the
+    // first 600ms of opening, ignore empty-string updates that would
+    // clobber a smart-default we deliberately set.
+    if (
+      val === ""
+      && Date.now() - openedAtRef.current < 600
+      && appliedInitialRef.current
+      && appliedInitialRef.current[key] !== undefined
+      && appliedInitialRef.current[key] !== ""
+    ) {
+      return;
+    }
     setForm((s) => ({ ...s, [key]: val }));
     if (error) setError(null);
   }, [error]);
@@ -169,17 +220,16 @@ export default function QuickAddSheet({
           </button>
         </div>
 
-        <form onSubmit={submit} className="px-6 py-6 space-y-4">
+        <form onSubmit={submit} ref={formRef} className="px-6 py-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {fields.map((f, idx) => {
+            {fields.map((f) => {
               const wrapperCls = f.full ? "sm:col-span-2" : "";
-              const isFirst = idx === 0;
               if (f.kind === "select") {
                 const opts = f.opts
                   .map((o) => (typeof o === "string" ? { v: o, l: o.replace(/_/g, " ") } : o))
                   .filter((o) => o.v !== "" && o.v !== undefined && o.v !== null);
                 return (
-                  <div key={f.key} className={wrapperCls} ref={isFirst ? firstFieldRef : undefined}>
+                  <div key={f.key} className={wrapperCls}>
                     <Select
                       label={f.label}
                       value={form[f.key] || ""}
@@ -195,7 +245,6 @@ export default function QuickAddSheet({
                   <label key={f.key} className={`block ${wrapperCls}`}>
                     <div className="label-eyebrow mb-1.5">{f.label}</div>
                     <textarea
-                      ref={isFirst ? firstFieldRef : undefined}
                       rows={f.rows || 3}
                       value={form[f.key] || ""}
                       placeholder={f.placeholder}
@@ -211,7 +260,6 @@ export default function QuickAddSheet({
                   <label className="block">
                     <div className="label-eyebrow mb-1.5">{f.label}</div>
                     <input
-                      ref={isFirst ? firstFieldRef : undefined}
                       type={f.type || "text"}
                       value={form[f.key] || ""}
                       onChange={(e) => update(f.key, e.target.value)}

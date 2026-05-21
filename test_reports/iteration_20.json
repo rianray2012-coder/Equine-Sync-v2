@@ -1,0 +1,48 @@
+{
+  "summary": "Retested the two HIGH bugs from iter19 (auto-focus + severity smart-default) plus the dependent inline-error and Enter-to-submit flows. BOTH BUGS ARE NOW FIXED and all 8 requested checks pass. (1) Auto-focus correctly lands on the type Select trigger inside the incidents sheet within ~550ms (document.activeElement data-testid='incidents-add-type', role='combobox', insideSheet=true). (2) Severity smart-default reads 'moderate' on first open. (3) Inline-error path: when POST /api/incidents is intercepted with 500, the sheet stays open, [data-testid='incidents-add-error'] renders the backend detail 'forced server error', title/description inputs remain populated, and sessionStorage 'equine_draft_/incidents' still holds the in-progress draft (occurred_at/severity/type/title/description). (4) Success-after-failure: unroute + resubmit → POST 200, sheet closes, draft cleared, new incident 'TEST_full_path' visible in the list with severity=moderate. (5) Lessons draft restore works (focus field preserved across close/reopen). (6) Owners Enter-to-submit in full_name input closes the sheet (owner created). (7) Batch-A defaults all correct: lessons start_time=2026-05-21T05:30, duration=60; training date=2026-05-21; incidents occurred_at=2026-05-21T04:xx; severity=moderate. (8) Today /today header badge 'Synced just now' renders (data-testid='today-last-synced'); tap fires GET /api/tasks/today.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Incidents QuickAddSheet on 390x844 mobile viewport",
+        "issues": [
+          "Submit button sits at y≈868 — just below the 844-tall viewport with no visible scroll affordance. Users must scroll the sheet to reach 'Save report'. The sheet IS scrollable (overflow-y-auto), but the cue is subtle. Consider sticky footer for the Cancel/Save row so the primary action is always reachable without scrolling. NOTE: This was also the reason playwright force=true clicks initially appeared to do nothing — clicks below the viewport hit elementFromPoint=null. I worked around it via form.requestSubmit() in the harness; real users will simply scroll."
+        ]
+      }
+    ]
+  },
+  "passing_checks": [
+    "Auto-focus lands on first focusable form element inside [data-testid='incidents-add-sheet'] (incidents-add-type, role=combobox) within 550ms of sheet open. CONFIRMED.",
+    "Severity smart-default = 'moderate' on first open of /incidents sheet. CONFIRMED (no draft, fresh open).",
+    "Type select dropdown opens, all 8 options render with role=option, 'injury' is selectable.",
+    "Inline error on POST failure: [data-testid='incidents-add-error'] appears with backend detail text ('forced server error'); sheet stays open; form values intact (title='TEST_full_path', description='Full inline + success flow'); draft preserved in sessionStorage with all fields including the smart defaults.",
+    "Successful submit after unroute: POST 200, toast 'Added', sheet closes, sessionStorage 'equine_draft_/incidents' = null. Verified by reading sessionStorage.",
+    "Lessons draft restore: filled focus='TEST_draft_focus', closed sheet, reopened → restored silently (no banner).",
+    "Owners Enter-to-submit: pressed Enter inside full_name input → sheet closed (owner created via API).",
+    "Lessons defaults: start_time=2026-05-21T05:30 (next half-hour), duration=60. CONFIRMED.",
+    "Training default: date=2026-05-21 (today). CONFIRMED.",
+    "Incidents occurred_at default: 2026-05-21T04:47 etc. (current local datetime-local). CONFIRMED.",
+    "Today /today badge: visible with text 'Synced just now'; tap on [data-testid='today-last-synced'] fires GET /api/tasks/today (verified via page.on('request') listener)."
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "(Optional UX polish, low priority) Make the QuickAddSheet footer (Cancel + Save) sticky at the bottom of the sheet on mobile so the submit button is always above the fold on tall forms like Incidents. Currently the submit button is below the viewport on 390x844 until the user scrolls.",
+    "(Optional) Consider showing the toast on empty-required submit in the same sheet rather than a separate sonner toast — during testing the toast was not always captured in DOM queries (likely auto-dismiss). Not a bug, just a future affordance."
+  ],
+  "critical_code_review_comments": [
+    "QuickAddSheet.jsx defensive guard against Radix Select firing onValueChange('') during the first 600ms of open (lines 142-158) is working as intended — severity 'moderate' is preserved.",
+    "shallowEqual gate on appliedInitialRef (lines 14-21, 87-89) successfully prevents parent re-renders with new object literals from blowing away in-progress edits.",
+    "Auto-focus via formRef.current.querySelector for input/textarea/button[role='combobox'] (lines 110-115) correctly targets the underlying Radix SelectTrigger button. Good fix.",
+    "Inline error rendering (lines 276-284) uses the backend's err.response.data.detail when available, falling back to the calm 'Saved as draft — try again when you have signal.' message. Behaviour matches spec."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (not in scope)", "frontend": "100% (8/8 requested checks pass)" },
+  "test_credentials": "admin@equinesync.com / demo1234 (from /app/memory/test_credentials.md). Login button text: 'Enter the barn'.",
+  "seed_data_creation": "One incident created via the success path: title='TEST_full_path', severity='moderate', type='injury', description='Full inline + success flow'. Visible in the /incidents list. One owner created via Enter-to-submit with email TESTowner{ts}@example.com. These are TEST_-prefixed; main agent can clean up if desired.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All Batch-A and Batch-B hardening checks from iter17/18/19 are now confirmed working. If you want to re-run the inline-error 500 path in playwright, use page.evaluate(() => form.requestSubmit()) instead of clicking the submit button — on 390x844 the Save report button sits ~24px below the viewport (y≈868 in a 844-tall window), and force=true clicks at those coordinates hit elementFromPoint=null. This is a test-harness gotcha, NOT an app bug. Real users scroll the sheet (overflow-y-auto is set) and tap normally.",
+  "rca_of_the_issue": "iter19's bug 1 (auto-focus broken): fixed by refactoring QuickAddSheet to use formRef.querySelector for the first focusable child (input/textarea/button[role=combobox]) instead of attaching firstFieldRef to a non-focusable <div>. iter19's bug 2 (severity='moderate' clobbered to ''): fixed by (a) memoizing initialValues at parent and (b) adding a 600ms defensive guard in update() that ignores empty-string onValueChange events from Radix Select during the first render after open. Both fixes verified end-to-end."
+}
