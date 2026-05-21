@@ -21,6 +21,35 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
+### Operational Hardening — Batch C (Notification trust loop) + Inventory duplicate-detection opener + Dispatcher retry (Feb 20 2026)
+Final batch of the Founder-Beta Operational Hardening track. No new feature surface. Closes the §5.3 owner-approval latency gap (4-12 hour median) and the §3.4 inventory fragmentation gap surfaced in OPERATIONAL_SIMULATION.md.
+
+**Inventory duplicate-detection (SoftWarning opener):**
+- `/inventory` Add sheet now soft-warns when proposed `name + category` already exists in the items list (case-insensitive name match, strict category match).
+- Copy: _"A similar inventory item ('Triple Crown') already exists in grain. You can still add this one — or close and edit the existing row instead."_
+- Calm-tone audit verified: no "Duplicate", "Conflict", "Warning:". Submit always remains enabled — never blocks.
+- Evolves SoftWarning from "scheduling-conflict awareness" → broader "gentle operational awareness" primitive.
+
+**Notification drawer trust loop (Batch C main):**
+- `NotificationsBell.jsx` rewritten — adds a top-of-drawer "Pending requests" section visible ONLY to deciders (`role ∈ {admin, barn_manager, trainer}`). Non-deciders (owners, grooms) see the drawer unchanged.
+- Each pending row → one-tap **Approve** + **Decline** buttons. Approve: POST `/api/service-requests/<id>/approve`, calm toast "Approved.". Decline: inline composer expansion (NOT a separate modal) with optional reason textarea + Cancel + Send. POST `/api/service-requests/<id>/decline`, toast "Declined with a note." (empty reason tolerated — backend falls back to default).
+- Single-composer-at-a-time semantics: `declineFor` is a single id, so opening composer B auto-collapses composer A.
+- Calm-tone audit verified: button labels are "Approve" / "Decline" ONLY — no "Reject", "Deny", "Refuse". Eyebrow is "Pending requests" — no "Action Required" or "Urgent".
+- Badge formula: `totalUnread = data.unread + pending.length` (visually capped at "9+"). Decreases immediately after each action via `refresh()`.
+- Polls `/api/service-requests` every 30s (only when `canDecide`) alongside the existing `/api/notifications` poll.
+- Saves owners the 4-12 hour navigate-to-portal hop documented in simulation §5.3.
+
+**Dispatcher transient-error retry (notifications.py):**
+- `drain_once()` now tracks `dispatch_attempts` per task_event. On exception: increment + leave `dispatched_at` unset so the next poll picks the event up again. Only after `MAX_DISPATCH_ATTEMPTS=3` does the loop finalise the event as `dispatched_channels=['error']`.
+- Eliminates the permanent-drop behaviour where a momentary DB hiccup or email-provider blip silently lost an in-app notification.
+- New `/app/backend/tests/test_dispatch_retry.py` covers both branches (transient-then-cap + transient-then-success). 2 new tests, pure `asyncio.run` + monkey-patching — no pytest-asyncio dependency added.
+
+**Verification (testing_agent_v3_fork iteration 23):**
+- **16/16 Batch C + Inventory checks pass.** **175/175 backend pytest pass** (172 prior + 1 skip + 2 new dispatcher retry tests). Zero ui_bugs, integration_issues, design_issues.
+- Role gating verified across admin/owner/groom logins. Approve, decline-with-reason, decline-cancel, decline-empty-reason, one-composer-at-a-time all green. Calm-tone audit: zero banned strings ("Reject", "Deny", "Refuse", "Duplicate", "Conflict", "Warning:") anywhere.
+
+
+
 ### Operational Hardening — Batch D (Soft scheduling conflicts) + Bulk Select-Group (Feb 20 2026)
 Refinement of operational realism per OPERATIONAL_SIMULATION.md §3.1 and §3.3. No new feature surface. Strict adherence to founder direction: "supportive, not corrective — real barns intentionally overlap operations constantly. Help users notice, not enforce rigidity."
 
