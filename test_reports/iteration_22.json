@@ -1,0 +1,43 @@
+{
+  "summary": "Batch D — Soft scheduling conflict awareness (Lessons + Training) + TodayGroup 'Select all' bulk-mode chip — ALL 13 requested checks PASS. Existing demo data already had 12 lessons + 11 training sessions, so no seeding required. Verified calm copy, slate styling, non-blocking submit, clear-on-change behaviour, bulk chip render gating, count parity with items.length, reversible toggle, and filter respect.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passing_checks": [
+    "Lessons rider conflict: with rider_id=Olivia Hartwell + start_time within +15 min of existing lesson → [data-testid='lessons-add-conflict-rider'] visible. Text: 'Olivia Hartwell already has a lesson scheduled nearby in time (May 17, 2026 2:00 PM).' Starts with rider name, contains 'already has a lesson scheduled nearby in time'. No 'Conflict'/'Warning:'/'Error' strings. Submit NOT disabled.",
+    "Lessons horse conflict: with horse_id=Belle Étoile matching existing → [data-testid='lessons-add-conflict-horse'] visible with horse-name-led copy. Submit remained enabled.",
+    "Lessons conflicts CLEAR: pushing start_time +180 min from sample → both [lessons-add-conflict-rider] and [lessons-add-conflict-horse] removed from DOM (count=0).",
+    "Lessons calm-tone styling: SoftWarning class verified — 'flex items-start gap-2.5 px-3.5 py-2.5 rounded-lg bg-equine-soft/40 border border-equine-graphite/40 text-equine-silver text-[12.5px] leading-relaxed'. No amber/red/yellow utility classes. lucide Info icon rendered.",
+    "Submit-through-warning: with conflict visible, [lessons-add-submit] click → POST /api/lessons succeeded, sheet [lessons-add-sheet] removed from DOM. Warning never blocks submission.",
+    "Training soft conflict: with horse=Valentino + date=2026-05-16 (existing) → [data-testid='training-add-conflict'] visible with text 'Valentino already has training logged for May 16, 2026.' Submit enabled.",
+    "Training conflict CLEARS: changing date to 2027-12-31 (no existing) → conflict count=0.",
+    "Training calm copy: no 'Conflict'/'Double-booking'/'Warning:'/'Error' substrings.",
+    "TodayGroup chips hidden when bulkMode=false: [data-testid$='-select-all'] count=0 on /today before clicking [bulk-mode-toggle].",
+    "TodayGroup chips render in bulk mode: after enabling bulk, 5 group select-all chips appear (one per non-empty group).",
+    "TodayGroup Select all → bulk-action-bar count match: tapping [group-overdue_critical-select-all] (1 item) → [bulk-action-bar] reads '1 selected'. Chip displayed text 'ALL SELECTED' (CSS uppercase of source 'All selected').",
+    "TodayGroup chip reversible: tapping the fully-selected chip again removed all selections, [bulk-action-bar] disappeared, chip reverted to 'SELECT ALL' (CSS uppercase of source 'Select all').",
+    "TodayGroup chip respects filter: applying [filter-chip-feed] → only 3 select-all chips remain (feed-category-bearing groups), non-feed groups removed entirely. Items prop is already filtered upstream as designed."
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Lessons.jsx renderWarnings correctly uses ±60 min window (CONFLICT_WINDOW_MIN constant); rider+horse checks are independent so both can fire simultaneously — correct.",
+    "Training.jsx uses simple date-string match (no time window) — appropriate since training sessions are date-keyed not time-keyed.",
+    "QuickAddSheet.jsx renderWarnings prop rendered between error banner and sticky footer — does NOT affect draft-restore behaviour or submit flow. Backward-compatible.",
+    "SoftWarning.jsx visually distinct from the amber error banner (slate bg-equine-soft/40, neutral text-equine-silver) — tone separation is clear, supportive vs. corrective per founder direction.",
+    "Today.jsx selectGroup uses functional setSelected (s => new Set(s)) — race-safe with rapid taps. Good.",
+    "TodayGroup.jsx allSelected derives from items.every — works correctly with upstream-filtered items, so filter-respect is automatic (no extra logic needed).",
+    "Minor (non-blocking): the chip's underlying React text is 'All selected'/'Select all' (correct source), but CSS uppercase transform makes inner_text return uppercase. This is purely a test-assertion gotcha — visual + a11y both fine."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (out of scope per request)", "frontend": "100% (13/13 Batch D checks pass)" },
+  "test_credentials": "admin@equinesync.com / demo1234 (from /app/memory/test_credentials.md). Login button: 'Enter the barn'.",
+  "seed_data_creation": "None. Existing demo seed had 12 lessons + 11 training sessions, sufficient for all conflict tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Two reusable patterns from this run: (1) Walkthrough modal suppression: localStorage.setItem('equinesync.walkthrough.seen','1') BEFORE first /dashboard nav. (2) Login flow doesn't navigate to /dashboard reliably under playwright wait_for_url (it lands on /); however, after a brief wait the auth token is set in localStorage and direct navigation to /lessons /training /today works fine. Skip the wait_for_url('**/dashboard**') step or set a generous timeout. (3) When asserting chip text on Today, account for CSS 'uppercase' transform — inner_text returns transformed string. Use case-insensitive contains() or check the class instead.",
+  "rca_of_the_issue": "No bugs found. Implementation matches spec: calm SoftWarning tone (slate, Info icon), informational-only (submit always enabled), data-testid scheme correct, ±60 min window respected, filter-aware select-all chip operating on already-filtered items prop. The two 'false' booleans in raw results (chip_shows_all_selected, chip_back_to_select_all) were false-positives caused by playwright inner_text returning the CSS-uppercased rendering rather than the source string — manually verified source contains exactly 'All selected' and 'Select all'."
+}

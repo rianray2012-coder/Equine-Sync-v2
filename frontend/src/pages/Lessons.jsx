@@ -3,6 +3,9 @@ import { Plus, GraduationCap } from "lucide-react";
 import { api, fmtDate, fmtTime } from "../lib/api";
 import { Card, PageHeader, StatusPill, Empty } from "../components/Primitives";
 import QuickAddSheet from "../components/QuickAddSheet";
+import SoftWarning from "../components/SoftWarning";
+
+const CONFLICT_WINDOW_MIN = 60;
 
 function defaultStart() {
   // Next round half-hour
@@ -49,6 +52,57 @@ export default function Lessons() {
     duration_min: form.duration_min ? Number(form.duration_min) : 60,
     horse_id: form.horse_id && form.horse_id !== "__none__" ? form.horse_id : null,
   });
+
+  // Soft scheduling-conflict awareness — never blocks, never alarms.
+  // Looks for any existing lesson within ±60 min of the proposed start
+  // time involving the same rider OR the same horse. Calm copy per
+  // founder direction ("supportive, not corrective").
+  const renderWarnings = useCallback((form) => {
+    if (!form?.start_time) return null;
+    const start = new Date(form.start_time).getTime();
+    if (Number.isNaN(start)) return null;
+    const windowMs = CONFLICT_WINDOW_MIN * 60 * 1000;
+    const notes = [];
+
+    if (form.rider_id && form.rider_id !== "__none__") {
+      const clash = lessons.find((l) => {
+        if (l.rider_id !== form.rider_id || !l.start_time) return false;
+        const t = new Date(l.start_time).getTime();
+        return Math.abs(t - start) <= windowMs;
+      });
+      if (clash) {
+        notes.push({
+          key: "rider",
+          msg: `${clash.rider_name || "This rider"} already has a lesson scheduled nearby in time (${fmtDate(clash.start_time)} ${fmtTime(clash.start_time)}).`,
+        });
+      }
+    }
+
+    if (form.horse_id && form.horse_id !== "__none__") {
+      const clash = lessons.find((l) => {
+        if (l.horse_id !== form.horse_id || !l.start_time) return false;
+        const t = new Date(l.start_time).getTime();
+        return Math.abs(t - start) <= windowMs;
+      });
+      if (clash) {
+        notes.push({
+          key: "horse",
+          msg: `${clash.horse_name || "This horse"} already has a lesson scheduled nearby in time (${fmtDate(clash.start_time)} ${fmtTime(clash.start_time)}).`,
+        });
+      }
+    }
+
+    if (!notes.length) return null;
+    return (
+      <div className="space-y-2">
+        {notes.map((n) => (
+          <SoftWarning key={n.key} testid={`lessons-add-conflict-${n.key}`}>
+            {n.msg}
+          </SoftWarning>
+        ))}
+      </div>
+    );
+  }, [lessons]);
 
   const ridersEmpty = riders.length === 0;
 
@@ -130,6 +184,7 @@ export default function Lessons() {
         endpoint="/lessons"
         initialValues={{ start_time: defaultStart(), duration_min: 60 }}
         transform={transform}
+        renderWarnings={renderWarnings}
         submitLabel="Schedule"
         testidPrefix="lessons-add"
         onCreated={load}

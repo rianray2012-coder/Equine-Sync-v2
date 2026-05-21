@@ -3,6 +3,7 @@ import { Plus, Dumbbell } from "lucide-react";
 import { api, fmtDate } from "../lib/api";
 import { Card, PageHeader, StatusPill, Empty } from "../components/Primitives";
 import QuickAddSheet from "../components/QuickAddSheet";
+import SoftWarning from "../components/SoftWarning";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -36,6 +37,20 @@ export default function Training() {
   ], [horses]);
 
   const horsesEmpty = horses.length === 0;
+
+  // Soft per-horse-per-day awareness — informational only.
+  const renderWarnings = useCallback((form) => {
+    if (!form?.horse_id || form.horse_id === "__none__" || !form?.date) return null;
+    const clash = sessions.find(
+      (s) => s.horse_id === form.horse_id && s.date === form.date,
+    );
+    if (!clash) return null;
+    return (
+      <SoftWarning testid="training-add-conflict">
+        {`${clash.horse_name || "This horse"} already has training logged for ${fmtDate(form.date)}.`}
+      </SoftWarning>
+    );
+  }, [sessions]);
 
   return (
     <div data-testid="training-page">
@@ -96,6 +111,7 @@ export default function Training() {
         endpoint="/training"
         initialValues={{ date: todayISO() }}
         transform={(form) => ({ ...form, date: form.date || todayISO() })}
+        renderWarnings={renderWarnings}
         submitLabel="Save session"
         testidPrefix="training-add"
         onCreated={load}

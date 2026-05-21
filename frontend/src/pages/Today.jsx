@@ -98,6 +98,19 @@ export default function Today() {
     } catch { /* ignore storage quota / disabled */ }
   }, [filter]);
 
+  // Bulk: select / deselect an entire group's worth of visible tasks at once.
+  // Shaves 6–8 taps off a typical turnout round (OPERATIONAL_SIMULATION §3.1).
+  const selectGroup = useCallback((_groupKey, items, makeSelected) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      items.forEach((t) => {
+        if (makeSelected) next.add(t.id);
+        else next.delete(t.id);
+      });
+      return next;
+    });
+  }, []);
+
   const applyOptimistic = (taskId, status) => {
     setOptimistic((s) => ({ ...s, [taskId]: status }));
   };
@@ -244,6 +257,7 @@ export default function Today() {
               selectedSet={selected}
               bulkMode={bulkMode}
               syncStateForTask={syncStateForTask}
+              onSelectGroup={selectGroup}
             />
           ))}
           {!totalActionable && (

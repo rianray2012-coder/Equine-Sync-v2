@@ -57,6 +57,7 @@ export default function QuickAddSheet({
   initialValues,
   transform,
   onCreated,
+  renderWarnings,
   submitLabel = "Add",
   testidPrefix,
 }) {
@@ -282,6 +283,13 @@ export default function QuickAddSheet({
               <span>{error}</span>
             </div>
           )}
+
+          {/* Soft, informational notes computed from the current form
+              state. Used for scheduling-conflict awareness — never
+              blocking, always supportive in tone. */}
+          {typeof renderWarnings === "function" && renderWarnings(form, {
+            prefix,
+          })}
 
           <div className="sticky bottom-0 -mx-6 px-6 pt-3 pb-1 mt-4 bg-equine-navy/95 backdrop-blur-md border-t border-white/[0.06] flex items-center justify-end gap-2">
             <button
