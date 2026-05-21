@@ -128,6 +128,7 @@ export default function Lessons() {
         eyebrow="Program"
         fields={fields}
         endpoint="/lessons"
+        initialValues={{ start_time: defaultStart(), duration_min: 60 }}
         transform={transform}
         submitLabel="Schedule"
         testidPrefix="lessons-add"

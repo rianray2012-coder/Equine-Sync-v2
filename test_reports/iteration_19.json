@@ -1,0 +1,65 @@
+{
+  "summary": "Frontend hardening sprint (Batch A + Batch B) tested on mobile viewport (390x844) with admin@equinesync.com. 9 of 11 requested checks pass. Two critical regressions found: (1) auto-focus does NOT land on the first field of the Incidents sheet — focus stays on the FAB because firstFieldRef is attached to a non-focusable <div> wrapper around the Radix Select; (2) the severity smart-default 'moderate' is NOT applied — Select trigger shows 'Choose…' and sessionStorage records severity:'' from the first debounce. Because severity is required, this cascades into two follow-on failures: the inline-error path can't be exercised, and Enter-to-submit success closure can't be verified. All other smart defaults (occurred_at=NOW, lessons start_time=next half-hour, lessons duration=60, training date=today), draft restore, draft clear on session removal, Today LastSyncedBadge text + tap-to-refresh, and FAB regressions are working as designed.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "QuickAddSheet.jsx (autofocus useEffect, lines 75-77)",
+        "issue": "Auto-focus broken when the first field is a Select. firstFieldRef is attached to a wrapper <div> (line 182). divs are not focusable by default, so document.activeElement after the 320ms delay remains whatever it was before the sheet opened. Measured on /incidents (first field = severity Select): focused element was 'incidents-fab', not the first sheet input. Cursor is NOT 'ready in the first input' as the spec requires. Fix idea: when first field is a Select, focus the SelectTrigger (button); when textarea/input, focus that element directly. Easiest: give firstFieldRef to a focusable element only (the underlying SelectTrigger button), or fall back to querying the first focusable child of the sheet.",
+        "selector": "[data-testid='incidents-add-sheet']",
+        "priority": "HIGH"
+      },
+      {
+        "component": "QuickAddSheet + FormPrimitives.Select / Incidents.jsx",
+        "issue": "Severity smart-default 'moderate' from initialValues is NOT applied to the Select. After opening the /incidents sheet, the trigger shows the placeholder 'Choose…' and the debounced draft persisted to sessionStorage contains 'severity':'' even though initialValues={severity:'moderate'} was passed. The occurred_at default IS applied (2026-05-21T04:37), so the prop is reaching the sheet — but the Select is clobbering the moderate value to ''. Suspected cause: parent Incidents.jsx builds a fresh initialValues object every render — the useEffect deps include initialValues, so the effect re-runs and resets form to a new {} reference when Radix Select mounts and immediately fires onValueChange(''), or the Radix Select's controlled value is being normalized to '' on first render. Needs investigation in QuickAddSheet useEffect dep stability + how Select handles initial value.",
+        "selector": "[data-testid='incidents-add-severity']",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Incidents inline-error recovery (Batch B)",
+        "issue": "Could not verify. Test aborted /api/incidents POST via route abort, but client-side validation (severity required) returns before the network call because of bug #2 above. The toast 'Severity is required' fires and submit() returns early, so the inline-error <div data-testid='incidents-add-error'> never renders. The error rendering path itself looks correct in code; it's gated by the upstream severity bug.",
+        "affected_selectors": ["[data-testid='incidents-add-error']", "[data-testid='incidents-add-severity']"]
+      },
+      {
+        "flow": "Incidents Enter-to-submit success + draft clear on success",
+        "issue": "Same root cause. Pressed Enter in the title input with type set to 'injury' and description filled, but submit returned early on severity-required check. Sheet stayed open; sessionStorage was NOT cleared (still held title/description/type). Enter-to-submit native behaviour is wired correctly (verified by submit handler firing); blocked by severity default bug."
+      }
+    ],
+    "design_issues": []
+  },
+  "passing_checks": [
+    "Login (admin@equinesync.com / demo1234) succeeds and redirects off /login.",
+    "Today header shows LastSyncedBadge with text 'Synced just now' (data-testid='today-last-synced').",
+    "Tapping the badge fires a GET /api/tasks/today request and label resets to 'Synced just now'.",
+    "Relative-time logic in LastSyncedBadge matches spec (just now / 1 min ago / N min ago / HH:mm — verified by code review of /app/frontend/src/components/today/LastSyncedBadge.jsx).",
+    "Incidents smart default occurred_at pre-filled to local now in datetime-local format (2026-05-21T04:37).",
+    "Lessons smart defaults: start_time pre-filled to next half-hour (2026-05-21T05:30), duration_min='60'.",
+    "Training smart default: date pre-filled to today (2026-05-21).",
+    "Draft preservation: title 'TEST_draft_preservation' + description 'draft test' persisted to sessionStorage key 'equine_draft_/incidents' and silently restored on reopen (no banner, no toast).",
+    "Draft cleared from sessionStorage after manual sessionStorage.removeItem; reopened sheet was empty as expected.",
+    "FAB regressions on mobile 390x844: incidents-fab, lessons-fab, training-fab, inventory-fab all visible and open their respective QuickAddSheets."
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "FIX (HIGH): Make auto-focus actually land on the first interactive control. The current firstFieldRef wired to a <div> wrapper around <Select> never focuses anything. Options: (a) when first field is select, attach the ref to the SelectTrigger button; (b) fall back to sheetEl.querySelector('input, textarea, button[role=\"combobox\"]')?.focus().",
+    "FIX (HIGH): Severity initialValues='moderate' is not being honored. Investigate (a) whether the parent's freshly-allocated initialValues object causes the useEffect to re-fire and reset form, and (b) whether the FormPrimitives Select fires onValueChange('') on mount when given a non-empty controlled value. Recommend memoizing initialValues in Incidents.jsx (and Lessons/Training) with useMemo so the reference is stable.",
+    "Once #2 is fixed, re-test Batch-B inline error path (data-testid='incidents-add-error' visible on POST failure, sheet stays open, form intact) and Enter-to-submit success path (sheet closes, sessionStorage key 'equine_draft_/incidents' removed).",
+    "Onboarding hidden recurring-schedules step / 9-step count: NOT verified this run (test session was already deep on hardening flows). Main agent can self-verify via /onboarding step count."
+  ],
+  "critical_code_review_comments": [
+    "QuickAddSheet useEffect deps include initialValues (line 79). Parent pages (Incidents/Lessons/Training) construct a new object literal each render — the effect will re-run unnecessarily on every parent re-render. Recommend useMemo at the parent level or shallow-compare inside the effect.",
+    "firstFieldRef is attached to a <div> when first field is a Select (line 182). divs are not focusable; this silently makes the auto-focus feature a no-op for any sheet whose first field is a Select (Incidents is the prime example).",
+    "FormPrimitives Select uses `value={value || ''}` (line 26). If Radix's onValueChange fires with '' during mount when the supplied value doesn't perfectly match an item, the controlling parent loses the initial value. Worth instrumenting with a console.log to confirm.",
+    "Draft debouncer (line 84) writes severity:'' immediately on first render (visible in sessionStorage on first typing). Confirms the form state already has severity:'' before the user typed anything — i.e. the smart default was wiped between setForm(initial) and the first debounce flush."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (not in scope)", "frontend": "~70% (9/13 hardening checks pass; 2 critical bugs blocking 2 dependent checks)" },
+  "test_credentials": "admin@equinesync.com / demo1234 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created one incident draft 'TEST_draft_preservation' in sessionStorage only (cleaned during the run). No backend writes succeeded (submit blocked by severity bug).",
+  "retest_needed": true,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "After the severity-default and auto-focus fixes land, re-run focused checks on /incidents only: (a) document.activeElement 320ms after sheet open should be a focusable element inside [data-testid='incidents-add-sheet']; (b) the severity Select trigger should read 'moderate' on first open with no draft; (c) abort POST /api/incidents via page.route and confirm [data-testid='incidents-add-error'] appears with 'Saved as draft' text and sheet stays open; (d) successful submit clears sessionStorage 'equine_draft_/incidents'. All other Batch A/B checks already passing.",
+  "rca_of_the_issue": "Bug 1 (auto-focus): firstFieldRef points at a <div> when first field is a Select — divs are not focusable, so .focus() is a no-op. Bug 2 (severity default lost): Either (a) parent re-renders with a new initialValues object literal causing useEffect to reset form, or (b) Radix Select fires onValueChange('') on mount. Both are reproducible 100% on /incidents. Mitigation: memoize initialValues in parent + attach firstFieldRef to a focusable child (SelectTrigger button, input, or textarea) only."
+}

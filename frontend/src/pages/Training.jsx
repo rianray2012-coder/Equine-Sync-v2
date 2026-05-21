@@ -94,6 +94,7 @@ export default function Training() {
         eyebrow="Development"
         fields={fields}
         endpoint="/training"
+        initialValues={{ date: todayISO() }}
         transform={(form) => ({ ...form, date: form.date || todayISO() })}
         submitLabel="Save session"
         testidPrefix="training-add"

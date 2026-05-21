@@ -1,32 +1,37 @@
-import React, { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { X, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { Field, Select } from "./onboarding/FormPrimitives";
 
+const DRAFT_KEY = (endpoint) => `equine_draft_${endpoint}`;
+
 /**
- * QuickAddSheet — a calm right-side modal sheet for "Add X" flows.
+ * QuickAddSheet — calm right-side modal for "Add X" flows.
  *
- * Built on a plain backdrop + slide-in card (avoiding Radix Dialog so it
- * coexists cleanly with the existing sonner toaster / shadcn primitives).
- * Reuses Field + Select from onboarding so the form aesthetic matches
- * the Setup Concierge exactly — operationally familiar, no new visual
- * vocabulary.
+ * Batch-A hardening (Feb 20 2026 — operational hardening sprint):
+ *   • Auto-focus first interactive field on open
+ *   • Press Enter to submit (native form behaviour; textareas excluded)
+ *   • initialValues prop for smart defaults (now / today / next half-hour)
+ *   • Draft preservation via sessionStorage keyed by endpoint:
+ *       - debounced save on form change
+ *       - silent restore on reopen (no banner; matches founder direction)
+ *       - cleared after a successful POST
+ *
+ * Batch-B hardening:
+ *   • On POST failure → sheet STAYS open with inline calm message
+ *     ("Saved as draft — try again when you have signal") + form intact
+ *     so the user never loses the work mid-aisle.
  *
  * Props:
- *   open           — boolean controlling visibility
- *   onClose()      — close handler
- *   title          — sheet title (e.g. "Add Owner")
- *   eyebrow        — small label above title
- *   fields         — [{ key, label, type?, kind?, opts?, required?, placeholder?, full? }]
- *                    `full: true` makes the field span both columns
- *                    `kind: "textarea"` renders a multi-line input
- *                    `kind: "select"` renders the shadcn select
- *   endpoint       — POST endpoint relative to /api (e.g. "/owners")
- *   transform?     — optional (form) => payload remap before POST
- *   onCreated(doc) — called after successful POST with response.data
- *   submitLabel?   — defaults to "Add"
- *   testidPrefix?  — defaults derived from endpoint; e.g. "owner-add"
+ *   open / onClose / title / eyebrow
+ *   fields          [{ key, label, type?, kind?, opts?, required?, placeholder?, full?, rows? }]
+ *   endpoint        POST endpoint (e.g. "/owners")
+ *   initialValues?  object merged BEFORE any restored draft. Use for smart defaults.
+ *   transform?      (form) => payload remap before POST
+ *   onCreated(doc)  called after successful POST
+ *   submitLabel?    default "Add"
+ *   testidPrefix?   default derived from endpoint
  */
 export default function QuickAddSheet({
   open,
@@ -35,6 +40,7 @@ export default function QuickAddSheet({
   eyebrow,
   fields,
   endpoint,
+  initialValues,
   transform,
   onCreated,
   submitLabel = "Add",
@@ -42,11 +48,63 @@ export default function QuickAddSheet({
 }) {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const firstFieldRef = useRef(null);
+  const draftKey = DRAFT_KEY(endpoint);
 
-  // Reset on each open so leftover state doesn't bleed between adds.
-  useEffect(() => { if (open) setForm({}); }, [open]);
+  // Reset + smart-default + draft-restore on open.
+  useEffect(() => {
+    if (!open) return;
+    let initial = { ...(initialValues || {}) };
+    try {
+      const stored = sessionStorage.getItem(draftKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // Only restore if the draft has actual user-entered content beyond defaults.
+        const hasUserContent = Object.entries(parsed).some(
+          ([k, v]) => v !== undefined && v !== "" && v !== (initialValues || {})[k],
+        );
+        if (hasUserContent) initial = { ...initial, ...parsed };
+      }
+    } catch {
+      /* ignore corrupted drafts silently */
+    }
+    setForm(initial);
+    setError(null);
+    // Defer focus so the slide-in animation completes first.
+    const t = setTimeout(() => {
+      firstFieldRef.current?.focus?.();
+    }, 320);
+    return () => clearTimeout(t);
+  }, [open, draftKey, initialValues]);
+
+  // Debounced draft persistence (only while sheet is open and form changes).
+  useEffect(() => {
+    if (!open) return undefined;
+    const handle = setTimeout(() => {
+      try {
+        // Don't persist a draft that's identical to initialValues — keeps storage clean.
+        const isJustDefaults = Object.entries(form).every(
+          ([k, v]) => v === (initialValues || {})[k],
+        );
+        if (isJustDefaults || Object.keys(form).length === 0) {
+          sessionStorage.removeItem(draftKey);
+        } else {
+          sessionStorage.setItem(draftKey, JSON.stringify(form));
+        }
+      } catch {
+        /* sessionStorage quota / disabled — fail silently */
+      }
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [form, open, draftKey, initialValues]);
 
   const prefix = testidPrefix || `${endpoint.replace(/^\//, "").replace(/[^a-z]+/gi, "-")}-add`;
+
+  const update = useCallback((key, val) => {
+    setForm((s) => ({ ...s, [key]: val }));
+    if (error) setError(null);
+  }, [error]);
 
   const submit = async (e) => {
     e?.preventDefault();
@@ -57,6 +115,7 @@ export default function QuickAddSheet({
       }
     }
     setSaving(true);
+    setError(null);
     try {
       let payload = { ...form };
       fields.forEach((f) => {
@@ -66,11 +125,17 @@ export default function QuickAddSheet({
       });
       if (typeof transform === "function") payload = transform(payload);
       const r = await api.post(endpoint, payload);
+      // Successful submit → clear draft + dismiss.
+      try { sessionStorage.removeItem(draftKey); } catch { /* ignore */ }
       toast.success("Added");
       onCreated?.(r.data);
       onClose?.();
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Could not save");
+      // Calm, non-blame language. Form data + draft remain intact.
+      setError(
+        err?.response?.data?.detail
+        || "Saved as draft — try again when you have signal.",
+      );
     } finally {
       setSaving(false);
     }
@@ -97,7 +162,7 @@ export default function QuickAddSheet({
           <button
             onClick={onClose}
             data-testid={`${prefix}-close`}
-            className="text-equine-platinum/60 hover:text-equine-ivory p-1.5 rounded-md hover:bg-white/[0.05] transition-colors"
+            className="text-equine-platinum/60 hover:text-equine-ivory p-1.5 rounded-md hover:bg-white/[0.05] transition-colors tap-44"
             aria-label="Close"
           >
             <X strokeWidth={1.6} className="w-5 h-5" />
@@ -106,22 +171,19 @@ export default function QuickAddSheet({
 
         <form onSubmit={submit} className="px-6 py-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {fields.map((f) => {
+            {fields.map((f, idx) => {
               const wrapperCls = f.full ? "sm:col-span-2" : "";
+              const isFirst = idx === 0;
               if (f.kind === "select") {
-                // Radix Select disallows value="" — silently strip empty options so
-                // future callers can't crash the modal by trying to add a
-                // "— None —" placeholder row. Use a non-empty sentinel
-                // (e.g. "__none__") and coerce it in your transform() instead.
                 const opts = f.opts
                   .map((o) => (typeof o === "string" ? { v: o, l: o.replace(/_/g, " ") } : o))
                   .filter((o) => o.v !== "" && o.v !== undefined && o.v !== null);
                 return (
-                  <div key={f.key} className={wrapperCls}>
+                  <div key={f.key} className={wrapperCls} ref={isFirst ? firstFieldRef : undefined}>
                     <Select
                       label={f.label}
                       value={form[f.key] || ""}
-                      onChange={(v) => setForm((s) => ({ ...s, [f.key]: v }))}
+                      onChange={(v) => update(f.key, v)}
                       options={opts}
                       testid={`${prefix}-${f.key}`}
                     />
@@ -133,10 +195,11 @@ export default function QuickAddSheet({
                   <label key={f.key} className={`block ${wrapperCls}`}>
                     <div className="label-eyebrow mb-1.5">{f.label}</div>
                     <textarea
+                      ref={isFirst ? firstFieldRef : undefined}
                       rows={f.rows || 3}
                       value={form[f.key] || ""}
                       placeholder={f.placeholder}
-                      onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}
+                      onChange={(e) => update(f.key, e.target.value)}
                       data-testid={`${prefix}-${f.key}`}
                       className="w-full bg-equine-soft border border-equine-graphite/60 rounded-lg px-3 py-2.5 text-equine-ivory focus:border-equine-champagne outline-none text-[14px] transition-colors resize-y"
                     />
@@ -145,25 +208,39 @@ export default function QuickAddSheet({
               }
               return (
                 <div key={f.key} className={wrapperCls}>
-                  <Field
-                    label={f.label}
-                    type={f.type}
-                    placeholder={f.placeholder}
-                    value={form[f.key] || ""}
-                    onChange={(v) => setForm((s) => ({ ...s, [f.key]: v }))}
-                    testid={`${prefix}-${f.key}`}
-                  />
+                  <label className="block">
+                    <div className="label-eyebrow mb-1.5">{f.label}</div>
+                    <input
+                      ref={isFirst ? firstFieldRef : undefined}
+                      type={f.type || "text"}
+                      value={form[f.key] || ""}
+                      onChange={(e) => update(f.key, e.target.value)}
+                      placeholder={f.placeholder}
+                      data-testid={`${prefix}-${f.key}`}
+                      className="w-full bg-equine-soft border border-equine-graphite/60 rounded-lg px-3 py-2.5 text-equine-ivory focus:border-equine-champagne outline-none text-[14px] transition-colors min-h-[44px]"
+                    />
+                  </label>
                 </div>
               );
             })}
           </div>
+
+          {error && (
+            <div
+              data-testid={`${prefix}-error`}
+              className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-lg bg-equine-amber/8 border border-equine-amber/25 text-equine-amber text-[12.5px] leading-relaxed"
+            >
+              <AlertCircle strokeWidth={1.6} className="w-4 h-4 mt-px shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
 
           <div className="pt-3 flex items-center justify-end gap-2 hairline mt-4">
             <button
               type="button"
               onClick={onClose}
               data-testid={`${prefix}-cancel`}
-              className="btn-secondary"
+              className="btn-secondary tap-44"
             >
               Cancel
             </button>
@@ -171,7 +248,7 @@ export default function QuickAddSheet({
               type="submit"
               disabled={saving}
               data-testid={`${prefix}-submit`}
-              className="btn-primary"
+              className="btn-primary tap-44"
             >
               {saving ? "Saving…" : submitLabel}
             </button>
@@ -181,3 +258,8 @@ export default function QuickAddSheet({
     </div>
   );
 }
+
+// Tiny utility callers can import for "clear my draft" affordances (rarely needed).
+export const clearDraft = (endpoint) => {
+  try { sessionStorage.removeItem(DRAFT_KEY(endpoint)); } catch { /* ignore */ }
+};

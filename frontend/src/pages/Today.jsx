@@ -11,6 +11,7 @@ import { toast } from "sonner";
 
 import { CATEGORY_META, GROUP_ORDER } from "../lib/todayMeta";
 import { SyncHeaderBadge } from "../components/today/SyncBadges";
+import LastSyncedBadge from "../components/today/LastSyncedBadge";
 import TodayGroup from "../components/today/TodayGroup";
 
 /**
@@ -25,6 +26,7 @@ export default function Today() {
   const [bulkMode, setBulkMode] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [loading, setLoading] = useState(true);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
   // Optimistic overlay: { [task_id]: 'completed' | 'skipped' }
   const [optimistic, setOptimistic] = useState({});
   // Sync state map: { [task_id]: 'queued' | 'syncing' | 'failed' }
@@ -41,6 +43,7 @@ export default function Today() {
       const map = {};
       (horsesRes.data || []).forEach((h) => { map[h.id] = h; });
       setHorses(map);
+      setLastSyncedAt(new Date());
     } catch (e) {
       console.error(e);
     } finally {
@@ -157,7 +160,12 @@ export default function Today() {
         eyebrow="Today"
         title="Operational Pulse"
         subtitle="One clean stream of what the barn needs, ordered by urgency. Swipe right to complete, left to skip, or enter bulk mode."
-        action={<SyncHeaderBadge />}
+        action={
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <SyncHeaderBadge />
+            <LastSyncedBadge at={lastSyncedAt} onRefresh={reload} refreshing={loading} />
+          </div>
+        }
       />
 
       {/* Filter / bulk toolbar */}

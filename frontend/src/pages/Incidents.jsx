@@ -105,6 +105,7 @@ export default function Incidents() {
         eyebrow="Safety"
         fields={fields}
         endpoint="/incidents"
+        initialValues={{ occurred_at: defaultOccurredAt(), severity: "moderate" }}
         transform={transform}
         submitLabel="Save report"
         testidPrefix="incidents-add"
