@@ -22,7 +22,13 @@ import TodayGroup from "../components/today/TodayGroup";
 export default function Today() {
   const [data, setData] = useState(null);
   const [horses, setHorses] = useState({});
-  const [filter, setFilter] = useState(null);
+  // Restore last-used filter from sessionStorage so a phone-lock/reopen
+  // mid-feed-round doesn't wipe Sophia's filter. Per OPERATIONAL_SIMULATION
+  // §4.2 this saves ~30 wasted taps/day on a typical groom workflow.
+  const [filter, setFilter] = useState(() => {
+    try { return sessionStorage.getItem("equine_today_filter") || null; }
+    catch { return null; }
+  });
   const [bulkMode, setBulkMode] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [loading, setLoading] = useState(true);
@@ -83,6 +89,14 @@ export default function Today() {
   }, [reload]);
 
   const syncStateForTask = useCallback((id) => queueState[id], [queueState]);
+
+  // Persist filter selection so phone-lock / app-remount doesn't blow it away.
+  useEffect(() => {
+    try {
+      if (filter) sessionStorage.setItem("equine_today_filter", filter);
+      else sessionStorage.removeItem("equine_today_filter");
+    } catch { /* ignore storage quota / disabled */ }
+  }, [filter]);
 
   const applyOptimistic = (taskId, status) => {
     setOptimistic((s) => ({ ...s, [taskId]: status }));
@@ -168,13 +182,13 @@ export default function Today() {
         }
       />
 
-      {/* Filter / bulk toolbar */}
+      {/* Filter / bulk toolbar — chips bumped to ≥44px tap-zone for one-handed mobile use */}
       <div className="sticky top-[64px] z-10 -mx-5 lg:mx-0 px-5 lg:px-0 py-3 mb-5 bg-equine-black/85 backdrop-blur-md border-b border-equine-hairline">
         <div className="flex items-center gap-2 overflow-x-auto scrollbar-luxe pb-1">
           <button
             data-testid="filter-chip-all"
             onClick={() => setFilter(null)}
-            className={`shrink-0 px-3 py-1.5 rounded-full text-[12px] tracking-wide transition-colors border ${
+            className={`shrink-0 px-4 py-2.5 min-h-[40px] rounded-full text-[12px] tracking-wide transition-colors border ${
               !filter ? "bg-equine-navy text-white border-equine-navy" : "bg-equine-card text-equine-inkMuted border-equine-hairline hover:border-equine-graphite"
             }`}
           >
@@ -188,7 +202,7 @@ export default function Today() {
                 key={cat}
                 data-testid={`filter-chip-${cat}`}
                 onClick={() => setFilter(filter === cat ? null : cat)}
-                className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] tracking-wide transition-colors border ${
+                className={`shrink-0 inline-flex items-center gap-1.5 px-4 py-2.5 min-h-[40px] rounded-full text-[12px] tracking-wide transition-colors border ${
                   filter === cat ? "bg-equine-navy text-white border-equine-navy" : "bg-equine-card text-equine-inkMuted border-equine-hairline hover:border-equine-graphite"
                 }`}
               >
@@ -201,7 +215,7 @@ export default function Today() {
             <button
               data-testid="bulk-mode-toggle"
               onClick={() => { setBulkMode((v) => !v); setSelected(new Set()); }}
-              className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] tracking-wide border transition-colors ${
+              className={`shrink-0 inline-flex items-center gap-1.5 px-4 py-2.5 min-h-[40px] rounded-full text-[12px] tracking-wide border transition-colors ${
                 bulkMode ? "bg-equine-brassLight text-equine-navy border-equine-brass" : "bg-equine-card text-equine-inkMuted border-equine-hairline hover:border-equine-graphite"
               }`}
             >

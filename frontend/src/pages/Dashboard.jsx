@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, money } from "../lib/api";
 import { PageHeader, Stat, SectionEyebrow } from "../components/Primitives";
@@ -13,6 +13,7 @@ import ActionTile from "../components/dashboard/ActionTile";
 import AlertsCard from "../components/dashboard/AlertsCard";
 import { OperationsCard, UpcomingCareCard } from "../components/dashboard/SmallCards";
 import FounderWalkthrough, { walkthroughSeen } from "../components/FounderWalkthrough";
+import LastSyncedBadge from "../components/today/LastSyncedBadge";
 
 /**
  * Stable Command — operational glance, not an analytics board.
@@ -28,32 +29,41 @@ export default function Dashboard() {
   const [upcoming, setUpcoming] = useState([]);
   const [upcomingLoading, setUpcomingLoading] = useState(true);
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    api.get("/dashboard/summary").then((r) => setSummary(r.data)).catch(() => {});
-    api.get("/onboarding/progress").then((r) => setProgress(r.data)).catch(() => {});
-    api.get("/onboarding/steps").then((r) => setSteps(r.data.steps)).catch(() => setSteps([]));
-
-    // Upcoming vet/farrier/rehab from the unified Task Engine — no new endpoint.
-    const today = new Date();
-    const in7 = new Date(today.getTime() + 7 * 24 * 3600 * 1000);
-    api.get("/tasks", {
-      params: {
-        start: today.toISOString(),
-        end: in7.toISOString(),
-        limit: 200,
-      },
-    })
-      .then((r) => {
-        const items = (r.data?.items || []).filter(
+  const loadAll = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const today = new Date();
+      const in7 = new Date(today.getTime() + 7 * 24 * 3600 * 1000);
+      const [summaryRes, progressRes, stepsRes, tasksRes] = await Promise.allSettled([
+        api.get("/dashboard/summary"),
+        api.get("/onboarding/progress"),
+        api.get("/onboarding/steps"),
+        api.get("/tasks", { params: { start: today.toISOString(), end: in7.toISOString(), limit: 200 } }),
+      ]);
+      if (summaryRes.status === "fulfilled") setSummary(summaryRes.value.data);
+      if (progressRes.status === "fulfilled") setProgress(progressRes.value.data);
+      if (stepsRes.status === "fulfilled") setSteps(stepsRes.value.data.steps);
+      else setSteps([]);
+      if (tasksRes.status === "fulfilled") {
+        const items = (tasksRes.value.data?.items || []).filter(
           (t) => ["vet", "farrier", "rehab"].includes(t.category)
                  && !["completed", "skipped", "cancelled"].includes(t.status),
         );
         setUpcoming(items.slice(0, 8));
-      })
-      .catch(() => setUpcoming([]))
-      .finally(() => setUpcomingLoading(false));
+      } else {
+        setUpcoming([]);
+      }
+      setLastSyncedAt(new Date());
+    } finally {
+      setUpcomingLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
 
   // Calm one-time founder walkthrough auto-open: only for setup roles who
   // finished onboarding and haven't seen it yet. Never auto-shown again.
@@ -76,13 +86,22 @@ export default function Dashboard() {
         title="Stable Command"
         subtitle="A live overview of horses, daily care, alerts and operations across your facility."
         action={
-          <button
-            data-testid="walkthrough-launch"
-            onClick={() => setWalkthroughOpen(true)}
-            className="inline-flex items-center gap-1.5 text-[11.5px] uppercase tracking-[0.2em] text-equine-brass/80 hover:text-equine-brassLight transition-colors px-3 py-1.5 rounded-full border border-equine-graphite/40 hover:border-equine-brass/50"
-          >
-            <Compass className="w-3.5 h-3.5" /> Founder tour
-          </button>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <LastSyncedBadge
+              at={lastSyncedAt}
+              onRefresh={loadAll}
+              refreshing={refreshing}
+              verb="Updated"
+              tone="secondary"
+            />
+            <button
+              data-testid="walkthrough-launch"
+              onClick={() => setWalkthroughOpen(true)}
+              className="inline-flex items-center gap-1.5 text-[11.5px] uppercase tracking-[0.2em] text-equine-brass/80 hover:text-equine-brassLight transition-colors px-3 py-1.5 rounded-full border border-equine-graphite/40 hover:border-equine-brass/50"
+            >
+              <Compass className="w-3.5 h-3.5" /> Founder tour
+            </button>
+          </div>
         }
       />
 

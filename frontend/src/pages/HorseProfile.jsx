@@ -68,19 +68,24 @@ export default function HorseProfile() {
         </Card>
       </div>
 
-      {/* Tabs */}
-      <Card hover={false} className="!p-2 mb-6 overflow-x-auto scrollbar-luxe">
-        <div className="flex gap-1">
-          {TABS.map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              data-testid={`tab-${t.toLowerCase()}`}
-              className={`px-4 py-2 rounded-lg text-[13px] tracking-wide transition-all ${tab === t ? "bg-equine-steel/30 text-equine-ivory border border-equine-steel/40" : "text-equine-platinum/70 hover:bg-equine-soft hover:text-equine-ivory"}`}
-            >{t}</button>
-          ))}
-        </div>
-      </Card>
+      {/* Tabs — horizontally scrollable on mobile; ≥44px hit targets */}
+      <div className="relative mb-6">
+        <Card hover={false} className="!p-2 overflow-x-auto scrollbar-luxe">
+          <div className="flex gap-1">
+            {TABS.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                data-testid={`tab-${t.toLowerCase()}`}
+                className={`px-4 py-3 rounded-lg text-[13px] tracking-wide transition-all tap-44 whitespace-nowrap ${tab === t ? "bg-equine-steel/30 text-equine-ivory border border-equine-steel/40" : "text-equine-platinum/70 hover:bg-equine-soft hover:text-equine-ivory"}`}
+              >{t}</button>
+            ))}
+          </div>
+        </Card>
+        {/* Soft edge fades hint at horizontal scrollability on small screens. */}
+        <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-equine-black to-transparent rounded-r-lg md:hidden" />
+        <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-equine-black to-transparent rounded-l-lg md:hidden" />
+      </div>
 
       {tab === "Overview" && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

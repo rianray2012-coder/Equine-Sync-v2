@@ -1,0 +1,43 @@
+{
+  "summary": "Batch F (thumb-zone polish + Dashboard LastSyncedBadge extension) — all 9 requested checks PASS. Today filter persistence works (sessionStorage 'equine_today_filter' set on chip click, persists across reload, active chip retains bg-equine-navy after reload, sessionStorage cleared on 'All' click). All Today filter chips + bulk-mode-toggle measured exactly 40px tall (min-h-[40px] applied). Dashboard /dashboard header renders [data-testid='dashboard-last-synced'] with text 'UPDATED JUST NOW' (verb='Updated', secondary tone — uppercase tracking-[0.18em], no border, text-equine-platinum/50). Badge tap fires the full parallel refetch: GET /api/dashboard/summary + /api/onboarding/progress + /api/onboarding/steps + /api/tasks (all 4 confirmed via request listener after JS .click()). HorseProfile tabs (overview/timeline/feed/training/health) all measure 45.5px height (≥44 tap-44). Two edge-fade gradient divs found with md:hidden classes (right w=32 from-equine-black, left w=24 from-equine-black). FAB on /inventory, /incidents, /lessons, /training all sit at x=310,y=704,60x60, position:fixed, z-index:30 — below sheet z-index:60. Incidents QuickAddSheet sticky-footer FIXED: submit button now at y=795 with h=44 → bottom=839, comfortably within 844 viewport (iter20 had this at y≈868, below viewport). Today badge regression — verb='Synced' still used ('Synced just now' rendered). Lessons + Owners sheet smoke OK.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passing_checks": [
+    "Today filter sessionStorage: click filter-chip-feed → sessionStorage['equine_today_filter']='feed'. CONFIRMED.",
+    "Today filter persistence across reload: after page.reload(), sessionStorage still='feed' AND feed chip class contains 'bg-equine-navy'. CONFIRMED.",
+    "Today filter sessionStorage cleared on 'All': click filter-chip-all → sessionStorage.getItem returns null. CONFIRMED.",
+    "Today tap-targets: filter-chip-all=40px, filter-chip-feed=40px, filter-chip-medication=40px, filter-chip-vet=40px, filter-chip-farrier=40px, filter-chip-rehab=40px, filter-chip-stall_clean=40px, filter-chip-turnout_in=40px, filter-chip-turnout_out=40px, filter-chip-custom=40px, bulk-mode-toggle=40px. All ≥40. CONFIRMED.",
+    "Dashboard [data-testid='dashboard-last-synced'] visible, text='UPDATED JUST NOW', secondary tone class (uppercase tracking-[0.18em], no border utility class, text-equine-platinum/50, px-2.5 py-1, text-[10.5px]). CONFIRMED.",
+    "Dashboard badge verb is 'Updated' (CSS uppercase makes it display UPPERCASE but underlying text is 'Updated just now'). CONFIRMED.",
+    "Dashboard badge tap fires GET /api/dashboard/summary, /api/onboarding/progress, /api/onboarding/steps, /api/tasks — all 4 in parallel. CONFIRMED via request listener.",
+    "HorseProfile tab strip: tab-overview, tab-timeline, tab-feed, tab-training, tab-health all 45.5px tall (≥44). CONFIRMED.",
+    "HorseProfile edge fades: 2 gradient divs with md:hidden — right (w=32, from-equine-black to-transparent) + left (w=24, from-equine-black to-transparent). CONFIRMED.",
+    "FAB safety: /inventory, /incidents, /lessons, /training all show *-fab at fixed bottom-right (x=310,y=704), z-index=30. Not overlapping sidebar (sidebar uses lg+ only on mobile). CONFIRMED.",
+    "QuickAddSheet z-index=60 > FAB z-index=30 — sheet covers FAB when open. CONFIRMED.",
+    "Incidents QuickAddSheet sticky footer: [data-testid='incidents-add-submit'] bounding box y=795, h=44 → bottom=839 within 844 viewport. NO scroll needed to reach submit. FIXED from iter20 regression.",
+    "Regression — Today badge [data-testid='today-last-synced'] still uses verb='Synced' → text 'Synced just now'. CONFIRMED.",
+    "Regression smoke — /lessons FAB opens [data-testid='lessons-add-sheet']. CONFIRMED.",
+    "Regression smoke — /owners has owners-add-btn (header button, not FAB pattern — by design)."
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "LastSyncedBadge.jsx props design is clean (verb + tone) — secondary tone properly drops border + reduces text size + applies uppercase tracking. Good reuse across /today and /dashboard.",
+    "Dashboard.jsx loadAll uses Promise.allSettled for the 4 endpoints — resilient against partial failures. ",
+    "HorseProfile.jsx edge fades use pointer-events-none + md:hidden — correct (no interaction blocking on desktop where tabs fit without scroll).",
+    "Today.jsx filter persistence: sessionStorage init in useState (lazy) prevents hydration mismatch; useEffect writes on every filter change. Clean implementation.",
+    "Minor (non-blocking): FounderWalkthrough localStorage key is 'equinesync.walkthrough.seen' (dot-separated) — the main-agent's note suggested 'equine_walkthrough_seen' which does NOT prevent the modal. Testers must use the actual key. Not an app bug; just a doc nit."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (out of scope per request)", "frontend": "100% (9/9 Batch F + Dashboard checks pass)" },
+  "test_credentials": "admin@equinesync.com / demo1234 (from /app/memory/test_credentials.md). Login button: 'Enter the barn'.",
+  "seed_data_creation": "None. No POST data created during this run — all checks were read-only inspections (geometry, classes, sessionStorage, request listeners).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Two playwright-specific gotchas worth knowing: (1) FounderWalkthrough modal auto-opens on /dashboard for admins who completed onboarding. The actual localStorage key to suppress it is 'equinesync.walkthrough.seen'='1' (NOT 'equine_walkthrough_seen' as the main-agent note suggested). Set this BEFORE first /dashboard navigation. (2) Even with force=True, playwright clicks on the dashboard-last-synced badge can be hijacked by the modal overlay if it's open. Workaround: page.evaluate(()=>document.querySelector(\"[data-testid='dashboard-last-synced']\").click()) bypasses cleanly and fires the loadAll() callback. Functionality is correct; modal interception is purely a test-harness concern.",
+  "rca_of_the_issue": "No bugs found. Initial false-positive on 'badge tap fires no requests' was a playwright modal-overlay click interception, not an app bug. The FounderWalkthrough modal (z-50) was sitting on top of the badge (z-auto in header) because the suppress-modal localStorage key in the main-agent note was wrong. Switching to direct DOM .click() via page.evaluate confirmed loadAll() fires all 4 endpoints in parallel as intended."
+}
