@@ -21,6 +21,39 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 ## What's Been Implemented (Feb 17 2026)
 
+### Operational Hardening — Batch F (Thumb-zone polish) + Dashboard LastSyncedBadge (Feb 20 2026)
+Refinement pass per the OPERATIONAL_SIMULATION.md findings. No new feature surface. Focus on one-handed reachability, interruption recovery, and stale-state trust.
+
+**Today filter persistence (highest-leverage F item, simulation §4.2):**
+- `/today` `filter` state initialized from `sessionStorage["equine_today_filter"]` via lazy `useState` init.
+- `useEffect` writes the filter on every change; cleared on "All".
+- Phone-lock / app-remount mid-feed-round no longer wipes Sophia's filter.
+
+**Tap-zone bumps:**
+- Today filter chips + bulk-mode-toggle: `px-3 py-1.5` → `px-4 py-2.5 min-h-[40px]` (measured 40px tall — comfortable one-thumb hit).
+- HorseProfile tabs: `py-2` → `py-3` + `tap-44` + `whitespace-nowrap` (measured 45.5px tall).
+
+**HorseProfile tab strip ergonomics:**
+- Wrapped the scrollable strip in a `relative` container with two `pointer-events-none md:hidden` gradient overlays on the left + right edges. Subtle horizontal-scroll affordance without visual noise on desktop.
+
+**FAB / modal safety:**
+- FAB `z-30`, QuickAddSheet `z-60` — sheet always covers FAB cleanly when open.
+- QuickAddSheet sticky footer (Cancel + Save) verified within mobile viewport on 390x844 (submit button bottom = 839 of 844 — no scroll required).
+
+**Dashboard LastSyncedBadge extension (simulation §7):**
+- `Dashboard.jsx` now uses a unified `loadAll()` callback (Promise.allSettled across 4 endpoints) so the badge can trigger a parallel refetch.
+- `LastSyncedBadge` gained two new props:
+  - `verb` — `"Synced"` (default, used on /today) or `"Updated"` (used on /dashboard) so the Dashboard reads "Updated just now / 2m ago" per user direction.
+  - `tone` — `"primary"` (Today: bordered pill) or `"secondary"` (Dashboard: smaller, borderless, uppercase tracking — visually subordinate, informational only, no anxious red/yellow).
+
+**Verification (testing_agent_v3_fork iteration 21):**
+- **9/9 Batch F + Dashboard checks pass.** Zero ui_bugs, zero integration_issues, zero design_issues.
+- All filter chips + bulk toggle measured 40px tall; all HorseProfile tabs 45.5px.
+- Dashboard badge `text='UPDATED JUST NOW'`, tap fires 4 parallel refetches verified via request listener.
+- Today filter persistence verified across full page reload.
+
+
+
 ### Operational Hardening Sprint — Batches A + B + E (Feb 20 2026)
 Pure refinement sprint after the CRUD sprint. No new feature surface. Focus on: interruption recovery, trust under poor signal, aisle-side usability, calm error recovery, real-barn-day survivability.
 
