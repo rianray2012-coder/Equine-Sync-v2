@@ -16,6 +16,7 @@ _Start here. Read in order. Stop when context is sufficient._
 ## Reference (read only when needed)
 
 - **`PRD.md`** — original problem statement, sprint changelog, architectural decisions.
+- **`AUTH_MIGRATION_PLAN.md`** — httpOnly cookies + refresh-rotation reuse detection + CSRF + auth middleware cleanup. **Documented only, not implemented.** Scheduled as the first major post-founder-beta engineering sprint.
 - **`FOUNDER_BETA_AUDIT.md`** — original operational gap audit (most items now closed; see PRD.md changelog).
 - **`TASK_ENGINE_ARCHITECTURE.md`** — unified event-driven task engine reference.
 - **`MODULE_COMPLETION_MATRIX.md`** — per-module completion status.

@@ -5,17 +5,10 @@ import requests
 import pytest
 from datetime import datetime, timezone, timedelta
 
+from ._test_creds import ADMIN, OWNER
+
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://herd-hub-19.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
-
-ADMIN = {
-    "email": os.environ.get("TEST_ADMIN_EMAIL", "admin@equinesync.com"),
-    "password": os.environ.get("TEST_ADMIN_PASSWORD", "demo1234"),
-}
-OWNER = {
-    "email": os.environ.get("TEST_OWNER_EMAIL", "owner@equinesync.com"),
-    "password": os.environ.get("TEST_OWNER_PASSWORD", "demo1234"),
-}
 
 
 @pytest.fixture(scope="module")

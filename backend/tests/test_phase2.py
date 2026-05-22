@@ -20,11 +20,14 @@ import pytest
 import requests
 from datetime import datetime, timezone, timedelta
 
+from ._test_creds import ADMIN as ADMIN_DICT, OWNER as OWNER_DICT, GROOM as GROOM_DICT
+
 BASE = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/") or "https://herd-hub-19.preview.emergentagent.com"
 
-ADMIN = ("admin@equinesync.com", "demo1234")
-OWNER = ("owner@equinesync.com", "demo1234")
-GROOM = ("groom@equinesync.com", "demo1234")
+# Tuple form preserved for the (email, pwd) call sites below.
+ADMIN = (ADMIN_DICT["email"], ADMIN_DICT["password"])
+OWNER = (OWNER_DICT["email"], OWNER_DICT["password"])
+GROOM = (GROOM_DICT["email"], GROOM_DICT["password"])
 
 
 # ---------- helpers ----------

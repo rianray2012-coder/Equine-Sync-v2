@@ -4,16 +4,10 @@ import uuid
 import requests
 import pytest
 
+from ._test_creds import ADMIN, GROOM, DEMO_PASSWORD
+
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
-ADMIN = {
-    "email": os.environ.get("TEST_ADMIN_EMAIL", "admin@equinesync.com"),
-    "password": os.environ.get("TEST_PASSWORD", "demo1234"),
-}
-GROOM = {
-    "email": os.environ.get("TEST_GROOM_EMAIL", "groom@equinesync.com"),
-    "password": os.environ.get("TEST_PASSWORD", "demo1234"),
-}
 
 
 def _login(creds):
@@ -125,7 +119,7 @@ class TestInvitesResendRevokeVerifyAccept:
     def test_accept_creates_user_with_auto_launch(self, admin_h, created):
         token = created["dev_accept_url"].split("token=")[-1]
         r = requests.post(f"{API}/invites/accept",
-                          json={"token": token, "password": "demo1234",
+                          json={"token": token, "password": DEMO_PASSWORD,
                                 "full_name": "TEST_ Flow User"}, timeout=30)
         assert r.status_code == 200, r.text
         d = r.json()
@@ -168,7 +162,7 @@ class TestAcceptNonSetupRole:
         assert r.status_code == 200
         token = r.json()["dev_accept_url"].split("token=")[-1]
         ar = requests.post(f"{API}/invites/accept",
-                           json={"token": token, "password": "demo1234"}, timeout=30)
+                           json={"token": token, "password": DEMO_PASSWORD}, timeout=30)
         assert ar.status_code == 200, ar.text
         assert ar.json()["auto_launch_onboarding"] is False
 

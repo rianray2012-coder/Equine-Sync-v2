@@ -7,14 +7,14 @@ import os
 import pytest
 import requests
 
+from ._test_creds import ADMIN
+
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://herd-hub-19.preview.emergentagent.com").rstrip("/")
 
 
 @pytest.fixture(scope="module")
 def admin_token():
-    r = requests.post(f"{BASE_URL}/api/auth/login", json={
-        "email": "admin@equinesync.com", "password": "demo1234"
-    }, timeout=30)
+    r = requests.post(f"{BASE_URL}/api/auth/login", json=ADMIN, timeout=30)
     assert r.status_code == 200, r.text
     return r.json()["token"]
 

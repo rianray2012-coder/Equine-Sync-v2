@@ -3,11 +3,13 @@ import os
 import requests
 import pytest
 
+from ._test_creds import DEMO_PASSWORD
+
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://herd-hub-19.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
 
-def _login(email, password="demo1234"):
+def _login(email, password=DEMO_PASSWORD):
     r = requests.post(f"{API}/auth/login", json={"email": email, "password": password}, timeout=30)
     assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['token']}"}

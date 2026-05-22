@@ -11,15 +11,13 @@ from owner_digest import (
     render_weekly_recap_text,
 )
 
+from ._test_creds import ADMIN, OWNER, GROOM
+
 
 BASE_URL = os.environ.get(
     "REACT_APP_BACKEND_URL", "https://herd-hub-19.preview.emergentagent.com"
 ).rstrip("/")
 API = f"{BASE_URL}/api"
-
-ADMIN = {"email": "admin@equinesync.com", "password": "demo1234"}
-OWNER = {"email": "owner@equinesync.com", "password": "demo1234"}
-GROOM = {"email": "groom@equinesync.com", "password": "demo1234"}
 
 
 @pytest.fixture(scope="module")

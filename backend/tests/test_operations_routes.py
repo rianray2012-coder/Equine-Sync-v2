@@ -11,14 +11,16 @@ import uuid
 import pytest
 import requests
 
+from ._test_creds import DEMO_PASSWORD, ADMIN, OWNER, GROOM
+
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
 
 CREDS = {
-    "admin":   ("admin@equinesync.com",   "demo1234"),
-    "trainer": ("trainer@equinesync.com", "demo1234"),
-    "groom":   ("groom@equinesync.com",   "demo1234"),
-    "owner":   ("owner@equinesync.com",   "demo1234"),
+    "admin":   (ADMIN["email"],   DEMO_PASSWORD),
+    "trainer": ("trainer@equinesync.com", DEMO_PASSWORD),
+    "groom":   (GROOM["email"],   DEMO_PASSWORD),
+    "owner":   (OWNER["email"],   DEMO_PASSWORD),
 }
 
 

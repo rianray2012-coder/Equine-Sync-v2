@@ -12,15 +12,15 @@ import uuid
 import pytest
 import requests
 
+from ._test_creds import ADMIN
+
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or "").rstrip("/")
 API = f"{BASE_URL}/api"
 
 
 @pytest.fixture(scope="module")
 def admin_h():
-    r = requests.post(f"{API}/auth/login",
-                      json={"email": "admin@equinesync.com", "password": "demo1234"},
-                      timeout=20)
+    r = requests.post(f"{API}/auth/login", json=ADMIN, timeout=20)
     assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['token']}",
             "Content-Type": "application/json"}

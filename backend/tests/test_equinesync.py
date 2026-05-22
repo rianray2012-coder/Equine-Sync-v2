@@ -3,10 +3,10 @@ import os
 import requests
 import pytest
 
+from ._test_creds import ADMIN
+
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://herd-hub-19.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
-
-ADMIN = {"email": "admin@equinesync.com", "password": "demo1234"}
 
 
 @pytest.fixture(scope="module")
@@ -31,7 +31,7 @@ def test_auth_me(H):
 
 
 def test_auth_invalid():
-    r = requests.post(f"{API}/auth/login", json={"email": "admin@equinesync.com", "password": "wrong"}, timeout=30)
+    r = requests.post(f"{API}/auth/login", json={"email": ADMIN["email"], "password": "wrong"}, timeout=30)
     assert r.status_code == 401
 
 

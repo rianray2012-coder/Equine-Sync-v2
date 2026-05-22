@@ -3,9 +3,10 @@ import os
 import requests
 import pytest
 
+from ._test_creds import ADMIN
+
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
-ADMIN = {"email": "admin@equinesync.com", "password": "demo1234"}
 
 EXPECTED_STEP_IDS = {
     "barn", "locations", "owners", "horses", "riders",
