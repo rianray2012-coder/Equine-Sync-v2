@@ -33,7 +33,13 @@ Documentation-only pass; **zero runtime changes** (services never restarted).
 - Reconciled `DESIGN_TOKENS.md` to Brand Guide 22 (deprecated warm palette).
 - Authored a **code-grounded `KNOWN_TECH_DEBT.md`** (15 items, file/line-referenced). Top criticals: `JWT_SECRET='change-me'` fallback (`server.py:70`, `auth.py:31`); `barn_id` absent platform-wide (only in `invites.py`); no centralized permission service; hard-deletes in `onboarding.py`; no `AuditLog`; no rate limiting; non-standard API responses.
 - Logged key decisions in `DECISION_LOG.md`.
-- **Next:** Phase 2 — Security Stabilization (awaiting user go-ahead; Resend API key to be provided as `RESEND_API_KEY` env var).
+
+### Phase 2A — JWT Hardening & Centralized Config ✅ (May 30 2026)
+Closed the Critical JWT-fallback debt. Scoped narrowly (no password reset / email / rate-limiting yet).
+- New `backend/config.py` = single source of truth; removed `JWT_SECRET='change-me'` fallback from `server.py` + `routes/auth.py`.
+- `validate_config()` at startup: **fails fast in production** if `JWT_SECRET`/`MONGO_URL`/`DB_NAME` missing or `JWT_SECRET` insecure; **dev** uses logged ephemeral secret. Added `APP_ENV` toggle to `.env`.
+- Tests: `backend/tests/test_config.py` (18 unit tests pass). Verified login + `/auth/me` + 20 `test_phase2.py` integration tests pass — no regression.
+- **Next:** Phase 2B (password reset + email verification via Resend `RESEND_API_KEY`), then 2C (rate limiting + CORS tightening), 2D (auth/permission test coverage). Awaiting user go-ahead per "one sub-phase at a time" directive.
 
 ## What's Been Implemented (Feb 17 2026)
 

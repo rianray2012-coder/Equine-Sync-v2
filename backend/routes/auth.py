@@ -11,7 +11,6 @@ from typing import Optional
 
 import bcrypt
 import jwt as pyjwt
-import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -25,11 +24,9 @@ from auth_security import (
     revoke_refresh_token,
     revoke_all_user_refresh_tokens,
 )
+from config import JWT_SECRET, JWT_ALG
 
 logger = logging.getLogger(__name__)
-
-JWT_SECRET = os.environ.get("JWT_SECRET", "change-me")
-JWT_ALG = "HS256"
 
 ROLES = ["admin", "barn_manager", "trainer", "groom", "working_student",
          "horse_owner", "rider", "parent", "veterinarian", "farrier"]

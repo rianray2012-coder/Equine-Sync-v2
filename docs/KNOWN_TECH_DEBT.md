@@ -5,10 +5,10 @@
 
 ---
 
-## 1. JWT Secret Fallback — **Severity: Critical**
-- **Observed:** `backend/server.py:70` → `JWT_SECRET = os.environ.get('JWT_SECRET', 'change-me')` and `backend/routes/auth.py:31` → identical fallback. The secret is also duplicated across two modules.
+## 1. JWT Secret Fallback — **Severity: Critical** — ✅ RESOLVED (Phase 2A, 2026-05-30)
+- **Observed:** `backend/server.py:70` → `JWT_SECRET = os.environ.get('JWT_SECRET', 'change-me')` and `backend/routes/auth.py:31` → identical fallback. The secret was also duplicated across two modules.
 - **Risks:** Token forgery / authentication bypass if `JWT_SECRET` is unset in any environment; secret drift between the two definitions.
-- **Recommended Action:** Remove fallback; require `JWT_SECRET` via fail-fast environment validation at startup. Centralize the secret in one config module (`core/config`). **(Phase 2)**
+- **Resolution:** Created `backend/config.py` as the single source of truth. Both `server.py` and `routes/auth.py` now import `JWT_SECRET`/`JWT_ALG` from it — the `'change-me'` fallback is removed everywhere. `validate_config()` runs at startup and **fails fast in production** when `JWT_SECRET` (or `MONGO_URL`/`DB_NAME`) is missing or insecure (placeholder / < 16 chars). In development it falls back to a clearly-logged ephemeral per-process secret. Covered by `backend/tests/test_config.py` (18 tests). Verified: login + `/auth/me` + 20 `test_phase2.py` integration tests pass.
 
 ## 2. Backend Monolith — **Severity: High**
 - **Observed:** `backend/server.py` is **797 lines**. Target modular dirs (`models`, `schemas`, `services`, `core`, `db`, `utils`) **do not exist**. Routes partially extracted into `backend/routes/*.py` (auth, care, dashboard, invites, onboarding, operations, reports) but business logic and DB access remain mixed into route handlers and `server.py`.

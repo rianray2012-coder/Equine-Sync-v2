@@ -31,6 +31,24 @@ Never: create duplicate systems, bypass permissions, skip testing, alter schemas
 ## Core Modules
 Authentication · Horse Management · Care Operations · Billing · Owner Portal · Notifications · Audit Logs · Reporting.
 
+## Required Environment Variables (backend `.env`)
+Configuration is centralized in `backend/config.py` and validated at startup via `validate_config()`.
+
+| Variable | Required | Notes |
+|---|---|---|
+| `MONGO_URL` | Always | MongoDB connection string. Startup fails if missing. |
+| `DB_NAME` | Always | Database name. Startup fails if missing. |
+| `JWT_SECRET` | **Production** | JWT signing secret. Must be strong (≥ 16 chars, not a placeholder like `change-me`). In **production** a missing/insecure value **fails startup**. In **development** a missing value falls back to a logged ephemeral per-process secret (sessions reset on restart). |
+| `APP_ENV` | Optional | `development` (default) or `production`. Drives fail-fast behavior. Set `APP_ENV=production` in production deployments. |
+| `CORS_ORIGINS` | Optional | Comma-separated allowed origins (defaults to `*`; tighten for production — tracked in tech debt #8). |
+| `RESEND_API_KEY` | For email | Resend transactional email key (used by upcoming Phase 2B). Never logged or committed. |
+| `RESEND_FROM` | For email | Verified sender address. |
+| `APP_BASE_URL` | Optional | Public app URL for links in emails. |
+| `INVITE_TTL_DAYS` | Optional | Staff invite expiry window. |
+| `EMERGENT_LLM_KEY` | For AI | Universal LLM key. |
+
+> **Security note:** Secrets must only ever be provided via environment variables. Never hardcode, print, log, commit, or expose them in frontend code.
+
 ## Before Shipping
 Review `RELEASE_CHECKLIST.md`.
 

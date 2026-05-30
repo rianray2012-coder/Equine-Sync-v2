@@ -43,6 +43,14 @@ Status:
 - **Review Date:** Phase 10
 - **Status:** Active
 
+### 2026-05-30 — Phase 2A: Centralized config + fail-fast JWT secret (no insecure fallback)
+- **Decision:** Introduced `backend/config.py` as the single source of truth for security-critical settings. Removed the `JWT_SECRET='change-me'` fallback from `server.py` and `routes/auth.py`. `validate_config()` runs at startup: **production fails fast** if `JWT_SECRET`/`MONGO_URL`/`DB_NAME` are missing or if `JWT_SECRET` is insecure; **development** uses a logged ephemeral secret to preserve usability. Added `APP_ENV` toggle.
+- **Reason:** Closes `KNOWN_TECH_DEBT.md` item #1 (Critical). Prevents token forgery / auth bypass from a default secret and eliminates secret drift between two modules.
+- **Alternatives Considered:** Direct `os.environ["JWT_SECRET"]` everywhere (no dev ergonomics); a full `core/` package (deferred to Phase 3 modularization).
+- **Risks:** Production deploys MUST set a strong `JWT_SECRET` or startup will (intentionally) fail. Dev ephemeral secret invalidates sessions on restart.
+- **Review Date:** Phase 3 (when `config.py` moves into `core/`)
+- **Status:** Active
+
 ### 2026-05-30 — Phase 1 is documentation-only (no runtime changes)
 - **Decision:** The Phase 1 governance pass creates/reconciles documentation and saves brand assets only. No backend or frontend runtime behavior is changed.
 - **Reason:** Establish a checkable source of truth before any code changes (Security Phase 2 next), per user directive.

@@ -12,6 +12,11 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
+# Centralized config validation — fail fast on missing/insecure security vars (Phase 2A).
+# Must run after load_dotenv and before security-critical setup below.
+from config import JWT_SECRET, JWT_ALG, validate_config
+validate_config()
+
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
 import uuid
@@ -66,9 +71,6 @@ from owner_digest import (
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
-
-JWT_SECRET = os.environ.get('JWT_SECRET', 'change-me')
-JWT_ALG = 'HS256'
 
 app = FastAPI(title="EquineSync API")
 api_router = APIRouter(prefix="/api")
