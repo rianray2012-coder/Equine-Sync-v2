@@ -22,7 +22,7 @@ from datetime import datetime, timezone, timedelta
 
 from ._test_creds import ADMIN as ADMIN_DICT, OWNER as OWNER_DICT, GROOM as GROOM_DICT
 
-BASE = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/") or "https://herd-hub-19.preview.emergentagent.com"
+BASE = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/") or "https://barn-ops-preview.preview.emergentagent.com"
 
 # Tuple form preserved for the (email, pwd) call sites below.
 ADMIN = (ADMIN_DICT["email"], ADMIN_DICT["password"])

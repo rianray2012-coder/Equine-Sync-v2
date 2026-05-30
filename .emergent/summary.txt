@@ -1,0 +1,146 @@
+<analysis>**original_problem_statement**: 
+Build EquineSync, a premium equestrian stable management platform functioning as an all-in-one operating system for modern horse boarding barns and training facilities. The app uses a unified operational task engine architecture with a sophisticated UI resembling a private equestrian club. 
+
+**PRODUCT REQUIREMENTS**:
+- Operationally grounded, mobile-first design (soft lavender pearl and deep charcoal navy theme).
+- Strong focus on calm UX, non-punitive warnings, interruption resilience, and offline draft preservation.
+- Strict directive: NO speculative AI features, NO fake/hardcoded dashboard theater, NO feature bloat.
+
+**User's preferred language**: English (INSTRUCT next agent to respond in English only)
+
+**what currently exists?** 
+A mature, event-driven, production-ready MVP. The Founder-Beta Trust Tightening phase is fully complete. The backend routing is highly modularized, and the frontend handles complete CRUD via a reusable  with offline draft preservation, smart defaults, and Last Synced awareness. Extensive pre-launch hygiene (test artifact cleanup, secret centralization, documentation) has been executed. The platform is currently **FROZEN** pending real-world observation.
+
+**Last working item**:
+    - Last item agent was working: Pre-Onboarding Hygiene Pass & Documentation. The agent centralized hardcoded test passwords into , executed a targeted hook dependency sweep, drafted an , and formally froze the codebase per user directive.
+    - Status: NONE (Completed, user confirmed. The agent is strictly standing by for the Founder Barn kickoff date).
+    - Agent Testing Done: Y
+    - Which testing method agent to use? NA (Testing already done; 175/175 backend tests pass).
+    - User Testing Done: N
+
+**All Pending/In progress Issue list**:
+  Issue 1: Migrate  auth tokens to httpOnly cookies (P1)
+     - Attempted fixes: Intentionally deferred to post-founder-beta phase to avoid disrupting rollout momentum.
+     - Next debug checklist: Follow the exact step-by-step plan drafted in  ONLY after founder-barn observation period concludes.
+     - Why fix this issue and what will be achieved with the fix?: Prevent XSS vulnerabilities and secure auth middleware.
+     - Status: BLOCKED (User strictly ordered to defer this).
+     - Is recurring issue? Y
+     - Should Test frontend/backend/both after fix?: Both
+     - Blocked on other issue: Awaiting conclusion of Founder-Beta observation phase.
+
+  Issue 2: Smoke-walk UI observations (Dashboard amber tone, Disabled Schedule button without riders) (P2)
+     - Attempted fixes: Documented in .
+     - Next debug checklist: Await founder-barn feedback to see if the amber tone causes actual friction before modifying it.
+     - Why fix this issue and what will be achieved with the fix?: Refine calm UX tone.
+     - Status: BLOCKED (User directive to hold until observed in real-world usage).
+     - Is recurring issue? N
+     - Should Test frontend/backend/both after fix?: Frontend
+     - Blocked on other issue: Awaiting Founder-Beta feedback.
+
+**In progress Task List**:
+None. Codebase is frozen.
+
+**Upcoming and Future Tasks**:
+  **P0: Draft Calm-Tone Onboarding Email**
+  - Task: Await the user to provide the Founder Barn name and kickoff date. Once provided, draft a warm, grounded, low-pressure onboarding email emphasizing observation, not validation.
+
+  **P1: Post-Beta Backlog (DO NOT IMPLEMENT YET)**
+  - Task: Ad-hoc vet/wellness/farrier quick-add.
+  - Task: Messaging compose draft preservation.
+  - Task: Lesson today only filter.
+  - Task: In-place inventory quantity edits.
+
+  **P2: Recurring Schedules Materialization**
+  - Task: Re-enable and wire the  data (currently hidden in onboarding) into actual timeline tasks for v1.1.
+
+**Completed work in this session**:
+- Founder-Beta CRUD Materialization (, , , , , , ) via  (DONE)
+- Hid recurring schedules step in onboarding (DONE)
+- Batch A:  hardening (auto-focus, enter-to-submit, draft preservation via , smart defaults) (DONE)
+- Batch B: Calm error recovery (Saved as draft UI) and  on  and  (DONE)
+- Batch F: Thumb-zone polish (Today filter persistence, HorseProfile tab UI, minimum 44px tap targets) (DONE)
+- Batch D: Soft scheduling conflicts ( component) and TodayGroup Select all bulk-select (DONE)
+- Batch C: Notification drawer trust loop (inline approve/decline), backend dispatcher transient-error retries, Inventory duplicate detection (DONE)
+- DB Hygiene: Purged ~700 UUID-titled testing artifacts, stray test horses, and stale pending requests from the database (DONE)
+- Test Creds Hygiene: Centralized  passwords to  and added  to tests (DONE)
+- Documentation sprint: Created , , , , , ,  (DONE)
+
+**Earlier issues found/mentioned but not fixed**:
+- Hook dependencies (ESLint warnings) across complex components (Intentionally skipped; user explicitly ordered NO mass autofixing, only a targeted sanity check which passed).
+
+**Known issue recurrence from previous fork**:
+- Issue recurrence in previous fork: None
+- Recurrence count: 0
+- Status: N/A
+
+**Code Architecture**:
+- : FastAPI event-driven backend.  relies on  (modularized domain routers). Uses unified  and  dispatcher.
+- : React + Tailwind + shadcn/ui. Uses offline-first .
+- Reusable UI:  handles all mobile-first, bottom-sheet CRUD operations with draft preservation.  provides calm, non-punitive conflict awareness.
+
+**Key Technical Concepts**:
+React, FastAPI, MongoDB, Optimistic UI sync,  for form draft preservation, unified TaskEvent architecture, declarative Calm UX design philosophy.
+
+**key DB schema**:
+- : Central operational timeline.
+- : Requires approve/decline logic.
+- , , .
+
+**changes in tech stack**:
+- None.
+
+**All files of reference**:
+-  (Critical: Read this to orient yourself with the 5 read-order documentation artifacts).
+- 
+- 
+- 
+- 
+- 
+
+**Areas that need refactoring**:
+- Auth mechanism ( ->  cookies) - Documented in , pending post-beta execution.
+
+**key api endpoints**:
+- 
+-  (and )
+- 
+
+**Critical Info for New Agent**:
+- **CODEBASE IS FROZEN**: The user has strictly mandated Observation barn name and kickoff date. Once provided, your ONLY task is to draft a calm-tone onboarding email template. Do not write code until explicitly told to resume building.
+- **Product Tone**: Quietly dependable operational software. Warnings are non-punitive (SoftWarning). No red/amber alerts unless critical. Gentle operational awareness over enterprise escalation.
+- **Documentation**: If confused about state, read .
+
+**documents and test reports created in this job**:
+- 
+- 
+- 
+- 
+- 
+- 
+- 
+-  through 
+
+**Last 10 User Messages and any pending HUMAN messages**:
+- *User*: Praised the disciplined pre-onboarding hygiene pass (test creds centralized, hook check, auth plan documented). Confirmed codebase should be frozen. Instructed agent to wait for the founder-barn kickoff date and barn name, at which point an onboarding email should be drafted.
+- *Agent*: Acknowledged freeze. Standing by.
+- *(Pending)*: Awaiting user to provide the Barn Name and Kickoff Date.
+
+**Project Health Check**:
+Extremely Healthy. 175/175 Backend Pytest passing. Frontend heavily polished.
+
+**3rd Party Integrations**:
+- Resend (Email Delivery) — Requires User API Key.
+- Cloudflare R2 (Object Storage - Stubbed) — Requires User Keys.
+
+**Testing status**:
+- Testing agent used after significant changes: YES (Iterations 17-23).
+- Troubleshoot agent used after agent stuck in loop: NO
+- Test files created: , , added .
+- Known regressions: None.
+
+**Credentials to test flow**:
+Centralized test credentials are in  (Fallback is usually ).
+See  for UI auth roles.
+
+**What agent forgot to execute**:
+Nothing. The agent successfully paused and is awaiting the date from the user.</analysis>
