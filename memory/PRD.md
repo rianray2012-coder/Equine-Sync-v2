@@ -19,6 +19,22 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 - **Frontend**: React 19, React Router v7, Tailwind + custom equine palette, lucide-react icons
 - **Routes**: 23 routes under `/api/*`; auto-seed on startup if `users` collection empty
 
+
+## 🆕 Governance & Production-Readiness Program (May 30 2026)
+The founder-beta "freeze" was lifted. The user supplied a full **23-document governance set** that reframes EquineSync as a phased production-readiness program. **The authoritative source of truth is now `/app/docs/` (project-root `/docs`)** — start at `/app/docs/MASTER_INDEX.md`. The `/app/memory/*` files are retained as historical founder-beta artifacts.
+
+**10-Phase Execution Plan** (`/app/docs/PHASED_EXECUTION_PLAN.md`): 1) Docs & Governance ✅ → 2) Security Stabilization → 3) Backend Modularization → 4) Multi-Tenancy & Permissions → 5) Audit Logging → 6) Care Workflows → 7) Owner Trust Layer → 8) Mobile → 9) Billing → 10) Production Readiness.
+
+**Authoritative palette (Brand Guide 22):** Midnight Graphite `#232734` / Slate Navy `#2E3550` / Frost White `#F7F8FA` / Smoky Lilac `#B8AECF`; Cormorant Garamond (display) + Inter (UI); identity line "Every Horse. Every Task. In Sync." Supersedes the deprecated Warm Ivory/Saddle Brown design-token palette.
+
+### Phase 1 — Documentation & Governance ✅ (May 30 2026)
+Documentation-only pass; **zero runtime changes** (services never restarted).
+- Created `/app/docs/` with all 23 governance docs + `assets/brand/equinesync-icon.png`.
+- Reconciled `DESIGN_TOKENS.md` to Brand Guide 22 (deprecated warm palette).
+- Authored a **code-grounded `KNOWN_TECH_DEBT.md`** (15 items, file/line-referenced). Top criticals: `JWT_SECRET='change-me'` fallback (`server.py:70`, `auth.py:31`); `barn_id` absent platform-wide (only in `invites.py`); no centralized permission service; hard-deletes in `onboarding.py`; no `AuditLog`; no rate limiting; non-standard API responses.
+- Logged key decisions in `DECISION_LOG.md`.
+- **Next:** Phase 2 — Security Stabilization (awaiting user go-ahead; Resend API key to be provided as `RESEND_API_KEY` env var).
+
 ## What's Been Implemented (Feb 17 2026)
 
 ### Operational Hardening — Batch C (Notification trust loop) + Inventory duplicate-detection opener + Dispatcher retry (Feb 20 2026)
