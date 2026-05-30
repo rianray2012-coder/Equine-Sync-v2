@@ -43,6 +43,9 @@ Configuration is centralized in `backend/config.py` and validated at startup via
 | `CORS_ORIGINS` | **Production** | Comma-separated allowed origins. In **production** `*` or empty is rejected at startup. In development defaults to `*`. |
 | `RATE_LIMIT_ENABLED` | Optional | `true` (default) / `false`. Toggles auth-endpoint rate limiting. |
 | `AUTH_RATE_LIMIT` | Optional | Override in `limits` format (e.g. `5/minute`). Defaults: `5/minute` in production, `1000/minute` in development (so local use / tests aren't throttled). |
+| `ENFORCE_EMAIL_VERIFICATION` | Optional | `false` (default) / `true`. When `true`, unverified users are blocked at login (403). Existing users are backfilled to verified at startup, so enabling this never locks them out. |
+| `EMAIL_VERIFY_TTL_HOURS` | Optional | Email-verification token lifetime (default `48`). |
+| `PASSWORD_RESET_TTL_HOURS` | Optional | Password-reset token lifetime (default `1`). |
 | `RESEND_API_KEY` | For email | Resend transactional email key (used by upcoming Phase 2B). Never logged or committed. |
 | `RESEND_FROM` | For email | Verified sender address. |
 | `APP_BASE_URL` | Optional | Public app URL for links in emails. |

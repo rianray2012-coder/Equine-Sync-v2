@@ -49,6 +49,15 @@ Scoped to rate limiting + CORS only (no password reset/email).
 - Tests: `tests/test_rate_limit.py` + CORS/rate-limit cases in `tests/test_config.py`. **Full suite: 211 passed, 1 skipped.** E2E proof: real login throttled (200×4 → 429) under a temporary strict limit, then reverted.
 - **Next:** Phase 2C (password reset + email verification via Resend `RESEND_API_KEY`), then 2D (brute-force lockout + auth/permission test coverage).
 
+### Phase 2C — Password Reset, Email Verification & Health Probe ✅ (May 30 2026)
+- New `backend/auth_tokens.py`: hashed, single-use, expiring tokens (`auth_tokens` collection) for password reset + email verification.
+- New endpoints: `/api/auth/forgot-password`, `/reset-password`, `/verify-email`, `/resend-verification` (rate-limited; uniform no-enumeration responses; dev-only `dev_token` when non-production).
+- `email_verified` added to `User`; **safe startup backfill** set 63 existing users → `true` (no lockout); login enforcement gated behind `ENFORCE_EMAIL_VERIFICATION` (default off).
+- Reused `mailer.py` + Resend; added `_base_auth.html`, `password_reset.html`, `verify_email.html` templates (`render()`/`send()` gained a `base` param).
+- New `GET /api/health` readiness probe (DB + config booleans, no secrets).
+- Tests: `tests/test_auth_tokens.py` (unit, incl. expiry/single-use/invalid) + `tests/test_phase2c_auth.py` (HTTP). **Full suite: 227 passed, 1 skipped.**
+- **Next:** Phase 2D (account-level brute-force lockout via MongoDB `login_attempts` + expanded auth/permission tests). Follow-up: frontend pages for `/reset-password` + `/verify-email` links.
+
 ## What's Been Implemented (Feb 17 2026)
 
 ### Operational Hardening — Batch C (Notification trust loop) + Inventory duplicate-detection opener + Dispatcher retry (Feb 20 2026)

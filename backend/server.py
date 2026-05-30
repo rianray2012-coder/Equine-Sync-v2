@@ -14,8 +14,11 @@ load_dotenv(ROOT_DIR / '.env')
 
 # Centralized config validation — fail fast on missing/insecure security vars (Phase 2A).
 # Must run after load_dotenv and before security-critical setup below.
-from config import JWT_SECRET, JWT_ALG, validate_config, get_cors_origins
+from config import JWT_SECRET, JWT_ALG, validate_config, get_cors_origins, is_production
 validate_config()
+
+from fastapi.responses import JSONResponse
+from auth_tokens import ensure_auth_token_indexes
 
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
@@ -663,6 +666,32 @@ api_router.include_router(build_operations_router(
     new_id=new_id,
 ))
 
+@api_router.get("/health")
+async def health():
+    """Lightweight readiness probe. Reports config validity + DB connectivity.
+
+    Never exposes secret values — only booleans/derived status.
+    """
+    db_ok = False
+    try:
+        await db.command("ping")
+        db_ok = True
+    except Exception:
+        logger.exception("health: database ping failed")
+
+    body = {
+        "status": "ok" if db_ok else "degraded",
+        "service": "equinesync-api",
+        "database": "connected" if db_ok else "unreachable",
+        "config": {
+            "jwt_configured": bool(os.environ.get("JWT_SECRET", "").strip()),
+            "cors_configured": bool(os.environ.get("CORS_ORIGINS", "").strip()),
+            "environment": "production" if is_production() else "development",
+        },
+    }
+    return JSONResponse(body, status_code=200 if db_ok else 503)
+
+
 app.include_router(api_router)
 
 app.add_middleware(
@@ -693,6 +722,15 @@ async def on_startup():
         await engine.ensure_indexes()
         await ensure_refresh_indexes(db)
         await ensure_notification_indexes(db)
+        await ensure_auth_token_indexes(db)
+        # Safe migration (Phase 2C): backfill email_verified=True for any pre-existing
+        # users missing the field so verification rollout never locks them out.
+        backfill = await db.users.update_many(
+            {"email_verified": {"$exists": False}},
+            {"$set": {"email_verified": True}},
+        )
+        if backfill.modified_count:
+            logger.info("Backfilled email_verified=True for %d existing users.", backfill.modified_count)
         # Seed demo templates if none exist yet
         admin_user = await db.users.find_one({"role": "admin"}, {"_id": 0, "id": 1})
         admin_id = admin_user.get("id") if admin_user else None

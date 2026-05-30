@@ -43,6 +43,14 @@ Status:
 - **Review Date:** Phase 10
 - **Status:** Active
 
+### 2026-05-30 — Phase 2C: Password reset, email verification, /api/health
+- **Decision:** Added password reset + email verification using **hashed, single-use, expiring** tokens (`backend/auth_tokens.py`, `auth_tokens` collection) and Resend templates (neutral `_base_auth` layout). Added `email_verified` to `User`. Email verification is **non-blocking by default**: existing users are backfilled to `email_verified=True` at startup, reads default missing→verified, and login enforcement is gated behind `ENFORCE_EMAIL_VERIFICATION` (default `false`). Forgot-password returns a uniform response (no email enumeration) and exposes a `dev_token` **only** when not production. Added `GET /api/health` readiness probe (DB + config booleans, no secrets).
+- **Reason:** Completes the user-facing security flows (KNOWN_TECH_DEBT #8) without risking lockout of demo/admin/existing users.
+- **Alternatives Considered:** Blocking login for unverified users by default (rejected — lockout risk); storing raw tokens (rejected — hash at rest); two separate token collections (rejected — single `auth_tokens` with `purpose`).
+- **Risks:** Email links target frontend routes (`/reset-password`, `/verify-email`) not yet built — API is fully functional/testable via `dev_token`. `dev_token` must never be exposed in production (guarded by `is_production()`).
+- **Review Date:** When frontend reset/verify pages are built.
+- **Status:** Active
+
 ### 2026-05-30 — Phase 2B: Auth rate limiting + CORS tightening
 - **Decision:** Added IP-based rate limiting to `/api/auth/login|register|refresh` and tightened CORS so production cannot use `*`. Rate limiting implemented as a FastAPI **dependency** using the `limits` library (`backend/rate_limit.py`), env-driven (`RATE_LIMIT_ENABLED`, `AUTH_RATE_LIMIT`; strict `5/minute` in prod, generous `1000/minute` in dev). CORS resolved via `config.get_cors_origins()`, validated at startup.
 - **Reason:** Mitigates brute-force/credential-stuffing and removes the permissive `*` CORS in production (KNOWN_TECH_DEBT #8, partial).

@@ -141,4 +141,20 @@ Immutable operational history. **(Target — not yet implemented; see Phase 5.)*
 ---
 
 ## Known live collections (observed in code, for reference)
-`users`, `refresh_tokens`, `task_events`, `service_requests`, `horses`, `inventory`, `locations`, `feed_templates`, `recurring_schedules`, `staff_invites`, `onboarding_progress`, `notifications`.
+`users`, `refresh_tokens`, `auth_tokens`, `task_events`, `service_requests`, `horses`, `inventory`, `locations`, `feed_templates`, `recurring_schedules`, `staff_invites`, `onboarding_progress`, `notifications`.
+
+## AuthToken (`auth_tokens` collection — Phase 2C)
+One-time tokens for password reset & email verification. Tokens are **hashed at rest**, single-use, and expiring.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | |
+| `user_id` | string | owning user |
+| `purpose` | enum | `password_reset` \| `email_verify` |
+| `token_hash` | string | sha256 of the raw token (raw never stored) |
+| `created_at` | ISO datetime | |
+| `expires_at` | ISO datetime | TTL-driven (`PASSWORD_RESET_TTL_HOURS`=1, `EMAIL_VERIFY_TTL_HOURS`=48) |
+| `used` | bool | single-use flag |
+| `used_at` | ISO datetime | set on consume |
+
+> **User schema update (Phase 2C):** `User` documents now carry `email_verified: bool`. New registrations default to `false`; pre-existing users were backfilled to `true` at startup (no lockout).

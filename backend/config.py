@@ -159,3 +159,35 @@ def auth_rate_limit(env: Optional[Mapping[str, str]] = None) -> str:
 # Active signing secret, resolved at import time. server.py loads .env before
 # importing this module, so os.environ is fully populated here.
 JWT_SECRET = resolve_jwt_secret()
+
+
+# ---------------- email verification & links (Phase 2C) ----------------
+
+def app_base_url(env: Optional[Mapping[str, str]] = None) -> str:
+    """Public base URL used to build email links (no trailing slash)."""
+    e = _env(env)
+    return (e.get("APP_BASE_URL") or e.get("PUBLIC_APP_URL") or "").strip().rstrip("/")
+
+
+def enforce_email_verification(env: Optional[Mapping[str, str]] = None) -> bool:
+    """Whether unverified users are blocked at login (default: False — no lockout)."""
+    e = _env(env)
+    return (e.get("ENFORCE_EMAIL_VERIFICATION") or "false").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def email_verify_ttl_hours(env: Optional[Mapping[str, str]] = None) -> int:
+    e = _env(env)
+    try:
+        return int(e.get("EMAIL_VERIFY_TTL_HOURS") or "48")
+    except ValueError:
+        return 48
+
+
+def password_reset_ttl_hours(env: Optional[Mapping[str, str]] = None) -> int:
+    e = _env(env)
+    try:
+        return int(e.get("PASSWORD_RESET_TTL_HOURS") or "1")
+    except ValueError:
+        return 1

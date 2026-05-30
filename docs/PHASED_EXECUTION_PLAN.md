@@ -20,8 +20,8 @@ Goals:
 **Status: In Progress**
 - **2A — ✅ Complete (2026-05-30):** Removed unsafe JWT fallback (`JWT_SECRET='change-me'`); added centralized config (`backend/config.py`) + fail-fast startup validation (`validate_config()`); documented dev-safe ephemeral-secret behavior; added `backend/tests/test_config.py`.
 - **2B — ✅ Complete (2026-05-30):** Rate limiting on auth endpoints (`backend/rate_limit.py`, `limits` library, FastAPI dependency, env-driven limits) + CORS tightening (`config.get_cors_origins()` rejects `*` in production). Added `backend/tests/test_rate_limit.py` + CORS/rate-limit unit tests. (Note: implemented via `limits` dependency, not slowapi's decorator, which is incompatible with FastAPI 0.110 + Pydantic v2 bodies.)
-- **2C — Planned:** Password reset + email verification (Resend, `RESEND_API_KEY`).
-- **2D — Planned:** Account-level brute-force lockout + expanded auth/permission test coverage.
+- **2C — ✅ Complete (2026-05-30):** Password reset + email verification via hashed single-use expiring tokens (`backend/auth_tokens.py`) + Resend templates; `email_verified` field with safe startup backfill (no lockout) + off-by-default `ENFORCE_EMAIL_VERIFICATION`; `GET /api/health` readiness probe. Tests: `tests/test_auth_tokens.py`, `tests/test_phase2c_auth.py`.
+- **2D — Planned:** Account-level brute-force lockout (MongoDB `login_attempts`) + expanded auth/permission test coverage.
 
 ## Phase 3: Backend Modularization
 Goals:

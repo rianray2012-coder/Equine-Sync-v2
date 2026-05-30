@@ -24,8 +24,23 @@ from auth_security import (
     revoke_refresh_token,
     revoke_all_user_refresh_tokens,
 )
-from config import JWT_SECRET, JWT_ALG
+from config import (
+    JWT_SECRET,
+    JWT_ALG,
+    app_base_url,
+    is_production,
+    enforce_email_verification,
+    email_verify_ttl_hours,
+    password_reset_ttl_hours,
+)
 from rate_limit import auth_rate_limiter
+from mailer import send as send_email
+from auth_tokens import (
+    issue_token,
+    consume_token,
+    PURPOSE_PASSWORD_RESET,
+    PURPOSE_EMAIL_VERIFY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +130,64 @@ class RefreshBody(BaseModel):
     refresh_token: str
 
 
+class ForgotPasswordBody(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordBody(BaseModel):
+    token: str
+    new_password: str
+
+
+class TokenBody(BaseModel):
+    token: str
+
+
+class ResendVerificationBody(BaseModel):
+    email: EmailStr
+
+
+# ---------------- transactional email helpers ----------------
+
+async def _send_verification_email(user: dict, raw: str, ttl_hours: int):
+    base = app_base_url()
+    verify_url = f"{base}/verify-email?token={raw}" if base else f"/verify-email?token={raw}"
+    try:
+        await send_email(
+            to=user["email"],
+            subject="Confirm your EquineSync email",
+            template="verify_email",
+            variables={
+                "full_name": user.get("full_name", "there"),
+                "verify_url": verify_url,
+                "ttl_label": f"{ttl_hours} hours",
+            },
+            base="_base_auth",
+        )
+    except Exception:
+        logger.exception("verification email send failed")
+
+
+async def _send_reset_email(user: dict, raw: str, ttl_hours: int):
+    base = app_base_url()
+    reset_url = f"{base}/reset-password?token={raw}" if base else f"/reset-password?token={raw}"
+    label = "1 hour" if ttl_hours == 1 else f"{ttl_hours} hours"
+    try:
+        await send_email(
+            to=user["email"],
+            subject="Reset your EquineSync password",
+            template="password_reset",
+            variables={
+                "full_name": user.get("full_name", "there"),
+                "reset_url": reset_url,
+                "ttl_label": label,
+            },
+            base="_base_auth",
+        )
+    except Exception:
+        logger.exception("reset email send failed")
+
+
 # ---------------- router factory ----------------
 
 def build_router(db) -> APIRouter:
@@ -134,24 +207,40 @@ def build_router(db) -> APIRouter:
             "full_name": body.full_name,
             "role": body.role,
             "password_hash": hash_pwd(body.password),
+            "email_verified": False,
             "created_at": now_iso(),
         }
         await db.users.insert_one(user)
+        # Issue + send an email-verification token (best-effort; never blocks signup).
+        verify_ttl = email_verify_ttl_hours()
+        raw_verify = await issue_token(db, user["id"], PURPOSE_EMAIL_VERIFY, verify_ttl)
+        await _send_verification_email(user, raw_verify, verify_ttl)
         token = create_token(user["id"], user["role"])
         ua, ip = await client_meta(request)
         refresh = await issue_refresh_token(db, user["id"], user_agent=ua, ip=ip)
-        return {
+        resp = {
             "token": token,
             "refresh_token": refresh,
             "expires_in_seconds": JWT_EXP_HOURS * 3600,
             "user": user_safe(user),
         }
+        # Dev convenience only — never leak the raw token in production.
+        if not is_production():
+            resp["dev_verification_token"] = raw_verify
+        return resp
 
     @router.post("/auth/login", dependencies=[Depends(auth_rate_limiter)])
     async def login(request: Request, body: LoginBody):
         user = await db.users.find_one({"email": body.email.lower()})
         if not user or not verify_pwd(body.password, user.get("password_hash", "")):
             raise HTTPException(401, "Invalid credentials")
+        # Email-verification gate is OFF by default (ENFORCE_EMAIL_VERIFICATION).
+        # Missing field is treated as verified so existing users are never locked out.
+        if enforce_email_verification() and not user.get("email_verified", True):
+            raise HTTPException(
+                403,
+                "Email not verified. Please check your inbox for the verification link.",
+            )
         token = create_token(user["id"], user["role"])
         ua, ip = await client_meta(request)
         refresh = await issue_refresh_token(db, user["id"], user_agent=ua, ip=ip)
@@ -197,5 +286,65 @@ def build_router(db) -> APIRouter:
     @router.get("/auth/me")
     async def me(user=Depends(get_current_user)):
         return user
+
+    # ---------------- password reset ----------------
+
+    @router.post("/auth/forgot-password", dependencies=[Depends(auth_rate_limiter)])
+    async def forgot_password(request: Request, body: ForgotPasswordBody):
+        user = await db.users.find_one({"email": body.email.lower()})
+        # Always return the same response to avoid leaking which emails exist.
+        resp = {
+            "ok": True,
+            "message": "If an account exists for that email, a reset link has been sent.",
+        }
+        if user:
+            ttl = password_reset_ttl_hours()
+            raw = await issue_token(db, user["id"], PURPOSE_PASSWORD_RESET, ttl)
+            await _send_reset_email(user, raw, ttl)
+            if not is_production():
+                resp["dev_token"] = raw
+        return resp
+
+    @router.post("/auth/reset-password", dependencies=[Depends(auth_rate_limiter)])
+    async def reset_password(request: Request, body: ResetPasswordBody):
+        if len(body.new_password) < 8:
+            raise HTTPException(400, "Password must be at least 8 characters")
+        rec = await consume_token(db, body.token, PURPOSE_PASSWORD_RESET)
+        if not rec:
+            raise HTTPException(400, "Invalid or expired reset token")
+        await db.users.update_one(
+            {"id": rec["user_id"]},
+            {"$set": {"password_hash": hash_pwd(body.new_password)}},
+        )
+        # Invalidate all existing sessions after a password change.
+        await revoke_all_user_refresh_tokens(db, rec["user_id"])
+        return {"ok": True, "message": "Password updated. Please sign in with your new password."}
+
+    # ---------------- email verification ----------------
+
+    @router.post("/auth/verify-email")
+    async def verify_email(body: TokenBody):
+        rec = await consume_token(db, body.token, PURPOSE_EMAIL_VERIFY)
+        if not rec:
+            raise HTTPException(400, "Invalid or expired verification token")
+        await db.users.update_one(
+            {"id": rec["user_id"]}, {"$set": {"email_verified": True}}
+        )
+        return {"ok": True, "message": "Email verified."}
+
+    @router.post("/auth/resend-verification", dependencies=[Depends(auth_rate_limiter)])
+    async def resend_verification(request: Request, body: ResendVerificationBody):
+        user = await db.users.find_one({"email": body.email.lower()})
+        resp = {
+            "ok": True,
+            "message": "If an account exists and is unverified, a new link has been sent.",
+        }
+        if user and not user.get("email_verified", True):
+            ttl = email_verify_ttl_hours()
+            raw = await issue_token(db, user["id"], PURPOSE_EMAIL_VERIFY, ttl)
+            await _send_verification_email(user, raw, ttl)
+            if not is_production():
+                resp["dev_token"] = raw
+        return resp
 
     return router

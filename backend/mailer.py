@@ -36,12 +36,16 @@ def _load_template(name: str) -> str:
     return fp.read_text(encoding="utf-8")
 
 
-def render(template: str, variables: Dict[str, Any]) -> str:
-    """Render a named HTML template with simple {var} substitution wrapped in a brand layout."""
+def render(template: str, variables: Dict[str, Any], base: str = "_base") -> str:
+    """Render a named HTML template with simple {var} substitution wrapped in a brand layout.
+
+    ``base`` selects the wrapping layout (default ``_base``; auth/transactional
+    emails use ``_base_auth`` which has a neutral, non-invite footer).
+    """
     body = _load_template(template).format_map(SafeDict(variables or {}))
-    base = _load_template("_base")
+    base_tpl = _load_template(base)
     merged = {**(variables or {}), "content": body}
-    return base.format_map(SafeDict(merged))
+    return base_tpl.format_map(SafeDict(merged))
 
 
 async def send(
@@ -51,10 +55,11 @@ async def send(
     variables: Optional[Dict[str, Any]] = None,
     html: Optional[str] = None,
     text: Optional[str] = None,
+    base: str = "_base",
 ) -> Dict[str, Any]:
     """Send a transactional email. Returns {status, id?, dev?}."""
     if template:
-        html = render(template, variables or {})
+        html = render(template, variables or {}, base=base)
 
     api_key = os.environ.get("RESEND_API_KEY", "").strip()
     sender = os.environ.get("RESEND_FROM", "EquineSync <onboarding@resend.dev>")
