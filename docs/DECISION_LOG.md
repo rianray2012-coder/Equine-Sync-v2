@@ -43,6 +43,14 @@ Status:
 - **Review Date:** Phase 10
 - **Status:** Active
 
+### 2026-05-30 — Phase 2B: Auth rate limiting + CORS tightening
+- **Decision:** Added IP-based rate limiting to `/api/auth/login|register|refresh` and tightened CORS so production cannot use `*`. Rate limiting implemented as a FastAPI **dependency** using the `limits` library (`backend/rate_limit.py`), env-driven (`RATE_LIMIT_ENABLED`, `AUTH_RATE_LIMIT`; strict `5/minute` in prod, generous `1000/minute` in dev). CORS resolved via `config.get_cors_origins()`, validated at startup.
+- **Reason:** Mitigates brute-force/credential-stuffing and removes the permissive `*` CORS in production (KNOWN_TECH_DEBT #8, partial).
+- **Alternatives Considered:** slowapi decorator (rejected — incompatible with FastAPI 0.110 + Pydantic v2 bodies, produced spurious 422s); MongoDB `login_attempts` account lockout (deferred to 2D as a complementary layer).
+- **Risks:** `limits` memory store is per-process — a multi-replica deployment would need a shared store (Redis). Production must set explicit `CORS_ORIGINS` or startup fails.
+- **Review Date:** Phase 10 (scaling)
+- **Status:** Active
+
 ### 2026-05-30 — Phase 2A: Centralized config + fail-fast JWT secret (no insecure fallback)
 - **Decision:** Introduced `backend/config.py` as the single source of truth for security-critical settings. Removed the `JWT_SECRET='change-me'` fallback from `server.py` and `routes/auth.py`. `validate_config()` runs at startup: **production fails fast** if `JWT_SECRET`/`MONGO_URL`/`DB_NAME` are missing or if `JWT_SECRET` is insecure; **development** uses a logged ephemeral secret to preserve usability. Added `APP_ENV` toggle.
 - **Reason:** Closes `KNOWN_TECH_DEBT.md` item #1 (Critical). Prevents token forgery / auth bypass from a default secret and eliminates secret drift between two modules.

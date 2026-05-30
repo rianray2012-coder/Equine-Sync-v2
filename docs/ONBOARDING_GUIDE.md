@@ -40,7 +40,9 @@ Configuration is centralized in `backend/config.py` and validated at startup via
 | `DB_NAME` | Always | Database name. Startup fails if missing. |
 | `JWT_SECRET` | **Production** | JWT signing secret. Must be strong (≥ 16 chars, not a placeholder like `change-me`). In **production** a missing/insecure value **fails startup**. In **development** a missing value falls back to a logged ephemeral per-process secret (sessions reset on restart). |
 | `APP_ENV` | Optional | `development` (default) or `production`. Drives fail-fast behavior. Set `APP_ENV=production` in production deployments. |
-| `CORS_ORIGINS` | Optional | Comma-separated allowed origins (defaults to `*`; tighten for production — tracked in tech debt #8). |
+| `CORS_ORIGINS` | **Production** | Comma-separated allowed origins. In **production** `*` or empty is rejected at startup. In development defaults to `*`. |
+| `RATE_LIMIT_ENABLED` | Optional | `true` (default) / `false`. Toggles auth-endpoint rate limiting. |
+| `AUTH_RATE_LIMIT` | Optional | Override in `limits` format (e.g. `5/minute`). Defaults: `5/minute` in production, `1000/minute` in development (so local use / tests aren't throttled). |
 | `RESEND_API_KEY` | For email | Resend transactional email key (used by upcoming Phase 2B). Never logged or committed. |
 | `RESEND_FROM` | For email | Verified sender address. |
 | `APP_BASE_URL` | Optional | Public app URL for links in emails. |

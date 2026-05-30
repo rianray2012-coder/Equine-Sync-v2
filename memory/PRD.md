@@ -41,6 +41,14 @@ Closed the Critical JWT-fallback debt. Scoped narrowly (no password reset / emai
 - Tests: `backend/tests/test_config.py` (18 unit tests pass). Verified login + `/auth/me` + 20 `test_phase2.py` integration tests pass — no regression.
 - **Next:** Phase 2B (password reset + email verification via Resend `RESEND_API_KEY`), then 2C (rate limiting + CORS tightening), 2D (auth/permission test coverage). Awaiting user go-ahead per "one sub-phase at a time" directive.
 
+### Phase 2B — Auth Rate Limiting & CORS Tightening ✅ (May 30 2026)
+Scoped to rate limiting + CORS only (no password reset/email).
+- New `backend/rate_limit.py`: IP-based limiter on `/api/auth/login|register|refresh` via a FastAPI dependency (`limits` library). Env-driven: `5/minute` prod, `1000/minute` dev; toggle `RATE_LIMIT_ENABLED`, override `AUTH_RATE_LIMIT`.
+- CORS hardened: `config.get_cors_origins()` rejects `*`/empty in **production** (validated at startup); dev still defaults to `*`.
+- Switched from slowapi (decorator broke Pydantic bodies → 422) to `limits` dependency; removed unused `slowapi` dep.
+- Tests: `tests/test_rate_limit.py` + CORS/rate-limit cases in `tests/test_config.py`. **Full suite: 211 passed, 1 skipped.** E2E proof: real login throttled (200×4 → 429) under a temporary strict limit, then reverted.
+- **Next:** Phase 2C (password reset + email verification via Resend `RESEND_API_KEY`), then 2D (brute-force lockout + auth/permission test coverage).
+
 ## What's Been Implemented (Feb 17 2026)
 
 ### Operational Hardening — Batch C (Notification trust loop) + Inventory duplicate-detection opener + Dispatcher retry (Feb 20 2026)

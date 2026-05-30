@@ -40,10 +40,10 @@
 - **Risks:** Reduced accountability, poor debugging, legal/compliance gaps.
 - **Recommended Action:** Create immutable `AuditLog` (see `DATA_MODEL.md`) + audit service + tests. **(Phase 5)**
 
-## 8. Missing Security Hardening — **Severity: High (security)**
-- **Observed:** No rate limiting (no `slowapi`/limiter in `backend/`); CORS defaults to `*` (`server.py:668` → `os.environ.get('CORS_ORIGINS', '*')`); no email verification or password-reset endpoints (`routes/auth.py` exposes register/login/refresh/logout/me only). `SecurityHeadersMiddleware` + refresh-token rotation **are** implemented (`auth_security.py`) — good baseline.
-- **Risks:** Brute-force/credential-stuffing exposure; overly permissive CORS in production.
-- **Recommended Action:** Add rate limiting on auth endpoints, tighten CORS via env, add password reset + email verification (Resend). **(Phase 2)**
+## 8. Missing Security Hardening — **Severity: High (security)** — 🟡 PARTIALLY RESOLVED (Phase 2B, 2026-05-30)
+- **Observed:** No rate limiting; CORS defaulted to `*` (`server.py` → `os.environ.get('CORS_ORIGINS', '*')`); no email verification or password-reset endpoints (`routes/auth.py` exposes register/login/refresh/logout/me only). `SecurityHeadersMiddleware` + refresh-token rotation **are** implemented (`auth_security.py`) — good baseline.
+- **Resolved (Phase 2B):** Added IP-based rate limiting on `/api/auth/login|register|refresh` via a FastAPI dependency (`backend/rate_limit.py`, `limits` library, env-driven: strict in prod `5/minute`, generous in dev to avoid throttling tests). Tightened CORS: `config.get_cors_origins()` **rejects `*`/empty in production** (validated at startup), defaults to `*` only in development. Covered by `tests/test_rate_limit.py` + CORS/rate-limit unit tests in `tests/test_config.py`.
+- **Still open:** Password reset + email verification (Phase 2B-next / 2C); account-level brute-force lockout (MongoDB `login_attempts`, per the auth playbook) as a complementary layer; multi-replica rate-limit store (Redis) if/when horizontally scaled.
 
 ## 9. Incomplete Test Coverage — **Severity: Medium**
 - **Observed:** `backend/tests/` exists with `_test_creds.py`, `test_dispatch_retry.py`, `__init__.py` (per handoff, 175 backend tests pass) but lacks dedicated permission, tenant-isolation, and billing test suites.

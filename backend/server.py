@@ -14,7 +14,7 @@ load_dotenv(ROOT_DIR / '.env')
 
 # Centralized config validation — fail fast on missing/insecure security vars (Phase 2A).
 # Must run after load_dotenv and before security-critical setup below.
-from config import JWT_SECRET, JWT_ALG, validate_config
+from config import JWT_SECRET, JWT_ALG, validate_config, get_cors_origins
 validate_config()
 
 from pydantic import BaseModel, Field, EmailStr
@@ -73,6 +73,7 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 app = FastAPI(title="EquineSync API")
+
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
 
@@ -667,7 +668,7 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=get_cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )

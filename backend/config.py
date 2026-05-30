@@ -84,7 +84,8 @@ def validate_config(env: Optional[Mapping[str, str]] = None) -> None:
     """Validate required configuration; raise :class:`ConfigError` on fatal issues.
 
     Call once at application startup. In production this also enforces JWT
-    secret strength (delegating to :func:`resolve_jwt_secret`).
+    secret strength (delegating to :func:`resolve_jwt_secret`) and rejects a
+    wildcard CORS policy (delegating to :func:`get_cors_origins`).
     """
     e = _env(env)
     missing = [v for v in REQUIRED_VARS if not (e.get(v) or "").strip()]
@@ -103,7 +104,56 @@ def validate_config(env: Optional[Mapping[str, str]] = None) -> None:
             )
         # Raises in production if the secret is weak/placeholder.
         resolve_jwt_secret(e)
+        # Raises in production if CORS is unset or wildcard.
+        get_cors_origins(e)
     logger.info("Configuration validated (production=%s)", is_production(e))
+
+
+# ---------------- CORS ----------------
+
+def get_cors_origins(env: Optional[Mapping[str, str]] = None) -> list[str]:
+    """Resolve allowed CORS origins from ``CORS_ORIGINS`` (comma-separated).
+
+    - Production: a wildcard (``*``) or empty value is rejected with
+      :class:`ConfigError` — explicit origins are mandatory.
+    - Development: defaults to ``["*"]`` when unset to preserve local usability.
+    """
+    e = _env(env)
+    raw = (e.get("CORS_ORIGINS") or "").strip()
+    if is_production(e):
+        if not raw or raw == "*":
+            raise ConfigError(
+                "CORS_ORIGINS must be set to explicit origin(s) in production; "
+                "'*' is not allowed (security)."
+            )
+        return [o.strip() for o in raw.split(",") if o.strip()]
+    if not raw:
+        return ["*"]
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
+# ---------------- Rate limiting ----------------
+
+def rate_limit_enabled(env: Optional[Mapping[str, str]] = None) -> bool:
+    """Whether request rate limiting is active (default: enabled)."""
+    e = _env(env)
+    return (e.get("RATE_LIMIT_ENABLED") or "true").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def auth_rate_limit(env: Optional[Mapping[str, str]] = None) -> str:
+    """Rate-limit string for auth-sensitive endpoints (slowapi format).
+
+    Honors an explicit ``AUTH_RATE_LIMIT`` override. Otherwise defaults to a
+    strict limit in production and a generous one in development so local use
+    and the HTTP integration test suite are not throttled.
+    """
+    e = _env(env)
+    explicit = (e.get("AUTH_RATE_LIMIT") or "").strip()
+    if explicit:
+        return explicit
+    return "5/minute" if is_production(e) else "1000/minute"
 
 
 # Active signing secret, resolved at import time. server.py loads .env before

@@ -25,6 +25,7 @@ from auth_security import (
     revoke_all_user_refresh_tokens,
 )
 from config import JWT_SECRET, JWT_ALG
+from rate_limit import auth_rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -120,8 +121,8 @@ def build_router(db) -> APIRouter:
     router = APIRouter()
     get_current_user = make_current_user_dependency(db)
 
-    @router.post("/auth/register")
-    async def register(body: UserCreate, request: Request):
+    @router.post("/auth/register", dependencies=[Depends(auth_rate_limiter)])
+    async def register(request: Request, body: UserCreate):
         if body.role not in ROLES:
             raise HTTPException(400, "Invalid role")
         existing = await db.users.find_one({"email": body.email.lower()})
@@ -146,8 +147,8 @@ def build_router(db) -> APIRouter:
             "user": user_safe(user),
         }
 
-    @router.post("/auth/login")
-    async def login(body: LoginBody, request: Request):
+    @router.post("/auth/login", dependencies=[Depends(auth_rate_limiter)])
+    async def login(request: Request, body: LoginBody):
         user = await db.users.find_one({"email": body.email.lower()})
         if not user or not verify_pwd(body.password, user.get("password_hash", "")):
             raise HTTPException(401, "Invalid credentials")
@@ -161,8 +162,8 @@ def build_router(db) -> APIRouter:
             "user": user_safe(user),
         }
 
-    @router.post("/auth/refresh")
-    async def refresh(body: RefreshBody, request: Request):
+    @router.post("/auth/refresh", dependencies=[Depends(auth_rate_limiter)])
+    async def refresh(request: Request, body: RefreshBody):
         res = await consume_refresh_token(db, body.refresh_token)
         user = res["user"]
         old = res["record"]
