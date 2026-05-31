@@ -141,7 +141,19 @@ Immutable operational history. **(Target — not yet implemented; see Phase 5.)*
 ---
 
 ## Known live collections (observed in code, for reference)
-`users`, `refresh_tokens`, `auth_tokens`, `task_events`, `service_requests`, `horses`, `inventory`, `locations`, `feed_templates`, `recurring_schedules`, `staff_invites`, `onboarding_progress`, `notifications`.
+`users`, `refresh_tokens`, `auth_tokens`, `login_attempts`, `task_events`, `service_requests`, `horses`, `inventory`, `locations`, `feed_templates`, `recurring_schedules`, `staff_invites`, `onboarding_progress`, `notifications`.
+
+## LoginAttempt (`login_attempts` collection — Phase 2D)
+Per-account brute-force tracking. One doc per email; cleared on successful login.
+
+| Field | Type | Notes |
+|---|---|---|
+| `email` | string | lowercased, unique |
+| `count` | int | failures in the current window |
+| `first_failed_at` | ISO datetime | window anchor |
+| `last_failed_at` | ISO datetime | |
+| `last_ip` | string | |
+| `locked_until` | ISO datetime | set once `count >= LOGIN_MAX_ATTEMPTS`; login returns 423 until it passes |
 
 ## AuthToken (`auth_tokens` collection — Phase 2C)
 One-time tokens for password reset & email verification. Tokens are **hashed at rest**, single-use, and expiring.

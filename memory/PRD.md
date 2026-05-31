@@ -58,6 +58,14 @@ Scoped to rate limiting + CORS only (no password reset/email).
 - Tests: `tests/test_auth_tokens.py` (unit, incl. expiry/single-use/invalid) + `tests/test_phase2c_auth.py` (HTTP). **Full suite: 227 passed, 1 skipped.**
 - **Next:** Phase 2D (account-level brute-force lockout via MongoDB `login_attempts` + expanded auth/permission tests). Follow-up: frontend pages for `/reset-password` + `/verify-email` links.
 
+### Phase 2D — Brute-Force Lockout + Reset/Verify Frontend Pages ✅ (May 30 2026)
+**Phase 2 (Security Stabilization) is now COMPLETE.**
+- New `backend/login_attempts.py`: per-account lockout (`login_attempts` collection). After `LOGIN_MAX_ATTEMPTS` (default 5) failures in a window, login returns **423** for `LOGIN_LOCKOUT_MINUTES`; success clears the counter. Env-driven; enabled by default.
+- Frontend (**Brand Guide 22**): new `pages/ResetPassword.jsx` (`/reset-password`, token from URL → set new password) + `pages/VerifyEmail.jsx` (`/verify-email`, auto-verify + resend), public routes in `App.js`, Cormorant Garamond + Inter weights in `index.html`, and a minimal "Forgot password?" inline flow on `Login.jsx`.
+- Lockout-safety: success clears the counter; threshold 5 sits above the suite's two single-failure admin tests; verified admin still logs in.
+- Tests: `tests/test_login_lockout.py` (unit + HTTP). **Full backend suite: 235 passed, 1 skipped.** Frontend verified via screenshots (verify success, reset success, Login forgot panel). Frontend lint clean.
+- **Phase 2 complete.** Next major step: **Phase 3 — Backend Modularization** (move `config.py`/`auth_tokens.py`/etc. into `core/`, split `server.py`). Deferred P1: localStorage→httpOnly cookie auth migration.
+
 ## What's Been Implemented (Feb 17 2026)
 
 ### Operational Hardening — Batch C (Notification trust loop) + Inventory duplicate-detection opener + Dispatcher retry (Feb 20 2026)

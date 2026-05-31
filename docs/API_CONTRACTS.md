@@ -35,7 +35,7 @@ Protected routes require: `Authorization: Bearer <token>`.
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/api/auth/register` | Rate-limited. Creates user (`email_verified=false`), auto-logs in, sends verification email. |
-| POST | `/api/auth/login` | Rate-limited. 403 if `ENFORCE_EMAIL_VERIFICATION=true` and user unverified. |
+| POST | `/api/auth/login` | Rate-limited. 403 if `ENFORCE_EMAIL_VERIFICATION=true` and user unverified. **423** if account is temporarily locked (brute-force lockout). |
 | POST | `/api/auth/refresh` | Rate-limited. Rotates refresh token. |
 | POST | `/api/auth/logout` / `/auth/logout-all` | Revokes refresh token(s). |
 | GET | `/api/auth/me` | Current user. |

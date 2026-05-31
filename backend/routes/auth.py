@@ -32,6 +32,10 @@ from config import (
     enforce_email_verification,
     email_verify_ttl_hours,
     password_reset_ttl_hours,
+    login_lockout_enabled,
+    login_max_attempts,
+    login_lockout_minutes,
+    login_attempt_window_minutes,
 )
 from rate_limit import auth_rate_limiter
 from mailer import send as send_email
@@ -41,6 +45,7 @@ from auth_tokens import (
     PURPOSE_PASSWORD_RESET,
     PURPOSE_EMAIL_VERIFY,
 )
+from login_attempts import check_lockout, record_failure, clear_attempts
 
 logger = logging.getLogger(__name__)
 
@@ -231,9 +236,32 @@ def build_router(db) -> APIRouter:
 
     @router.post("/auth/login", dependencies=[Depends(auth_rate_limiter)])
     async def login(request: Request, body: LoginBody):
-        user = await db.users.find_one({"email": body.email.lower()})
+        email = body.email.lower()
+        ua, ip = await client_meta(request)
+        # Account-level brute-force lockout (Phase 2D).
+        if login_lockout_enabled():
+            remaining = await check_lockout(db, email)
+            if remaining:
+                mins = (remaining + 59) // 60
+                raise HTTPException(
+                    423,
+                    f"Account temporarily locked due to repeated failed attempts. "
+                    f"Try again in {mins} minute(s).",
+                )
+        user = await db.users.find_one({"email": email})
         if not user or not verify_pwd(body.password, user.get("password_hash", "")):
+            if login_lockout_enabled():
+                await record_failure(
+                    db, email,
+                    max_attempts=login_max_attempts(),
+                    window_minutes=login_attempt_window_minutes(),
+                    lockout_minutes=login_lockout_minutes(),
+                    ip=ip,
+                )
             raise HTTPException(401, "Invalid credentials")
+        # Successful auth — clear any failed-attempt history.
+        if login_lockout_enabled():
+            await clear_attempts(db, email)
         # Email-verification gate is OFF by default (ENFORCE_EMAIL_VERIFICATION).
         # Missing field is treated as verified so existing users are never locked out.
         if enforce_email_verification() and not user.get("email_verified", True):
@@ -242,7 +270,6 @@ def build_router(db) -> APIRouter:
                 "Email not verified. Please check your inbox for the verification link.",
             )
         token = create_token(user["id"], user["role"])
-        ua, ip = await client_meta(request)
         refresh = await issue_refresh_token(db, user["id"], user_agent=ua, ip=ip)
         return {
             "token": token,

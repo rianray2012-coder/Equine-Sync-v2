@@ -17,11 +17,13 @@ Goals:
 - Save brand/logo assets
 
 ## Phase 2: Security Stabilization
-**Status: In Progress**
-- **2A — ✅ Complete (2026-05-30):** Removed unsafe JWT fallback (`JWT_SECRET='change-me'`); added centralized config (`backend/config.py`) + fail-fast startup validation (`validate_config()`); documented dev-safe ephemeral-secret behavior; added `backend/tests/test_config.py`.
-- **2B — ✅ Complete (2026-05-30):** Rate limiting on auth endpoints (`backend/rate_limit.py`, `limits` library, FastAPI dependency, env-driven limits) + CORS tightening (`config.get_cors_origins()` rejects `*` in production). Added `backend/tests/test_rate_limit.py` + CORS/rate-limit unit tests. (Note: implemented via `limits` dependency, not slowapi's decorator, which is incompatible with FastAPI 0.110 + Pydantic v2 bodies.)
-- **2C — ✅ Complete (2026-05-30):** Password reset + email verification via hashed single-use expiring tokens (`backend/auth_tokens.py`) + Resend templates; `email_verified` field with safe startup backfill (no lockout) + off-by-default `ENFORCE_EMAIL_VERIFICATION`; `GET /api/health` readiness probe. Tests: `tests/test_auth_tokens.py`, `tests/test_phase2c_auth.py`.
-- **2D — Planned:** Account-level brute-force lockout (MongoDB `login_attempts`) + expanded auth/permission test coverage.
+**Status: ✅ Complete (2026-05-30)**
+- **2A — ✅:** Removed unsafe JWT fallback; centralized config (`backend/config.py`) + fail-fast startup validation; dev-safe ephemeral secret; `tests/test_config.py`.
+- **2B — ✅:** Rate limiting on auth endpoints (`backend/rate_limit.py`, `limits`) + CORS tightening (prod rejects `*`); `tests/test_rate_limit.py`.
+- **2C — ✅:** Password reset + email verification (hashed single-use expiring tokens, `backend/auth_tokens.py`) + Resend templates; `email_verified` with safe backfill + off-by-default `ENFORCE_EMAIL_VERIFICATION`; `GET /api/health`; `tests/test_auth_tokens.py`, `tests/test_phase2c_auth.py`.
+- **2D — ✅:** Account-level brute-force lockout (`backend/login_attempts.py`, 423 on lock, clear on success); branded `/reset-password` + `/verify-email` pages + Login "Forgot password?" flow; `tests/test_login_lockout.py`.
+
+> Full backend suite: 235 passed, 1 skipped.
 
 ## Phase 3: Backend Modularization
 Goals:

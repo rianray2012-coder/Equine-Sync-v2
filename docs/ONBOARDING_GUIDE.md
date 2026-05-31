@@ -46,6 +46,10 @@ Configuration is centralized in `backend/config.py` and validated at startup via
 | `ENFORCE_EMAIL_VERIFICATION` | Optional | `false` (default) / `true`. When `true`, unverified users are blocked at login (403). Existing users are backfilled to verified at startup, so enabling this never locks them out. |
 | `EMAIL_VERIFY_TTL_HOURS` | Optional | Email-verification token lifetime (default `48`). |
 | `PASSWORD_RESET_TTL_HOURS` | Optional | Password-reset token lifetime (default `1`). |
+| `LOGIN_LOCKOUT_ENABLED` | Optional | `true` (default) / `false`. Toggles account-level brute-force lockout. |
+| `LOGIN_MAX_ATTEMPTS` | Optional | Failed logins before lockout (default `5`). |
+| `LOGIN_LOCKOUT_MINUTES` | Optional | Lockout duration (default `15`). |
+| `LOGIN_ATTEMPT_WINDOW_MINUTES` | Optional | Window in which failures accumulate (default `15`). |
 | `RESEND_API_KEY` | For email | Resend transactional email key (used by upcoming Phase 2B). Never logged or committed. |
 | `RESEND_FROM` | For email | Verified sender address. |
 | `APP_BASE_URL` | Optional | Public app URL for links in emails. |

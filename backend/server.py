@@ -19,6 +19,7 @@ validate_config()
 
 from fastapi.responses import JSONResponse
 from auth_tokens import ensure_auth_token_indexes
+from login_attempts import ensure_login_attempt_indexes
 
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any

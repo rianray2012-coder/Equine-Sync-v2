@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Logo } from "../components/Logo";
+import { api } from "../lib/api";
 
 const DEMO = [
   { email: "admin@equinesync.com", role: "Stable Owner" },
@@ -18,6 +19,23 @@ export default function Login() {
   const [password, setPassword] = useState("demo1234");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
+
+  const sendForgot = async (e) => {
+    e.preventDefault();
+    setForgotLoading(true);
+    try {
+      await api.post("/auth/forgot-password", { email: forgotEmail || email });
+    } catch {
+      // Uniform response — never reveal whether the account exists.
+    } finally {
+      setForgotSent(true);
+      setForgotLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (user) navigate("/", { replace: true });
@@ -85,6 +103,16 @@ export default function Login() {
                 data-testid="login-password"
                 className="input-field"
               />
+              <div className="flex justify-end mt-2">
+                <button
+                  type="button"
+                  onClick={() => { setForgotEmail(email); setShowForgot((v) => !v); setForgotSent(false); }}
+                  data-testid="forgot-password-link"
+                  className="text-[12px] text-equine-silver hover:text-equine-ivory transition-colors"
+                >
+                  Forgot your password?
+                </button>
+              </div>
             </div>
             {err && <div className="text-equine-clay text-sm" data-testid="login-error">{err}</div>}
             <button type="submit" onClick={submit} disabled={loading} data-testid="login-submit"
@@ -92,6 +120,31 @@ export default function Login() {
               {loading ? "Signing in…" : "Enter the barn"}
             </button>
           </form>
+
+          {showForgot && (
+            <div className="mt-5 p-4 rounded-xl border border-equine-graphite/40 bg-equine-soft/40" data-testid="forgot-panel">
+              {forgotSent ? (
+                <p className="text-[13px] text-equine-silver" data-testid="forgot-sent">
+                  If an account exists for that email, a password reset link is on its way. Please check your inbox.
+                </p>
+              ) : (
+                <form onSubmit={sendForgot} className="space-y-3">
+                  <div className="label-eyebrow">Reset your password</div>
+                  <input
+                    type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
+                    required placeholder="you@example.com" data-testid="forgot-email"
+                    className="input-field"
+                  />
+                  <button
+                    type="submit" disabled={forgotLoading} data-testid="forgot-submit"
+                    className="btn-primary w-full disabled:opacity-60"
+                  >
+                    {forgotLoading ? "Sending…" : "Send reset link"}
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
 
           <div className="mt-10 pt-6 border-t border-equine-hairline">
             <div className="label-eyebrow mb-3">Demo accounts (password: demo1234)</div>

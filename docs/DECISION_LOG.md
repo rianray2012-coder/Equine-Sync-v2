@@ -43,6 +43,14 @@ Status:
 - **Review Date:** Phase 10
 - **Status:** Active
 
+### 2026-05-30 — Phase 2D: Brute-force lockout + reset/verify frontend pages
+- **Decision:** Added account-level brute-force lockout (`backend/login_attempts.py`, `login_attempts` collection): after `LOGIN_MAX_ATTEMPTS` (default 5) failures within `LOGIN_ATTEMPT_WINDOW_MINUTES`, login returns **423** for `LOGIN_LOCKOUT_MINUTES`; a successful login clears the counter. Built branded **Brand Guide 22** frontend pages `/reset-password` and `/verify-email` (token from URL, clear success/error states, resend option) and a minimal "Forgot password?" inline flow on Login. Added Cormorant Garamond + Inter weights.
+- **Reason:** Closes the brute-force gap (KNOWN_TECH_DEBT #8) and makes the 2C reset/verify email links land on real, on-brand pages.
+- **Alternatives Considered:** IP-only lockout (rejected — punishes shared NATs; per-account is the playbook approach); blocking-by-default email enforcement (still off). slowapi-style global limiter (already covered separately in 2B).
+- **Risks:** Lockout is enabled in dev — verified the test suite's two single-failure admin tests stay well under the threshold and success clears the counter (admin remains able to sign in). Per-process `login_attempts` is in MongoDB (shared), so it works across replicas (unlike the in-memory rate limiter).
+- **Review Date:** Phase 10 (scaling)
+- **Status:** Active
+
 ### 2026-05-30 — Phase 2C: Password reset, email verification, /api/health
 - **Decision:** Added password reset + email verification using **hashed, single-use, expiring** tokens (`backend/auth_tokens.py`, `auth_tokens` collection) and Resend templates (neutral `_base_auth` layout). Added `email_verified` to `User`. Email verification is **non-blocking by default**: existing users are backfilled to `email_verified=True` at startup, reads default missing→verified, and login enforcement is gated behind `ENFORCE_EMAIL_VERIFICATION` (default `false`). Forgot-password returns a uniform response (no email enumeration) and exposes a `dev_token` **only** when not production. Added `GET /api/health` readiness probe (DB + config booleans, no secrets).
 - **Reason:** Completes the user-facing security flows (KNOWN_TECH_DEBT #8) without risking lockout of demo/admin/existing users.

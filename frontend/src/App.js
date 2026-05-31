@@ -26,6 +26,8 @@ import Settings from "./pages/Settings";
 import Placeholder from "./pages/Placeholder";
 import Onboarding from "./pages/Onboarding";
 import AcceptInvite from "./pages/AcceptInvite";
+import ResetPassword from "./pages/ResetPassword";
+import VerifyEmail from "./pages/VerifyEmail";
 import Reports from "./pages/Reports";
 import Today from "./pages/Today";
 import Rehab from "./pages/Rehab";
@@ -47,6 +49,8 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/accept-invite" element={<AcceptInvite />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route element={<Protected><AppShell /></Protected>}>
               <Route index element={<Dashboard />} />
               <Route path="/today" element={<Today />} />

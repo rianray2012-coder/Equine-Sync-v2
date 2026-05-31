@@ -191,3 +191,36 @@ def password_reset_ttl_hours(env: Optional[Mapping[str, str]] = None) -> int:
         return int(e.get("PASSWORD_RESET_TTL_HOURS") or "1")
     except ValueError:
         return 1
+
+
+# ---------------- brute-force lockout (Phase 2D) ----------------
+
+def login_lockout_enabled(env: Optional[Mapping[str, str]] = None) -> bool:
+    e = _env(env)
+    return (e.get("LOGIN_LOCKOUT_ENABLED") or "true").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def login_max_attempts(env: Optional[Mapping[str, str]] = None) -> int:
+    e = _env(env)
+    try:
+        return max(1, int(e.get("LOGIN_MAX_ATTEMPTS") or "5"))
+    except ValueError:
+        return 5
+
+
+def login_lockout_minutes(env: Optional[Mapping[str, str]] = None) -> int:
+    e = _env(env)
+    try:
+        return max(1, int(e.get("LOGIN_LOCKOUT_MINUTES") or "15"))
+    except ValueError:
+        return 15
+
+
+def login_attempt_window_minutes(env: Optional[Mapping[str, str]] = None) -> int:
+    e = _env(env)
+    try:
+        return max(1, int(e.get("LOGIN_ATTEMPT_WINDOW_MINUTES") or "15"))
+    except ValueError:
+        return 15
