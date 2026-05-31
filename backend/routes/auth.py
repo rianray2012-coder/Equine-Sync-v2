@@ -24,7 +24,7 @@ from auth_security import (
     revoke_refresh_token,
     revoke_all_user_refresh_tokens,
 )
-from config import (
+from core.config import (
     JWT_SECRET,
     JWT_ALG,
     app_base_url,
@@ -37,15 +37,15 @@ from config import (
     login_lockout_minutes,
     login_attempt_window_minutes,
 )
-from rate_limit import auth_rate_limiter
+from core.rate_limit import auth_rate_limiter
 from mailer import send as send_email
-from auth_tokens import (
+from core.auth_tokens import (
     issue_token,
     consume_token,
     PURPOSE_PASSWORD_RESET,
     PURPOSE_EMAIL_VERIFY,
 )
-from login_attempts import check_lockout, record_failure, clear_attempts
+from core.login_attempts import check_lockout, record_failure, clear_attempts
 
 logger = logging.getLogger(__name__)
 

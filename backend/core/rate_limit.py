@@ -25,7 +25,7 @@ from limits import parse
 from limits.storage import storage_from_string
 from limits.strategies import MovingWindowRateLimiter
 
-from config import auth_rate_limit, rate_limit_enabled
+from core.config import auth_rate_limit, rate_limit_enabled
 
 
 def build_rate_limiter(

@@ -43,6 +43,14 @@ Status:
 - **Review Date:** Phase 10
 - **Status:** Active
 
+### 2026-05-30 — Phase 3A: core package (config/security helpers)
+- **Decision:** Created `backend/core/` and moved `config.py`, `rate_limit.py`, `auth_tokens.py`, `login_attempts.py` into it via `git mv` (history preserved). Updated all importers (`server.py`, `routes/auth.py`, 4 test files, internal `core.rate_limit`→`core.config`). `/api/health` gained a non-breaking `version` field (`APP_VERSION`, default `0.1.0`). No API/frontend behavior change.
+- **Reason:** First safe step of Phase 3 modularization (see `PHASE3_MODULARIZATION_MAP.md`); establishes a clean cross-cutting `core` package before splitting `server.py`.
+- **Alternatives Considered:** Leaving re-export shims at the old paths (rejected — anti-pattern); moving routes first (rejected — higher blast radius).
+- **Risks:** Import-path churn — mitigated by a contained import graph (only 6 importers) and a full regression run (235 passed, 1 skipped).
+- **Review Date:** Phase 3G
+- **Status:** Active
+
 ### 2026-05-30 — Phase 2D: Brute-force lockout + reset/verify frontend pages
 - **Decision:** Added account-level brute-force lockout (`backend/login_attempts.py`, `login_attempts` collection): after `LOGIN_MAX_ATTEMPTS` (default 5) failures within `LOGIN_ATTEMPT_WINDOW_MINUTES`, login returns **423** for `LOGIN_LOCKOUT_MINUTES`; a successful login clears the counter. Built branded **Brand Guide 22** frontend pages `/reset-password` and `/verify-email` (token from URL, clear success/error states, resend option) and a minimal "Forgot password?" inline flow on Login. Added Cormorant Garamond + Inter weights.
 - **Reason:** Closes the brute-force gap (KNOWN_TECH_DEBT #8) and makes the 2C reset/verify email links land on real, on-brand pages.

@@ -66,6 +66,14 @@ Scoped to rate limiting + CORS only (no password reset/email).
 - Tests: `tests/test_login_lockout.py` (unit + HTTP). **Full backend suite: 235 passed, 1 skipped.** Frontend verified via screenshots (verify success, reset success, Login forgot panel). Frontend lint clean.
 - **Phase 2 complete.** Next major step: **Phase 3 — Backend Modularization** (move `config.py`/`auth_tokens.py`/etc. into `core/`, split `server.py`). Deferred P1: localStorage→httpOnly cookie auth migration.
 
+### Phase 3A — Core Package ✅ (May 30 2026)
+First step of Phase 3 (see `docs/PHASE3_MODULARIZATION_MAP.md`). Planning + safe move only; `server.py` not yet split.
+- Created `backend/core/` and `git mv`'d `config.py`, `rate_limit.py`, `auth_tokens.py`, `login_attempts.py` into it (history preserved). Updated all 6 importers; internal `core.rate_limit`→`core.config`.
+- `/api/health` gained a non-breaking `version` field.
+- Authored `docs/PHASE3_MODULARIZATION_MAP.md`: dependency graph, route-group inventory, and the 3A→3G extraction order.
+- Tests: 51 core tests pass; **full suite 235 passed, 1 skipped** (no regressions). Health 200, login 200.
+- **Next (server.py extraction order):** 3B system/admin/analytics → 3C horses → 3D care/tasks → 3E owner/reports → 3F billing → 3G app-assembly (JWT helpers + bootstrap → `core`).
+
 ## What's Been Implemented (Feb 17 2026)
 
 ### Operational Hardening — Batch C (Notification trust loop) + Inventory duplicate-detection opener + Dispatcher retry (Feb 20 2026)

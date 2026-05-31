@@ -7,7 +7,7 @@ import asyncio
 
 import pytest
 
-from auth_tokens import (
+from core.auth_tokens import (
     PURPOSE_EMAIL_VERIFY,
     PURPOSE_PASSWORD_RESET,
     consume_token,

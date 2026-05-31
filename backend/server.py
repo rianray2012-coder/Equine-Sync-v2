@@ -14,12 +14,12 @@ load_dotenv(ROOT_DIR / '.env')
 
 # Centralized config validation — fail fast on missing/insecure security vars (Phase 2A).
 # Must run after load_dotenv and before security-critical setup below.
-from config import JWT_SECRET, JWT_ALG, validate_config, get_cors_origins, is_production
+from core.config import JWT_SECRET, JWT_ALG, validate_config, get_cors_origins, is_production
 validate_config()
 
 from fastapi.responses import JSONResponse
-from auth_tokens import ensure_auth_token_indexes
-from login_attempts import ensure_login_attempt_indexes
+from core.auth_tokens import ensure_auth_token_indexes
+from core.login_attempts import ensure_login_attempt_indexes
 
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
@@ -683,6 +683,7 @@ async def health():
     body = {
         "status": "ok" if db_ok else "degraded",
         "service": "equinesync-api",
+        "version": os.environ.get("APP_VERSION", "0.1.0"),
         "database": "connected" if db_ok else "unreachable",
         "config": {
             "jwt_configured": bool(os.environ.get("JWT_SECRET", "").strip()),

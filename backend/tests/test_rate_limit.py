@@ -7,7 +7,7 @@ live server (which runs a generous dev limit).
 from fastapi import Depends, FastAPI
 from starlette.testclient import TestClient
 
-from rate_limit import build_rate_limiter
+from core.rate_limit import build_rate_limiter
 
 
 def _app(limit: str, enabled: bool = True) -> FastAPI:

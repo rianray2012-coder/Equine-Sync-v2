@@ -10,10 +10,10 @@
 - **Risks:** Token forgery / authentication bypass if `JWT_SECRET` is unset in any environment; secret drift between the two definitions.
 - **Resolution:** Created `backend/config.py` as the single source of truth. Both `server.py` and `routes/auth.py` now import `JWT_SECRET`/`JWT_ALG` from it — the `'change-me'` fallback is removed everywhere. `validate_config()` runs at startup and **fails fast in production** when `JWT_SECRET` (or `MONGO_URL`/`DB_NAME`) is missing or insecure (placeholder / < 16 chars). In development it falls back to a clearly-logged ephemeral per-process secret. Covered by `backend/tests/test_config.py` (18 tests). Verified: login + `/auth/me` + 20 `test_phase2.py` integration tests pass.
 
-## 2. Backend Monolith — **Severity: High**
-- **Observed:** `backend/server.py` is **797 lines**. Target modular dirs (`models`, `schemas`, `services`, `core`, `db`, `utils`) **do not exist**. Routes partially extracted into `backend/routes/*.py` (auth, care, dashboard, invites, onboarding, operations, reports) but business logic and DB access remain mixed into route handlers and `server.py`.
+## 2. Backend Monolith — **Severity: High** — 🟡 IN PROGRESS (Phase 3)
+- **Observed:** `backend/server.py` is **~800 lines**. Target modular dirs partially created: **`core/` now exists** (Phase 3A: `config`, `rate_limit`, `auth_tokens`, `login_attempts`); `models`/`schemas`/`services` still pending. Routes partially extracted into `backend/routes/*.py`.
 - **Risks:** Merge conflicts, difficult testing, difficult scaling, architectural drift.
-- **Recommended Action:** Incrementally extract auth, horses, care, billing, notifications, owner portal into modular services + thin route files. **(Phase 3)**
+- **Recommended Action:** Continue per `PHASE3_MODULARIZATION_MAP.md` (3B system → 3G app-assembly). **(Phase 3)**
 
 ## 3. Incomplete Multi-Tenant Enforcement — **Severity: High**
 - **Observed:** `barn_id` appears in only **one** route module (`backend/routes/invites.py`, 5 occurrences) and **zero** times in `server.py`, `care.py`, `operations.py`, `onboarding.py`, `dashboard.py`, `reports.py`, `auth.py`. The `User` document created in `routes/auth.py:133-140` has **no `barn_id`** field. The platform effectively assumes a single barn.

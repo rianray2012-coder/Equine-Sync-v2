@@ -5,7 +5,7 @@ touch the real process environment or hit the running server.
 """
 import pytest
 
-from config import (
+from core.config import (
     ConfigError,
     auth_rate_limit,
     get_cors_origins,

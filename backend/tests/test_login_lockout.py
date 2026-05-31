@@ -13,7 +13,7 @@ import time
 import pytest
 import requests
 
-from login_attempts import check_lockout, clear_attempts, record_failure
+from core.login_attempts import check_lockout, clear_attempts, record_failure
 
 
 # ---------------- in-memory fake db ----------------

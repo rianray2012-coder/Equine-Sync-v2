@@ -26,6 +26,12 @@ Goals:
 > Full backend suite: 235 passed, 1 skipped.
 
 ## Phase 3: Backend Modularization
+**Status: In Progress (3A complete)** — see `PHASE3_MODULARIZATION_MAP.md`.
+- **3A — ✅ Complete (2026-05-30):** Moved `config.py`, `rate_limit.py`, `auth_tokens.py`, `login_attempts.py` → `backend/core/` (via `git mv`); updated all imports; no behavior change; `/api/health` gained a `version` field.
+- **3B — Planned:** Extract system/admin/analytics routes.
+- **3C–3F — Planned:** Horse → Care/Task → Owner/Report → Billing route extraction.
+- **3G — Planned:** server.py reduced to app assembly; JWT/auth helpers → `core/security.py`.
+
 Goals:
 - Break `server.py` into modular route files
 - Move business logic into services
