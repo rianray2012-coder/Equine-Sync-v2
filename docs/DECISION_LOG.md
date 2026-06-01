@@ -19,6 +19,14 @@ Status:
 
 ## Entries
 
+### 2026-05-31 — Security Patch 2E: seed lockdown + registration role escalation + verification gate
+- **Decision:** Emergency security patch (out-of-band, before resuming Phase 3B) addressing a GitHub/Codex security review. Three changes: (1) `POST /api/seed` is gated by a new `ALLOW_SEED_ROUTE` env flag (default `false` → route returns `404`); when enabled it additionally requires an authenticated **admin** under `APP_ENV=production`. The destructive seed logic was split into an internal `_run_seed()` so the startup auto-seed is unchanged. (2) Public `POST /api/auth/register` no longer trusts a client `role` (it previously defaulted to `admin`) — it forces `PUBLIC_REGISTRATION_ROLE = "horse_owner"`. The `role` field is accepted-but-ignored to keep the request schema lenient. (3) Registration session issuance is gated by `should_issue_session_on_register(email_verified, enforce)` — when `ENFORCE_EMAIL_VERIFICATION=true`, an unverified registrant gets a `pending_verification` response with no tokens.
+- **Reason:** A publicly reachable anonymous data-wipe route and a public path to mint `admin` accounts are critical pre-onboarding risks. Token-issuance gating is the correct enforcement point for stateless JWT (no token ⇒ no protected access).
+- **Alternatives Considered:** Deleting `/api/seed` entirely (rejected — still useful for dev/demo reseed behind the flag); hard-rejecting any `role` in the body with 400 (rejected — chose silent-ignore so the existing lenient clients/tests don't break); adding an `email_verified` check inside `get_current_user` (deferred — gating issuance already prevents unverified sessions; a dependency-level check is a future defense-in-depth item).
+- **Risks:** Toggling `ENFORCE_EMAIL_VERIFICATION` on does not retroactively invalidate already-issued tokens (4h TTL) — documented; not a concern while enforcement stays off by default. `ALLOW_SEED_ROUTE` must remain `false` (unset) in production.
+- **Review Date:** Phase 4 (centralized permissions) — fold registration/role policy into the permission service.
+- **Status:** Active
+
 ### 2026-05-30 — Use MongoDB for initial scaling
 - **Decision:** Use MongoDB as the primary datastore for the initial platform.
 - **Reason:** Flexible schema during rapid product development and growth.

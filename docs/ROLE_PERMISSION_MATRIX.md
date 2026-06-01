@@ -6,6 +6,8 @@ This document defines role-based access and operational permissions across the E
 
 > **Current-state note:** The live code has only a minimal `require_setup_role` helper (admin/barn_manager gate) in `routes/auth.py`. There is no centralized permission service yet and the matrix below is **not** enforced end-to-end. Implementation is sequenced in Phase 4. See `KNOWN_TECH_DEBT.md` → "Inconsistent Permission Logic".
 
+> **Account-provisioning rule (Security Patch 2E, 2026-05-31):** Public self-registration (`POST /api/auth/register`) **always** provisions the lowest-privilege role (`horse_owner`) — a client cannot choose its role. All privileged roles (Admin, Barn Manager, Trainer, Barn Staff, Veterinarian, Farrier, etc.) are granted **only** via an authenticated admin invite (`/api/invites`) or the startup seed. This is the enforced provisioning boundary until the Phase 4 permission service generalizes it.
+
 ## Core Roles
 - Admin
 - Barn Manager

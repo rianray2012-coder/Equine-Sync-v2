@@ -8,6 +8,9 @@
 - [ ] Email verification working
 - [ ] Password reset working
 - [ ] Permissions verified
+- [ ] `ALLOW_SEED_ROUTE` is unset/false in production (destructive `/api/seed` returns 404)
+- [ ] Public registration cannot create privileged roles (admin/barn_manager/trainer) — verified `horse_owner` default
+- [ ] If `ENFORCE_EMAIL_VERIFICATION=true`: registration withholds session tokens until verified
 
 ## Multi-Tenant Safety
 - [ ] Tenant isolation tested

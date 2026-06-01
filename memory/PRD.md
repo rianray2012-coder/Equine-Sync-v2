@@ -66,6 +66,15 @@ Scoped to rate limiting + CORS only (no password reset/email).
 - Tests: `tests/test_login_lockout.py` (unit + HTTP). **Full backend suite: 235 passed, 1 skipped.** Frontend verified via screenshots (verify success, reset success, Login forgot panel). Frontend lint clean.
 - **Phase 2 complete.** Next major step: **Phase 3 — Backend Modularization** (move `config.py`/`auth_tokens.py`/etc. into `core/`, split `server.py`). Deferred P1: localStorage→httpOnly cookie auth migration.
 
+### Security Patch 2E — Seed lockdown + registration role escalation + verification gate ✅ (May 31 2026)
+Out-of-band emergency patch (paused Phase 3B) closing three founder-beta findings from a GitHub/Codex security review. No frontend behavior change (app uses invite-based onboarding, never public register/seed).
+- **`POST /api/seed` locked down:** new `core.config.allow_seed_route()` (`ALLOW_SEED_ROUTE`, default `false`) → route returns `404` when disabled; when enabled under `APP_ENV=production` it requires an authenticated **admin**. Seed logic split into internal `_run_seed()`; startup auto-seed unchanged.
+- **Registration privilege escalation fixed:** `POST /api/auth/register` no longer trusts a client `role` (was defaulting to `admin`) — forces `PUBLIC_REGISTRATION_ROLE="horse_owner"`. Privileged roles only via admin invites / seed.
+- **Verification-token bypass fixed:** `should_issue_session_on_register()` withholds access/refresh tokens on registration when `ENFORCE_EMAIL_VERIFICATION=true` (returns `{pending_verification:true}`); stateless JWT means no token ⇒ no protected access.
+- **Tests:** `tests/test_security_patch_2e.py` (11 tests: seed guard unit+HTTP, role-escalation parametrized, verification-gate unit+env-gated HTTP). **Full suite: 246 passed, 2 skipped, zero regressions.**
+- **Docs:** `KNOWN_TECH_DEBT.md` #8, `API_CONTRACTS.md`, `ROLE_PERMISSION_MATRIX.md`, `RELEASE_CHECKLIST.md`, `DECISION_LOG.md`, `memory/test_credentials.md` updated.
+- **Next:** Resume **Phase 3B** (system/admin/analytics route extraction) after GitHub save + Codex re-review.
+
 ### Phase 3A — Core Package ✅ (May 30 2026)
 First step of Phase 3 (see `docs/PHASE3_MODULARIZATION_MAP.md`). Planning + safe move only; `server.py` not yet split.
 - Created `backend/core/` and `git mv`'d `config.py`, `rate_limit.py`, `auth_tokens.py`, `login_attempts.py` into it (history preserved). Updated all 6 importers; internal `core.rate_limit`→`core.config`.

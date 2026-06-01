@@ -119,11 +119,29 @@ async def client_meta(request: Optional[Request]):
 
 # ---------------- request bodies ----------------
 
+# Public self-registration always creates a safe, low-privilege account
+# (Security Patch 2E). Privileged roles (admin/barn_manager/trainer/staff) are
+# ONLY granted via the authenticated admin invite flow or the startup seed.
+PUBLIC_REGISTRATION_ROLE = "horse_owner"
+
+
+def should_issue_session_on_register(email_verified: bool, enforce: bool) -> bool:
+    """Decide whether registration may return access/refresh tokens.
+
+    When email-verification enforcement is ON, a freshly registered (unverified)
+    user must NOT receive a usable session — they have to verify first. When
+    enforcement is OFF (default), the existing auto-login behavior is preserved.
+    """
+    return email_verified or not enforce
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
     full_name: str
-    role: str = "admin"
+    # NOTE: `role` is intentionally accepted-but-ignored on public registration.
+    # Any client-supplied value is discarded; the server forces a safe default.
+    role: Optional[str] = None
 
 
 class LoginBody(BaseModel):
@@ -201,8 +219,8 @@ def build_router(db) -> APIRouter:
 
     @router.post("/auth/register", dependencies=[Depends(auth_rate_limiter)])
     async def register(request: Request, body: UserCreate):
-        if body.role not in ROLES:
-            raise HTTPException(400, "Invalid role")
+        # Security Patch 2E: never trust a client-supplied role on public
+        # registration. Privileged roles come only from admin invites / seed.
         existing = await db.users.find_one({"email": body.email.lower()})
         if existing:
             raise HTTPException(400, "Email already registered")
@@ -210,7 +228,7 @@ def build_router(db) -> APIRouter:
             "id": new_id(),
             "email": body.email.lower(),
             "full_name": body.full_name,
-            "role": body.role,
+            "role": PUBLIC_REGISTRATION_ROLE,
             "password_hash": hash_pwd(body.password),
             "email_verified": False,
             "created_at": now_iso(),
@@ -220,6 +238,19 @@ def build_router(db) -> APIRouter:
         verify_ttl = email_verify_ttl_hours()
         raw_verify = await issue_token(db, user["id"], PURPOSE_EMAIL_VERIFY, verify_ttl)
         await _send_verification_email(user, raw_verify, verify_ttl)
+
+        # Security Patch 2E: when verification is enforced, do NOT hand back a
+        # usable session for an unverified account — the user must verify first.
+        if not should_issue_session_on_register(user["email_verified"], enforce_email_verification()):
+            resp = {
+                "pending_verification": True,
+                "message": "Account created. Please verify your email before signing in.",
+                "user": user_safe(user),
+            }
+            if not is_production():
+                resp["dev_verification_token"] = raw_verify
+            return resp
+
         token = create_token(user["id"], user["role"])
         ua, ip = await client_meta(request)
         refresh = await issue_refresh_token(db, user["id"], user_agent=ua, ip=ip)

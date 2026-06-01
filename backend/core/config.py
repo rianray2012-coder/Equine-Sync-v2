@@ -156,6 +156,23 @@ def auth_rate_limit(env: Optional[Mapping[str, str]] = None) -> str:
     return "5/minute" if is_production(e) else "1000/minute"
 
 
+# ---------------- Destructive seed route guard (Security Patch 2E) ----------------
+
+def allow_seed_route(env: Optional[Mapping[str, str]] = None) -> bool:
+    """Whether the public POST /api/seed route is reachable at all.
+
+    Defaults to **False** so the destructive wipe-and-reseed route is not
+    publicly accessible. The internal startup auto-seed does NOT use this flag
+    (it calls the seed logic directly). When set to true, the route is enabled,
+    but in production it additionally requires an authenticated admin (enforced
+    in the route handler) so production data can never be wiped anonymously.
+    """
+    e = _env(env)
+    return (e.get("ALLOW_SEED_ROUTE") or "false").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 # Active signing secret, resolved at import time. server.py loads .env before
 # importing this module, so os.environ is fully populated here.
 JWT_SECRET = resolve_jwt_secret()

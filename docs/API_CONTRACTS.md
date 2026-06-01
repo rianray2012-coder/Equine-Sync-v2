@@ -34,7 +34,7 @@ Protected routes require: `Authorization: Bearer <token>`.
 ### Auth endpoints (current)
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/auth/register` | Rate-limited. Creates user (`email_verified=false`), auto-logs in, sends verification email. |
+| POST | `/api/auth/register` | Rate-limited. **Always creates a low-privilege `horse_owner`** — any client-supplied `role` is ignored (Security Patch 2E). Creates user (`email_verified=false`). Auto-logs in (returns `token`/`refresh_token`) **unless** `ENFORCE_EMAIL_VERIFICATION=true`, in which case it returns `{pending_verification:true}` with no tokens. Sends verification email. Privileged roles come only from admin invites / seed. |
 | POST | `/api/auth/login` | Rate-limited. 403 if `ENFORCE_EMAIL_VERIFICATION=true` and user unverified. **423** if account is temporarily locked (brute-force lockout). |
 | POST | `/api/auth/refresh` | Rate-limited. Rotates refresh token. |
 | POST | `/api/auth/logout` / `/auth/logout-all` | Revokes refresh token(s). |
@@ -43,6 +43,12 @@ Protected routes require: `Authorization: Bearer <token>`.
 | POST | `/api/auth/reset-password` | Consumes reset token, sets new password, revokes all sessions. |
 | POST | `/api/auth/verify-email` | Consumes verification token, sets `email_verified=true`. |
 | POST | `/api/auth/resend-verification` | Rate-limited. Always 200. Returns `dev_token` only when non-production. |
+
+### Admin / system endpoints
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/seed` | **Disabled by default** (Security Patch 2E). Returns `404` unless `ALLOW_SEED_ROUTE=true`. When enabled under `APP_ENV=production`, additionally requires an authenticated **admin**. Destructive (wipe-and-reseed demo data). The startup auto-seed does NOT use this route. |
+| POST | `/api/admin/tenant-reset` | Admin-only. Requires `confirm="RESET"`. |
 
 ### Health
 | Method | Path | Notes |

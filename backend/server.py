@@ -14,7 +14,7 @@ load_dotenv(ROOT_DIR / '.env')
 
 # Centralized config validation — fail fast on missing/insecure security vars (Phase 2A).
 # Must run after load_dotenv and before security-critical setup below.
-from core.config import JWT_SECRET, JWT_ALG, validate_config, get_cors_origins, is_production
+from core.config import JWT_SECRET, JWT_ALG, validate_config, get_cors_origins, is_production, allow_seed_route
 validate_config()
 
 from fastapi.responses import JSONResponse
@@ -244,9 +244,13 @@ async def weekly_recap_run_now(user=Depends(get_current_user)):
 # See routes/dashboard.py — included into api_router at the bottom of this file.
 
 # ---------------- Seed ----------------
-@api_router.post("/seed")
-async def seed():
-    """Idempotent: clears and inserts rich demo data."""
+async def _run_seed():
+    """Core demo-data seed logic. Idempotent: clears and inserts rich demo data.
+
+    Internal use only — invoked by the startup auto-seed and by the guarded
+    /api/seed route. This function performs NO authorization itself; callers
+    are responsible for gating access (see seed_route + allow_seed_route).
+    """
     for c in ["users", "horses", "owners", "riders", "medications", "medication_logs",
               "feed_tasks", "vet_records", "injuries", "wellness", "lessons", "training",
               "invoices", "messages", "service_requests", "incidents"]:
@@ -500,6 +504,27 @@ async def seed():
 
     return {"ok": True, "seeded": True}
 
+
+@api_router.post("/seed")
+async def seed_route(creds: Optional[HTTPAuthorizationCredentials] = Depends(security)):
+    """Destructive wipe-and-reseed of demo data (Security Patch 2E hardened).
+
+    - Disabled by default: returns 404 unless ALLOW_SEED_ROUTE is explicitly
+      enabled, so the route is not publicly reachable in normal operation.
+    - In production: even when enabled, an authenticated admin is required so
+      production data can never be wiped anonymously.
+    """
+    if not allow_seed_route():
+        # Route disabled — present as not-found so it is effectively invisible.
+        raise HTTPException(status_code=404, detail="Not found")
+    if is_production():
+        if not creds:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        user = await get_current_user(creds)
+        if user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Admin access required")
+    return await _run_seed()
+
 # ---------------- Shared analytics + url helpers (used across modules) ----------------
 async def _track(name: str, props: Dict[str, Any], user_id: Optional[str] = None):
     """Internal: record an analytics event server-side."""
@@ -713,7 +738,7 @@ async def on_startup():
     # Auto-seed if empty
     if await db.users.count_documents({}) == 0:
         try:
-            await seed()
+            await _run_seed()
             logger.info("Auto-seeded demo data.")
         except Exception as e:
             logger.exception("Seed failed: %s", e)
