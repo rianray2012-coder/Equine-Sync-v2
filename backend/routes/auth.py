@@ -30,6 +30,7 @@ from core.config import (
     app_base_url,
     is_production,
     enforce_email_verification,
+    user_verification_ok,
     email_verify_ttl_hours,
     password_reset_ttl_hours,
     login_lockout_enabled,
@@ -98,6 +99,10 @@ def make_current_user_dependency(db):
         user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
+        # Defense-in-depth: block unverified users when enforcement is on, even
+        # if they hold a pre-issued token. Missing field => treated as verified.
+        if not user_verification_ok(user):
+            raise HTTPException(status_code=403, detail="Email not verified")
         return user
     return _get
 

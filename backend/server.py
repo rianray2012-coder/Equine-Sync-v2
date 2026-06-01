@@ -14,7 +14,11 @@ load_dotenv(ROOT_DIR / '.env')
 
 # Centralized config validation — fail fast on missing/insecure security vars (Phase 2A).
 # Must run after load_dotenv and before security-critical setup below.
-from core.config import JWT_SECRET, JWT_ALG, validate_config, get_cors_origins, is_production, allow_seed_route
+from core.config import (
+    JWT_SECRET, JWT_ALG, validate_config, get_cors_origins, is_production,
+    allow_seed_route, auto_seed_enabled, evaluate_seed_access, user_verification_ok,
+    enforce_email_verification,
+)
 validate_config()
 
 from fastapi.responses import JSONResponse
@@ -118,6 +122,11 @@ async def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depen
     user = await db.users.find_one({"id": payload['sub']}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    # Defense-in-depth (Security Patch 2E hardening): when email verification is
+    # enforced, block unverified users even if they hold an old/pre-issued token.
+    # Missing email_verified is treated as verified (legacy/backfilled users).
+    if not user_verification_ok(user):
+        raise HTTPException(status_code=403, detail="Email not verified")
     return user
 
 def require_setup_role(user):
@@ -505,24 +514,39 @@ async def _run_seed():
     return {"ok": True, "seeded": True}
 
 
+class SeedBody(BaseModel):
+    confirm: Optional[str] = None
+
+
 @api_router.post("/seed")
-async def seed_route(creds: Optional[HTTPAuthorizationCredentials] = Depends(security)):
+async def seed_route(
+    body: Optional["SeedBody"] = None,
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(security),
+):
     """Destructive wipe-and-reseed of demo data (Security Patch 2E hardened).
 
-    - Disabled by default: returns 404 unless ALLOW_SEED_ROUTE is explicitly
-      enabled, so the route is not publicly reachable in normal operation.
-    - In production: even when enabled, an authenticated admin is required so
-      production data can never be wiped anonymously.
+    - **Always blocked in production** (404) — even with ALLOW_SEED_ROUTE=true.
+    - Outside production: disabled by default (404 unless ALLOW_SEED_ROUTE=true).
+      When enabled it requires an authenticated **admin** plus an explicit
+      confirmation body ``{"confirm": "SEED"}``. Never anonymously destructive.
     """
-    if not allow_seed_route():
-        # Route disabled — present as not-found so it is effectively invisible.
-        raise HTTPException(status_code=404, detail="Not found")
-    if is_production():
-        if not creds:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        user = await get_current_user(creds)
-        if user.get("role") != "admin":
-            raise HTTPException(status_code=403, detail="Admin access required")
+    role = None
+    if creds is not None:
+        try:
+            user = await get_current_user(creds)
+            role = user.get("role")
+        except HTTPException:
+            role = None  # invalid/expired token → treat as non-admin
+    confirm_ok = bool(body and body.confirm == "SEED")
+    allowed, code, detail = evaluate_seed_access(
+        is_prod=is_production(),
+        allow_route=allow_seed_route(),
+        authenticated=creds is not None,
+        role=role,
+        confirm_ok=confirm_ok,
+    )
+    if not allowed:
+        raise HTTPException(status_code=code, detail=detail)
     return await _run_seed()
 
 # ---------------- Shared analytics + url helpers (used across modules) ----------------
@@ -736,7 +760,9 @@ logger = logging.getLogger(__name__)
 @app.on_event("startup")
 async def on_startup():
     # Auto-seed if empty
-    if await db.users.count_documents({}) == 0:
+    # Auto-seed if empty — but NEVER in production (Security Patch 2E hardening),
+    # so a fresh production DB never silently creates demo accounts.
+    if auto_seed_enabled() and await db.users.count_documents({}) == 0:
         try:
             await _run_seed()
             logger.info("Auto-seeded demo data.")

@@ -38,16 +38,18 @@ Protected routes require: `Authorization: Bearer <token>`.
 | POST | `/api/auth/login` | Rate-limited. 403 if `ENFORCE_EMAIL_VERIFICATION=true` and user unverified. **423** if account is temporarily locked (brute-force lockout). |
 | POST | `/api/auth/refresh` | Rate-limited. Rotates refresh token. |
 | POST | `/api/auth/logout` / `/auth/logout-all` | Revokes refresh token(s). |
-| GET | `/api/auth/me` | Current user. |
+| GET | `/api/auth/me` | Current user. **403 if `ENFORCE_EMAIL_VERIFICATION=true` and the token's user is unverified** (defense-in-depth gate in `get_current_user`; a missing `email_verified` is treated as verified). |
 | POST | `/api/auth/forgot-password` | Rate-limited. Always 200 (no email enumeration). Returns `dev_token` only when non-production. |
 | POST | `/api/auth/reset-password` | Consumes reset token, sets new password, revokes all sessions. |
 | POST | `/api/auth/verify-email` | Consumes verification token, sets `email_verified=true`. |
 | POST | `/api/auth/resend-verification` | Rate-limited. Always 200. Returns `dev_token` only when non-production. |
 
+> **Verification enforcement (all protected routes):** when `ENFORCE_EMAIL_VERIFICATION=true`, `get_current_user` rejects unverified users with **403** even if they hold an old/pre-issued token. Missing `email_verified` ⇒ treated as verified (legacy/backfilled users never locked out).
+
 ### Admin / system endpoints
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/seed` | **Disabled by default** (Security Patch 2E). Returns `404` unless `ALLOW_SEED_ROUTE=true`. When enabled under `APP_ENV=production`, additionally requires an authenticated **admin**. Destructive (wipe-and-reseed demo data). The startup auto-seed does NOT use this route. |
+| POST | `/api/seed` | **Blocked entirely in production** (`404`, even with `ALLOW_SEED_ROUTE=true`). Outside production: `404` unless `ALLOW_SEED_ROUTE=true`; when enabled requires authenticated **admin** + body `{"confirm":"SEED"}` (else `401`/`403`/`400`). Destructive (wipe-and-reseed demo data). Never anonymously destructive. The startup auto-seed does NOT use this route. |
 | POST | `/api/admin/tenant-reset` | Admin-only. Requires `confirm="RESET"`. |
 
 ### Health

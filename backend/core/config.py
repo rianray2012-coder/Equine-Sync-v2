@@ -156,21 +156,87 @@ def auth_rate_limit(env: Optional[Mapping[str, str]] = None) -> str:
     return "5/minute" if is_production(e) else "1000/minute"
 
 
-# ---------------- Destructive seed route guard (Security Patch 2E) ----------------
+# ---------------- Destructive seed guards (Security Patch 2E + 2E hardening) ----------------
+
+SEED_CONFIRM_TOKEN = "SEED"  # explicit confirmation required to run the seed route
+
 
 def allow_seed_route(env: Optional[Mapping[str, str]] = None) -> bool:
     """Whether the public POST /api/seed route is reachable at all.
 
     Defaults to **False** so the destructive wipe-and-reseed route is not
     publicly accessible. The internal startup auto-seed does NOT use this flag
-    (it calls the seed logic directly). When set to true, the route is enabled,
-    but in production it additionally requires an authenticated admin (enforced
-    in the route handler) so production data can never be wiped anonymously.
+    (it calls the seed logic directly). The route is **always blocked in
+    production** regardless of this flag (see :func:`evaluate_seed_access`).
     """
     e = _env(env)
     return (e.get("ALLOW_SEED_ROUTE") or "false").strip().lower() in (
         "1", "true", "yes", "on",
     )
+
+
+def auto_seed_enabled(env: Optional[Mapping[str, str]] = None) -> bool:
+    """Whether the startup auto-seed may populate demo data on an empty DB.
+
+    Default policy: **enabled in development/test, disabled in production**, so
+    a fresh production database never silently creates demo accounts. An
+    explicit ``ALLOW_AUTO_SEED`` value overrides the default in either
+    direction.
+    """
+    e = _env(env)
+    explicit = (e.get("ALLOW_AUTO_SEED") or "").strip().lower()
+    if explicit in ("1", "true", "yes", "on"):
+        return True
+    if explicit in ("0", "false", "no", "off"):
+        return False
+    return not is_production(e)
+
+
+def evaluate_seed_access(
+    *,
+    is_prod: bool,
+    allow_route: bool,
+    authenticated: bool,
+    role: Optional[str],
+    confirm_ok: bool,
+):
+    """Pure decision function for the POST /api/seed route.
+
+    Returns ``(allowed: bool, status_code: Optional[int], detail: str)``.
+
+    Policy (most-restrictive first):
+    - **Production: always blocked** (404) — the destructive route is never
+      reachable in production even with ``ALLOW_SEED_ROUTE=true``.
+    - Route disabled (flag off): 404 (effectively invisible).
+    - Unauthenticated: 401.
+    - Authenticated non-admin: 403.
+    - Admin without the explicit confirmation token: 400.
+    - Admin + confirmation: allowed.
+    """
+    if is_prod:
+        return (False, 404, "Not found")
+    if not allow_route:
+        return (False, 404, "Not found")
+    if not authenticated:
+        return (False, 401, "Not authenticated")
+    if role != "admin":
+        return (False, 403, "Admin access required")
+    if not confirm_ok:
+        return (False, 400, f'Confirmation required (send confirm="{SEED_CONFIRM_TOKEN}")')
+    return (True, None, "")
+
+
+def user_verification_ok(user: Mapping[str, object], env: Optional[Mapping[str, str]] = None) -> bool:
+    """Whether ``user`` may access protected routes under the verification policy.
+
+    When ``ENFORCE_EMAIL_VERIFICATION`` is off (default) this is always True.
+    When on, the user must have ``email_verified`` truthy. A **missing**
+    ``email_verified`` field is treated as verified so legacy/backfilled users
+    are never locked out (defense-in-depth gate in get_current_user).
+    """
+    if not enforce_email_verification(env):
+        return True
+    return bool(user.get("email_verified", True))
 
 
 # Active signing secret, resolved at import time. server.py loads .env before

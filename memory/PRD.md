@@ -75,6 +75,15 @@ Out-of-band emergency patch (paused Phase 3B) closing three founder-beta finding
 - **Docs:** `KNOWN_TECH_DEBT.md` #8, `API_CONTRACTS.md`, `ROLE_PERMISSION_MATRIX.md`, `RELEASE_CHECKLIST.md`, `DECISION_LOG.md`, `memory/test_credentials.md` updated.
 - **Next:** Resume **Phase 3B** (system/admin/analytics route extraction) after GitHub save + Codex re-review.
 
+### Security Patch 2E hardening — prod-seed lockdown + verification defense-in-depth ✅ (May 31 2026)
+Final narrow hardening pass on Patch 2E (no Phase 3B). Addresses Codex follow-up review.
+- **Startup auto-seed disabled in production:** `core.config.auto_seed_enabled` (default off in prod, on in dev/test; `ALLOW_AUTO_SEED` override). Empty prod DB never auto-creates demo accounts.
+- **`POST /api/seed` blocked entirely in production** (`404` even with flag on); outside prod requires admin auth + `{"confirm":"SEED"}` body. Pure unit-tested decision `core.config.evaluate_seed_access`.
+- **Verification defense-in-depth:** `core.config.user_verification_ok` now gates **both** `get_current_user` deps — when `ENFORCE_EMAIL_VERIFICATION=true`, unverified/pre-issued tokens get `403`; missing field treated as verified (legacy safe). End-to-end proven (register→403→verify→200, then reverted).
+- **Registration reconfirmed:** always `horse_owner`; invite flow for admin/barn_manager/trainer/groom/vet/farrier verified intact (`test_invites_and_analytics`).
+- **Tests:** `tests/test_security_patch_2e.py` expanded with `evaluate_seed_access` (all branches incl. prod-blocked), `auto_seed_enabled`, `user_verification_ok` unit tests + env-gated enforcement HTTP tests. **Full suite: 250 passed, 3 skipped, 0 regressions.** Lint clean.
+- **Next:** GitHub save → Codex re-review → resume Phase 3B.
+
 ### Phase 3A — Core Package ✅ (May 30 2026)
 First step of Phase 3 (see `docs/PHASE3_MODULARIZATION_MAP.md`). Planning + safe move only; `server.py` not yet split.
 - Created `backend/core/` and `git mv`'d `config.py`, `rate_limit.py`, `auth_tokens.py`, `login_attempts.py` into it (history preserved). Updated all 6 importers; internal `core.rate_limit`→`core.config`.

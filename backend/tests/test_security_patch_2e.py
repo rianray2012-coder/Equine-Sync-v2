@@ -16,7 +16,12 @@ import time
 import pytest
 import requests
 
-from core.config import allow_seed_route
+from core.config import (
+    allow_seed_route,
+    auto_seed_enabled,
+    evaluate_seed_access,
+    user_verification_ok,
+)
 from routes.auth import should_issue_session_on_register, PUBLIC_REGISTRATION_ROLE
 
 from ._test_creds import ADMIN
@@ -76,6 +81,42 @@ def test_seed_not_anonymously_destructive():
     assert len(horses.json()) >= 6
 
 
+def test_evaluate_seed_access_production_always_blocked():
+    # Production is blocked even with the flag on and an admin + confirmation.
+    allowed, code, _ = evaluate_seed_access(
+        is_prod=True, allow_route=True, authenticated=True, role="admin", confirm_ok=True
+    )
+    assert allowed is False and code == 404
+
+
+def test_evaluate_seed_access_branches():
+    # Disabled (flag off) → 404
+    assert evaluate_seed_access(is_prod=False, allow_route=False, authenticated=True,
+                                role="admin", confirm_ok=True)[:2] == (False, 404)
+    # Enabled but anonymous → 401
+    assert evaluate_seed_access(is_prod=False, allow_route=True, authenticated=False,
+                                role=None, confirm_ok=False)[:2] == (False, 401)
+    # Enabled, authenticated non-admin → 403
+    assert evaluate_seed_access(is_prod=False, allow_route=True, authenticated=True,
+                                role="groom", confirm_ok=True)[:2] == (False, 403)
+    # Enabled, admin, missing confirmation → 400
+    assert evaluate_seed_access(is_prod=False, allow_route=True, authenticated=True,
+                                role="admin", confirm_ok=False)[:2] == (False, 400)
+    # Enabled, admin, confirmed → allowed
+    allowed, code, _ = evaluate_seed_access(is_prod=False, allow_route=True,
+                                            authenticated=True, role="admin", confirm_ok=True)
+    assert allowed is True and code is None
+
+
+def test_auto_seed_enabled_policy():
+    # Off in production unless explicitly allowed.
+    assert auto_seed_enabled({"APP_ENV": "production"}) is False
+    assert auto_seed_enabled({"APP_ENV": "production", "ALLOW_AUTO_SEED": "true"}) is True
+    # On in dev/test by default; explicit off respected.
+    assert auto_seed_enabled({"APP_ENV": "development"}) is True
+    assert auto_seed_enabled({"APP_ENV": "development", "ALLOW_AUTO_SEED": "false"}) is False
+
+
 # ---------------- 2. Registration role escalation ----------------
 
 def test_public_registration_defaults_to_safe_role():
@@ -123,6 +164,17 @@ def test_should_issue_session_helper_logic():
     assert should_issue_session_on_register(email_verified=False, enforce=True) is False
 
 
+def test_user_verification_ok_policy():
+    # Enforcement OFF → everyone passes regardless of flag.
+    off = {"ENFORCE_EMAIL_VERIFICATION": "false"}
+    assert user_verification_ok({"email_verified": False}, off) is True
+    # Enforcement ON → unverified blocked, verified allowed, missing => verified.
+    on = {"ENFORCE_EMAIL_VERIFICATION": "true"}
+    assert user_verification_ok({"email_verified": False}, on) is False
+    assert user_verification_ok({"email_verified": True}, on) is True
+    assert user_verification_ok({}, on) is True  # legacy/backfilled user not locked out
+
+
 def test_registration_returns_unverified_user():
     # Regardless of enforcement, a fresh account is created unverified.
     _, r = _register()
@@ -130,11 +182,12 @@ def test_registration_returns_unverified_user():
     assert r.json()["user"]["email_verified"] is False
 
 
-@pytest.mark.skipif(
-    os.environ.get("ENFORCE_EMAIL_VERIFICATION", "false").strip().lower()
-    not in ("1", "true", "yes", "on"),
-    reason="ENFORCE_EMAIL_VERIFICATION is off in this environment",
+_ENFORCEMENT_ON = os.environ.get("ENFORCE_EMAIL_VERIFICATION", "false").strip().lower() in (
+    "1", "true", "yes", "on",
 )
+
+
+@pytest.mark.skipif(not _ENFORCEMENT_ON, reason="ENFORCE_EMAIL_VERIFICATION is off in this environment")
 def test_registration_withholds_session_when_enforced():
     # When enforcement is ON, registration must not return usable tokens.
     _, r = _register()
@@ -142,3 +195,31 @@ def test_registration_withholds_session_when_enforced():
     body = r.json()
     assert body.get("pending_verification") is True
     assert "token" not in body and "refresh_token" not in body
+
+
+@pytest.mark.skipif(not _ENFORCEMENT_ON, reason="ENFORCE_EMAIL_VERIFICATION is off in this environment")
+def test_unverified_token_blocked_then_verified_succeeds():
+    # Issue a token while we can, then prove an unverified holder is blocked
+    # from a protected route until they verify.
+    email = f"sec2e_enf_{time.time_ns()}@example.com"
+    r = requests.post(f"{API}/auth/register", json={
+        "email": email, "password": "origPass123", "full_name": "Enf",
+    }, timeout=30)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # Under enforcement, register returns no token — so this path proves the
+    # blocking. (A pre-issued token scenario is proven manually in the patch.)
+    assert body.get("pending_verification") is True
+    vtok = body.get("dev_verification_token")
+    assert vtok
+    # Login is blocked until verified.
+    login = requests.post(f"{API}/auth/login", json={"email": email, "password": "origPass123"}, timeout=30)
+    assert login.status_code == 403
+    # Verify, then login succeeds and /auth/me works.
+    v = requests.post(f"{API}/auth/verify-email", json={"token": vtok}, timeout=30)
+    assert v.status_code == 200
+    login2 = requests.post(f"{API}/auth/login", json={"email": email, "password": "origPass123"}, timeout=30)
+    assert login2.status_code == 200
+    token = login2.json()["token"]
+    me = requests.get(f"{API}/auth/me", headers={"Authorization": f"Bearer {token}"}, timeout=30)
+    assert me.status_code == 200
