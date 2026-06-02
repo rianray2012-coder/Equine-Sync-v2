@@ -76,6 +76,6 @@ Lowest-risk, least-coupled first (system/admin/analytics → 3B), then domain gr
 ## Guardrails for every sub-phase
 1. No API behavior change; no frontend change.
 2. Use `git mv` / additive routers; keep diffs reviewable.
-3. Run full backend suite (currently **235 passed, 1 skipped**) + `/api/health` + login smoke before finishing.
+3. Run full backend suite (currently **267 passed, 3 skipped** as of Phase 3B + the seed_route_enabled cleanup) + `/api/health` + login smoke before finishing.
 4. One sub-phase = one commit-worthy checkpoint.
 5. No multi-tenancy/permissions work here (that's Phase 4).

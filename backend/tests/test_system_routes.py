@@ -8,6 +8,8 @@ import pathlib
 
 import requests
 
+from routes.system import dependencies_snapshot
+
 
 def _read_env_value(key):
     env = pathlib.Path(__file__).resolve().parents[1] / ".env"
@@ -70,3 +72,28 @@ def test_health_does_not_leak_secrets():
         val = _read_env_value(key)
         if val:
             assert val not in text, f"health response leaked {key} value"
+
+
+def test_seed_route_enabled_reports_effective_availability():
+    # Production is ALWAYS off, even with the flag on (mirrors the seed-route
+    # access policy: production is never reachable).
+    prod = dependencies_snapshot({"APP_ENV": "production", "ALLOW_SEED_ROUTE": "true",
+                                  "RESEND_API_KEY": "x"})
+    assert prod["seed_route_enabled"] is False
+    # Dev + flag on → on; dev + flag off → off.
+    assert dependencies_snapshot({"APP_ENV": "development", "ALLOW_SEED_ROUTE": "true"})["seed_route_enabled"] is True
+    assert dependencies_snapshot({"APP_ENV": "development"})["seed_route_enabled"] is False
+
+
+def test_dependencies_snapshot_booleans_only():
+    snap = dependencies_snapshot({"APP_ENV": "production", "ALLOW_SEED_ROUTE": "true"})
+    expected = {
+        "mailer_configured", "email_verification_enforced",
+        "rate_limiting_enabled", "auto_seed_enabled", "seed_route_enabled",
+    }
+    assert set(snap.keys()) == expected
+    for k, v in snap.items():
+        assert isinstance(v, bool), f"{k} must be boolean"
+    # Production posture: auto-seed and seed-route both hard-off.
+    assert snap["auto_seed_enabled"] is False
+    assert snap["seed_route_enabled"] is False
