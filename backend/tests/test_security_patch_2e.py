@@ -13,8 +13,13 @@ import os
 import pathlib
 import time
 
+import asyncio
+
 import pytest
 import requests
+
+from fastapi import HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 
 from core.config import (
     allow_seed_route,
@@ -22,7 +27,12 @@ from core.config import (
     evaluate_seed_access,
     user_verification_ok,
 )
-from routes.auth import should_issue_session_on_register, PUBLIC_REGISTRATION_ROLE
+from routes.auth import (
+    should_issue_session_on_register,
+    PUBLIC_REGISTRATION_ROLE,
+    make_current_user_dependency,
+    create_token,
+)
 
 from ._test_creds import ADMIN
 
@@ -64,7 +74,7 @@ def test_allow_seed_route_default_false():
 def test_seed_route_blocked_by_default():
     # Disabled route presents as not-found (anonymous, no auth).
     r = requests.post(f"{API}/seed", timeout=30)
-    assert r.status_code in (403, 404), r.text
+    assert r.status_code == 404, r.text
 
 
 def test_seed_not_anonymously_destructive():
@@ -109,9 +119,10 @@ def test_evaluate_seed_access_branches():
 
 
 def test_auto_seed_enabled_policy():
-    # Off in production unless explicitly allowed.
+    # Production is a hard no — NOT overridable by ALLOW_AUTO_SEED.
     assert auto_seed_enabled({"APP_ENV": "production"}) is False
-    assert auto_seed_enabled({"APP_ENV": "production", "ALLOW_AUTO_SEED": "true"}) is True
+    assert auto_seed_enabled({"APP_ENV": "production", "ALLOW_AUTO_SEED": "true"}) is False
+    assert auto_seed_enabled({"APP_ENV": "prod", "ALLOW_AUTO_SEED": "1"}) is False
     # On in dev/test by default; explicit off respected.
     assert auto_seed_enabled({"APP_ENV": "development"}) is True
     assert auto_seed_enabled({"APP_ENV": "development", "ALLOW_AUTO_SEED": "false"}) is False
@@ -223,3 +234,55 @@ def test_unverified_token_blocked_then_verified_succeeds():
     token = login2.json()["token"]
     me = requests.get(f"{API}/auth/me", headers={"Authorization": f"Bearer {token}"}, timeout=30)
     assert me.status_code == 200
+
+
+# ---------------- Pre-issued-token rejection (dependency-level, no server) ----------------
+
+class _FakeUsers:
+    def __init__(self, user):
+        self._user = user
+
+    async def find_one(self, query, projection=None):
+        return self._user
+
+
+class _FakeDB:
+    def __init__(self, user):
+        self.users = _FakeUsers(user)
+
+
+def _resolve(user, token):
+    dep = make_current_user_dependency(_FakeDB(user))
+    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    return asyncio.run(dep(creds))
+
+
+def test_pre_issued_token_rejected_when_unverified_and_enforced(monkeypatch):
+    """An OTHERWISE-VALID token for an unverified user must be rejected by the
+    protected current-user dependency once enforcement is on — proving the
+    defense-in-depth gate, independent of register/login issuance behavior."""
+    monkeypatch.setenv("ENFORCE_EMAIL_VERIFICATION", "true")
+    uid = "u-2e-test"
+    token = create_token(uid, "horse_owner")  # validly signed, not expired
+
+    # Unverified holder → 403.
+    with pytest.raises(HTTPException) as ei:
+        _resolve({"id": uid, "role": "horse_owner", "email_verified": False}, token)
+    assert ei.value.status_code == 403
+
+    # Verified holder → allowed.
+    ok = _resolve({"id": uid, "role": "horse_owner", "email_verified": True}, token)
+    assert ok["email_verified"] is True
+
+    # Legacy user missing the field → treated as verified (not locked out).
+    legacy = _resolve({"id": uid, "role": "horse_owner"}, token)
+    assert legacy["id"] == uid
+
+
+def test_pre_issued_token_allowed_when_enforcement_off(monkeypatch):
+    # With enforcement off (default), an unverified holder is NOT blocked.
+    monkeypatch.setenv("ENFORCE_EMAIL_VERIFICATION", "false")
+    uid = "u-2e-test-off"
+    token = create_token(uid, "horse_owner")
+    user = _resolve({"id": uid, "role": "horse_owner", "email_verified": False}, token)
+    assert user["id"] == uid

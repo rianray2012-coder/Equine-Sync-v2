@@ -178,18 +178,21 @@ def allow_seed_route(env: Optional[Mapping[str, str]] = None) -> bool:
 def auto_seed_enabled(env: Optional[Mapping[str, str]] = None) -> bool:
     """Whether the startup auto-seed may populate demo data on an empty DB.
 
-    Default policy: **enabled in development/test, disabled in production**, so
-    a fresh production database never silently creates demo accounts. An
-    explicit ``ALLOW_AUTO_SEED`` value overrides the default in either
-    direction.
+    Policy: **production ALWAYS returns False** — a fresh production database
+    must never silently create demo accounts, and this cannot be overridden.
+    Outside production, auto-seed is enabled by default; an explicit
+    ``ALLOW_AUTO_SEED`` value may toggle dev/test behavior in either direction.
     """
     e = _env(env)
+    # Production is a hard no — not overridable by ALLOW_AUTO_SEED.
+    if is_production(e):
+        return False
     explicit = (e.get("ALLOW_AUTO_SEED") or "").strip().lower()
     if explicit in ("1", "true", "yes", "on"):
         return True
     if explicit in ("0", "false", "no", "off"):
         return False
-    return not is_production(e)
+    return True
 
 
 def evaluate_seed_access(

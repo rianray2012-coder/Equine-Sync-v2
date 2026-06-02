@@ -68,7 +68,7 @@ Scoped to rate limiting + CORS only (no password reset/email).
 
 ### Security Patch 2E — Seed lockdown + registration role escalation + verification gate ✅ (May 31 2026)
 Out-of-band emergency patch (paused Phase 3B) closing three founder-beta findings from a GitHub/Codex security review. No frontend behavior change (app uses invite-based onboarding, never public register/seed).
-- **`POST /api/seed` locked down:** new `core.config.allow_seed_route()` (`ALLOW_SEED_ROUTE`, default `false`) → route returns `404` when disabled; when enabled under `APP_ENV=production` it requires an authenticated **admin**. Seed logic split into internal `_run_seed()`; startup auto-seed unchanged.
+- **`POST /api/seed` locked down:** new `core.config.allow_seed_route()` (`ALLOW_SEED_ROUTE`, default `false`) → route returns `404` when disabled. Seed logic split into internal `_run_seed()`. **(Superseded by the 2E hardening entry above — `/api/seed` is now blocked entirely in production, and the startup auto-seed is disabled in production; see `auto_seed_enabled` / `evaluate_seed_access`.)**
 - **Registration privilege escalation fixed:** `POST /api/auth/register` no longer trusts a client `role` (was defaulting to `admin`) — forces `PUBLIC_REGISTRATION_ROLE="horse_owner"`. Privileged roles only via admin invites / seed.
 - **Verification-token bypass fixed:** `should_issue_session_on_register()` withholds access/refresh tokens on registration when `ENFORCE_EMAIL_VERIFICATION=true` (returns `{pending_verification:true}`); stateless JWT means no token ⇒ no protected access.
 - **Tests:** `tests/test_security_patch_2e.py` (11 tests: seed guard unit+HTTP, role-escalation parametrized, verification-gate unit+env-gated HTTP). **Full suite: 246 passed, 2 skipped, zero regressions.**
@@ -474,7 +474,7 @@ A deliberate **pure-subtraction release** to reduce fake/demo trust risks before
 - CRUD endpoints: horses, owners, riders, medications, medication-logs, feed-tasks, vet-records, injuries, wellness, lessons, training, invoices, messages, service-requests, incidents
 - Aggregates: `/api/dashboard/summary`, `/api/dashboard/barn-board` (Mongo-optimized with filters + projections)
 - AI: `/api/ai/generate` (wellness_insight, training_summary, owner_update kinds)
-- Seed: `/api/seed` (idempotent, no auth) — auto-runs on startup if empty
+- Seed: `/api/seed` — **disabled by default** (`ALLOW_SEED_ROUTE`), **blocked entirely in production**, and requires admin auth + `{"confirm":"SEED"}` outside production (Security Patch 2E). Startup auto-seed runs only in dev/test (never production) and only if `users` is empty.
 - Demo seeds: 5 demo users, 6 horses, 3 owners, 3 riders, 18 feed tasks (today), medications + logs, vet records, injuries, wellness, lessons, training, invoices, messages, service requests, incidents
 
 ### Frontend (/app/frontend/src/)
