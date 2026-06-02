@@ -84,6 +84,16 @@ Final narrow hardening pass on Patch 2E (no Phase 3B). Addresses Codex follow-up
 - **Tests:** `tests/test_security_patch_2e.py` expanded with `evaluate_seed_access` (all branches incl. prod-blocked), `auto_seed_enabled`, `user_verification_ok` unit tests + env-gated enforcement HTTP tests. **Full suite: 250 passed, 3 skipped, 0 regressions.** Lint clean.
 - **Next:** GitHub save → Codex re-review → resume Phase 3B.
 
+### Phase 3B — System/Admin/Analytics route extraction ✅ (May 31 2026)
+Behavior-preserving modularization (no Phase 3C/4). `server.py` **891 → 524 lines**.
+- **New `routes/system.py`** — `GET /`, `GET /health`. Health gains an **additive booleans-only** `dependencies` block (`mailer_configured`, `email_verification_enforced`, `rate_limiting_enabled`, `auto_seed_enabled`, `seed_route_enabled`) — no secrets/URLs/keys.
+- **New `routes/admin.py`** — `POST /seed` (2E protections intact: prod-blocked, admin+`{"confirm":"SEED"}` outside prod) + `POST /admin/tenant-reset`.
+- **New `routes/analytics.py`** — `POST /events`, `GET /events/onboarding-funnel`.
+- **New `seed_data.py`** — self-contained `run_seed(db)`, called by both startup auto-seed and the guarded route.
+- `_track`/`_base_url` stay shared in `server.py` (move in 3G). Digest/recap admin run-now deferred to **3E** with the digest feature area.
+- **Tests:** `test_system_routes.py` (+ no-secret-leak assertion), `test_admin_routes.py`, `test_analytics_routes.py` (13 new). **Full suite: 265 passed, 3 skipped, 0 regressions.** Lint clean. Docs: `PHASE3_MODULARIZATION_MAP.md`, `API_CONTRACTS.md`, `DECISION_LOG.md` updated.
+- **Next:** Phase 3C (horse routes) — not started.
+
 ### Phase 3A — Core Package ✅ (May 30 2026)
 First step of Phase 3 (see `docs/PHASE3_MODULARIZATION_MAP.md`). Planning + safe move only; `server.py` not yet split.
 - Created `backend/core/` and `git mv`'d `config.py`, `rate_limit.py`, `auth_tokens.py`, `login_attempts.py` into it (history preserved). Updated all 6 importers; internal `core.rate_limit`→`core.config`.

@@ -55,7 +55,7 @@ Protected routes require: `Authorization: Bearer <token>`.
 ### Health
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/health` | Readiness probe. Reports DB connectivity + config booleans (never secret values). 200 healthy, 503 if DB unreachable. |
+| GET | `/api/health` | Readiness probe. Reports DB connectivity + a `config` block and an additive **`dependencies`** booleans block (`mailer_configured`, `email_verification_enforced`, `rate_limiting_enabled`, `auto_seed_enabled`, `seed_route_enabled`) — **booleans only, never secret values/URLs/keys**. 200 healthy, 503 if DB unreachable. (Served by `routes/system.py` since Phase 3B.) |
 
 ## Endpoint Naming Rules
 - Use plural nouns: `/horses`, `/tasks`, `/invoices`.

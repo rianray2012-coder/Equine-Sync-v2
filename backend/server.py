@@ -15,13 +15,11 @@ load_dotenv(ROOT_DIR / '.env')
 # Centralized config validation — fail fast on missing/insecure security vars (Phase 2A).
 # Must run after load_dotenv and before security-critical setup below.
 from core.config import (
-    JWT_SECRET, JWT_ALG, validate_config, get_cors_origins, is_production,
-    allow_seed_route, auto_seed_enabled, evaluate_seed_access, user_verification_ok,
-    enforce_email_verification,
+    JWT_SECRET, JWT_ALG, validate_config, get_cors_origins,
+    auto_seed_enabled, user_verification_ok,
 )
 validate_config()
 
-from fastapi.responses import JSONResponse
 from core.auth_tokens import ensure_auth_token_indexes
 from core.login_attempts import ensure_login_attempt_indexes
 
@@ -62,6 +60,10 @@ from routes.invites import build_router as build_invites_router
 from routes.onboarding import build_router as build_onboarding_router, ONBOARDING_STEPS
 from routes.care import build_router as build_care_router
 from routes.operations import build_router as build_operations_router
+from routes.system import build_router as build_system_router
+from routes.admin import build_router as build_admin_router
+from routes.analytics import build_router as build_analytics_router
+from seed_data import run_seed
 from owner_digest import (
     run_daily_digest_pass,
     send_digest_to_owner,
@@ -252,302 +254,7 @@ async def weekly_recap_run_now(user=Depends(get_current_user)):
 # ---------------- Dashboard summary (extracted to routes/dashboard.py) ----------------
 # See routes/dashboard.py — included into api_router at the bottom of this file.
 
-# ---------------- Seed ----------------
-async def _run_seed():
-    """Core demo-data seed logic. Idempotent: clears and inserts rich demo data.
-
-    Internal use only — invoked by the startup auto-seed and by the guarded
-    /api/seed route. This function performs NO authorization itself; callers
-    are responsible for gating access (see seed_route + allow_seed_route).
-    """
-    for c in ["users", "horses", "owners", "riders", "medications", "medication_logs",
-              "feed_tasks", "vet_records", "injuries", "wellness", "lessons", "training",
-              "invoices", "messages", "service_requests", "incidents"]:
-        await db[c].delete_many({})
-
-    # demo users
-    demo_users = [
-        ("admin@equinesync.com", "demo1234", "Eleanor Whitfield", "admin"),
-        ("trainer@equinesync.com", "demo1234", "Marcus Aldridge", "trainer"),
-        ("groom@equinesync.com", "demo1234", "Sophia Reyes", "groom"),
-        ("owner@equinesync.com", "demo1234", "Charlotte Vance", "horse_owner"),
-        ("vet@equinesync.com", "demo1234", "Dr. Henrik Vossler", "veterinarian"),
-    ]
-    for email, pwd, name, role in demo_users:
-        await db.users.insert_one({
-            "id": new_id(), "email": email, "full_name": name, "role": role,
-            "password_hash": hash_pwd(pwd), "created_at": iso(now_utc()),
-        })
-
-    # Owners
-    owners = []
-    for name, email, phone in [
-        ("Charlotte Vance", "charlotte@vanceequestrian.com", "+1 555 0142"),
-        ("Alexandre Beaumont", "a.beaumont@beaumonte.eu", "+33 1 22 33 44 55"),
-        ("Isabella Hartwell", "isabella@hartwellfarms.com", "+1 555 0388"),
-    ]:
-        o = {"id": new_id(), "full_name": name, "email": email, "phone": phone,
-             "horses": [], "photo_url": None, "created_at": iso(now_utc())}
-        await db.owners.insert_one(o); owners.append(o)
-
-    # Riders
-    riders = []
-    for name, level, goals in [
-        ("Amelia Vance", "intermediate", "Move up to 1.10m jumpers by summer"),
-        ("Theodore Beaumont", "advanced", "Compete CDI Small Tour 2026"),
-        ("Olivia Hartwell", "beginner", "Confident canter on the rail"),
-    ]:
-        r = {"id": new_id(), "full_name": name, "age": 16, "skill_level": level,
-             "goals": goals, "emergency_contact": "+1 555 0900",
-             "photo_url": None, "created_at": iso(now_utc())}
-        await db.riders.insert_one(r); riders.append(r)
-
-    # Horses
-    horse_seed = [
-        ("Valentino", "Hanoverian", 11, "Bay", 16.3, "Show Jumping", "active", "Stall 1",
-         "https://images.unsplash.com/photo-1553284965-5dc02f396399?w=900&auto=format&fit=crop",
-         "Sweet itch", "Premier Equine 2.5M", 92, "Aim for 1.20m by April."),
-        ("Saint-Cloud", "Selle Français", 9, "Grey", 17.0, "Show Jumping", "active", "Stall 3",
-         "https://images.unsplash.com/photo-1534773728080-33d31da27ae5?w=900&auto=format&fit=crop",
-         "", "Hartwell Insurance 1.8M", 88, "Maintain fitness through indoor season."),
-        ("Belle Étoile", "Dutch Warmblood", 14, "Chestnut", 16.2, "Dressage", "active", "Stall 5",
-         "https://images.unsplash.com/photo-1605713704694-f59ae1ca8efb?w=900&auto=format&fit=crop",
-         "Bee stings", "Beaumont Coverage 1.2M", 90, "Confirm flying changes in 4-tempi."),
-        ("Whisper", "Thoroughbred", 16, "Black", 16.0, "Hunters", "stall_rest", "Stall 7",
-         "https://images.unsplash.com/photo-1639570830431-6c2d0100d37b?w=900&auto=format&fit=crop",
-         "Penicillin", "Vance Premier 800K", 64, "Rehab from soft tissue."),
-        ("Mercury", "KWPN", 7, "Dark Bay", 16.1, "Show Jumping", "active", "Stall 9",
-         "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=900&auto=format&fit=crop",
-         "", "Working Insurance", 86, "Build canter strength."),
-        ("Iolani", "Lusitano", 12, "Grey", 15.3, "Dressage", "rehab", "Stall 11",
-         "https://images.unsplash.com/photo-1598974357801-cbca100e65d3?w=900&auto=format&fit=crop",
-         "", "Beaumont 1.2M", 71, "Return to controlled work."),
-    ]
-    horses = []
-    flags_pool = ["Buddy sour", "Hard to catch", "Solo turnout", "Dominant", "Kicks"]
-    for i, h in enumerate(horse_seed):
-        doc = {
-            "id": new_id(),
-            "name": h[0], "barn_name": h[0].split()[0], "breed": h[1], "age": h[2],
-            "color": h[3], "height_hands": h[4], "discipline": h[5], "status": h[6],
-            "stall": h[7], "photo_url": h[8],
-            "allergies": [h[9]] if h[9] else [],
-            "insurance": h[10], "wellness_score": h[11], "training_goals": h[12],
-            "owner_id": owners[i % 3]["id"],
-            "rider_id": riders[i % 3]["id"],
-            "feed_plan": "Morning: 2lb grain + 4lb hay. Midday: 4lb hay. Evening: 2lb grain + 6lb hay + supplements.",
-            "turnout_group": ["Geldings A", "Geldings B", "Mares Pasture"][i % 3],
-            "behavior_flags": [flags_pool[i % len(flags_pool)]] if i % 2 == 0 else [],
-            "emergency_notes": "Owner authorises emergency vet care up to $5,000.",
-            "created_at": iso(now_utc()),
-        }
-        await db.horses.insert_one(doc); horses.append(doc)
-
-    # Feed tasks (today, all 3 meals each horse)
-    today = now_utc().date().isoformat()
-    meals = [("morning", "2lb Triple Crown Senior + 4lb timothy hay"),
-             ("midday", "4lb timothy hay + free-choice water"),
-             ("evening", "2lb grain + 6lb hay + joint supplement")]
-    for h in horses:
-        for meal, ration in meals:
-            await db.feed_tasks.insert_one({
-                "id": new_id(),
-                "horse_id": h["id"], "horse_name": h["name"], "meal": meal,
-                "ration": ration, "instructions": "Soak feed for Whisper.",
-                "date": today, "completed": meal == "morning",
-                "completed_by": "Sophia Reyes" if meal == "morning" else None,
-                "completed_at": iso(now_utc()) if meal == "morning" else None,
-            })
-
-    # Medications
-    for h in horses[:4]:
-        med = {
-            "id": new_id(),
-            "horse_id": h["id"], "horse_name": h["name"],
-            "name": "Previcox", "dosage": "57mg", "route": "oral",
-            "frequency": "Once daily", "prescribing_vet": "Dr. Henrik Vossler",
-            "times": ["08:00"], "notes": "Give with feed.",
-            "start_date": today, "created_at": iso(now_utc()),
-        }
-        await db.medications.insert_one(med)
-        # log entries
-        await db.medication_logs.insert_one({
-            "id": new_id(),
-            "medication_id": med["id"], "horse_id": h["id"], "horse_name": h["name"],
-            "med_name": med["name"], "dosage": med["dosage"],
-            "scheduled_time": f"{today}T08:00:00",
-            "status": "given" if h["wellness_score"] > 80 else "missed",
-            "notes": None,
-        })
-
-    # Vet records
-    for h in horses:
-        await db.vet_records.insert_one({
-            "id": new_id(), "horse_id": h["id"], "horse_name": h["name"],
-            "type": "vaccine", "title": "Spring Vaccine — EWT, Flu/Rhino",
-            "date": (now_utc() - timedelta(days=30)).date().isoformat(),
-            "vet_name": "Dr. Henrik Vossler", "cost": 245.0,
-            "notes": "All shots up to date.", "created_at": iso(now_utc()),
-        })
-        await db.vet_records.insert_one({
-            "id": new_id(), "horse_id": h["id"], "horse_name": h["name"],
-            "type": "coggins", "title": "Coggins (negative)",
-            "date": (now_utc() - timedelta(days=60)).date().isoformat(),
-            "vet_name": "Dr. Henrik Vossler", "cost": 95.0,
-            "notes": "Valid 12 months.", "created_at": iso(now_utc()),
-        })
-
-    # Injuries
-    await db.injuries.insert_one({
-        "id": new_id(), "horse_id": horses[3]["id"], "horse_name": horses[3]["name"],
-        "title": "Right front suspensory strain", "description": "Mild proximal suspensory desmitis.",
-        "status": "improving", "severity": "moderate",
-        "start_date": (now_utc() - timedelta(days=21)).date().isoformat(),
-        "rehab_plan": "6 weeks: 4 wks hand-walking, then tack walk + jog.",
-        "created_at": iso(now_utc()),
-    })
-    await db.injuries.insert_one({
-        "id": new_id(), "horse_id": horses[5]["id"], "horse_name": horses[5]["name"],
-        "title": "Hind fetlock swelling", "description": "Soft tissue, monitoring.",
-        "status": "monitoring", "severity": "mild",
-        "start_date": (now_utc() - timedelta(days=10)).date().isoformat(),
-        "rehab_plan": "Cold therapy 2x daily, light hand walking.",
-        "created_at": iso(now_utc()),
-    })
-
-    # Wellness entries
-    for h in horses:
-        await db.wellness.insert_one({
-            "id": new_id(), "horse_id": h["id"], "horse_name": h["name"],
-            "appetite": 5, "water_intake": 5, "energy": 4 if h["wellness_score"] < 80 else 5,
-            "body_condition": 5.5, "coat_quality": 5,
-            "status": "concern" if h["wellness_score"] < 75 else ("watch" if h["wellness_score"] < 85 else "normal"),
-            "notes": "Bright and forward today.",
-            "created_at": iso(now_utc() - timedelta(hours=4)),
-        })
-
-    # Lessons (today + tomorrow)
-    for idx, r in enumerate(riders):
-        start = now_utc().replace(hour=10 + idx * 2, minute=0, second=0, microsecond=0)
-        await db.lessons.insert_one({
-            "id": new_id(),
-            "rider_id": r["id"], "rider_name": r["full_name"],
-            "horse_id": horses[idx]["id"], "horse_name": horses[idx]["name"],
-            "trainer_id": None, "trainer_name": "Marcus Aldridge",
-            "start_time": iso(start), "duration_min": 60,
-            "focus": ["Gymnastic grid", "Lateral work", "Position & balance"][idx],
-            "completed": False, "created_at": iso(now_utc()),
-        })
-
-    # Training sessions
-    for h in horses[:4]:
-        await db.training.insert_one({
-            "id": new_id(), "horse_id": h["id"], "horse_name": h["name"],
-            "trainer_id": None, "trainer_name": "Marcus Aldridge",
-            "date": (now_utc() - timedelta(days=1)).date().isoformat(),
-            "discipline": h["discipline"],
-            "exercises": "Trot poles, canter transitions, gymnastic line 2-1-2.",
-            "notes": "Forward, balanced, sharp off the leg.",
-            "rating": 8, "homework": "Hack out tomorrow.",
-            "created_at": iso(now_utc()),
-        })
-
-    # Invoices
-    invoice_items = [
-        {"label": "Full Board (Monthly)", "amount": 2850},
-        {"label": "Training (4x/week)", "amount": 1200},
-        {"label": "Supplements", "amount": 145},
-    ]
-    for idx, o in enumerate(owners):
-        await db.invoices.insert_one({
-            "id": new_id(), "owner_id": o["id"], "owner_name": o["full_name"],
-            "horse_id": horses[idx]["id"], "horse_name": horses[idx]["name"],
-            "items": invoice_items,
-            "total": sum(i["amount"] for i in invoice_items),
-            "due_date": (now_utc() + timedelta(days=10 - idx * 4)).date().isoformat(),
-            "status": ["open", "paid", "overdue"][idx],
-            "created_at": iso(now_utc()),
-        })
-
-    # Messages
-    await db.messages.insert_one({
-        "id": new_id(), "from_user_id": "system", "from_name": "Eleanor Whitfield",
-        "to_role": "trainer", "subject": "Spring Show Schedule",
-        "body": "Please confirm entries for the Wellington circuit by Friday.",
-        "visibility": "staff_only", "read": False,
-        "created_at": iso(now_utc() - timedelta(hours=3)),
-    })
-    await db.messages.insert_one({
-        "id": new_id(), "from_user_id": "system", "from_name": "Charlotte Vance",
-        "to_role": "admin", "subject": "Extra grooming for Saturday",
-        "body": "Could we add a body clip before Saturday's show?",
-        "visibility": "admin_only", "read": False,
-        "created_at": iso(now_utc() - timedelta(hours=6)),
-    })
-
-    # Service requests
-    await db.service_requests.insert_one({
-        "id": new_id(), "horse_id": horses[0]["id"], "horse_name": horses[0]["name"],
-        "type": "body_clip", "details": "Full body clip before Saturday show.",
-        "requested_date": (now_utc() + timedelta(days=2)).date().isoformat(),
-        "requested_by": "system", "requester_name": "Charlotte Vance",
-        "status": "pending", "created_at": iso(now_utc()),
-    })
-    await db.service_requests.insert_one({
-        "id": new_id(), "horse_id": horses[2]["id"], "horse_name": horses[2]["name"],
-        "type": "extra_ride", "details": "Schoolmaster ride on Thursday morning.",
-        "requested_date": (now_utc() + timedelta(days=3)).date().isoformat(),
-        "requested_by": "system", "requester_name": "Alexandre Beaumont",
-        "status": "pending", "created_at": iso(now_utc()),
-    })
-
-    # Incidents
-    await db.incidents.insert_one({
-        "id": new_id(), "horse_id": horses[3]["id"], "horse_name": horses[3]["name"],
-        "type": "injury", "title": "Cast in stall overnight",
-        "description": "Whisper found cast at 5am; freed without injury.",
-        "severity": "moderate", "occurred_at": iso(now_utc() - timedelta(hours=8)),
-        "status": "open", "follow_up": "Add stall padding & monitor cameras.",
-        "reported_by": "Sophia Reyes", "created_at": iso(now_utc()),
-    })
-
-    return {"ok": True, "seeded": True}
-
-
-class SeedBody(BaseModel):
-    confirm: Optional[str] = None
-
-
-@api_router.post("/seed")
-async def seed_route(
-    body: Optional["SeedBody"] = None,
-    creds: Optional[HTTPAuthorizationCredentials] = Depends(security),
-):
-    """Destructive wipe-and-reseed of demo data (Security Patch 2E hardened).
-
-    - **Always blocked in production** (404) — even with ALLOW_SEED_ROUTE=true.
-    - Outside production: disabled by default (404 unless ALLOW_SEED_ROUTE=true).
-      When enabled it requires an authenticated **admin** plus an explicit
-      confirmation body ``{"confirm": "SEED"}``. Never anonymously destructive.
-    """
-    role = None
-    if creds is not None:
-        try:
-            user = await get_current_user(creds)
-            role = user.get("role")
-        except HTTPException:
-            role = None  # invalid/expired token → treat as non-admin
-    confirm_ok = bool(body and body.confirm == "SEED")
-    allowed, code, detail = evaluate_seed_access(
-        is_prod=is_production(),
-        allow_route=allow_seed_route(),
-        authenticated=creds is not None,
-        role=role,
-        confirm_ok=confirm_ok,
-    )
-    if not allowed:
-        raise HTTPException(status_code=code, detail=detail)
-    return await _run_seed()
+# ---------------- Seed (extracted to seed_data.py + routes/admin.py) ----------------
 
 # ---------------- Shared analytics + url helpers (used across modules) ----------------
 async def _track(name: str, props: Dict[str, Any], user_id: Optional[str] = None):
@@ -582,29 +289,7 @@ ROLE_LABELS = {
     "rider": "Rider", "parent": "Parent / Guardian", "veterinarian": "Veterinarian", "farrier": "Farrier",
 }
 
-# ---------------- Analytics ----------------
-class EventIn(BaseModel):
-    name: str
-    props: Optional[Dict[str, Any]] = {}
-
-@api_router.post("/events")
-async def track_event(body: EventIn, user=Depends(get_current_user)):
-    await db.events.insert_one({
-        "id": new_id(), "name": body.name, "props": body.props or {},
-        "user_id": user["id"], "user_role": user.get("role"), "at": iso(now_utc()),
-    })
-    return {"ok": True}
-
-@api_router.get("/events/onboarding-funnel")
-async def onboarding_funnel(user=Depends(get_current_user)):
-    require_setup_role(user)
-    pipeline = [
-        {"$match": {"name": {"$regex": "^onboarding\\."}}},
-        {"$group": {"_id": "$name", "count": {"$sum": 1}}},
-        {"$sort": {"_id": 1}},
-    ]
-    rows = await db.events.aggregate(pipeline).to_list(100)
-    return [{"event": r["_id"], "count": r["count"]} for r in rows]
+# ---------------- Analytics (extracted to routes/analytics.py) ----------------
 
 # ---------------- Setup Health Reports (extracted to routes/reports.py) ----------------
 # See routes/reports.py — included into api_router below. The helpers
@@ -622,35 +307,9 @@ _reports_router = build_reports_router(
 )
 _send_nudges = _reports_router._reports_helpers["send_nudges"]
 
-# ---------------- Tenant Reset (admin support) ----------------
-class TenantResetBody(BaseModel):
-    scope: str = "onboarding"  # 'onboarding' | 'all_setup_data'
-    confirm: str  # must equal "RESET"
+# ---------------- Tenant Reset (extracted to routes/admin.py) ----------------
 
-@api_router.post("/admin/tenant-reset")
-async def tenant_reset(body: TenantResetBody, user=Depends(get_current_user)):
-    if user.get("role") != "admin":
-        raise HTTPException(403, "Admin only")
-    if body.confirm != "RESET":
-        raise HTTPException(400, "Confirmation token required (send confirm=\"RESET\")")
-    cleared: Dict[str, int] = {}
-    if body.scope == "onboarding":
-        r = await db.onboarding_progress.delete_many({})
-        cleared["onboarding_progress"] = r.deleted_count
-    elif body.scope == "all_setup_data":
-        for c in ["onboarding_progress", "barn", "locations", "feed_templates",
-                  "inventory", "recurring_schedules", "staff_invites", "invites"]:
-            r = await db[c].delete_many({})
-            cleared[c] = r.deleted_count
-    else:
-        raise HTTPException(400, "Unknown scope")
-    await _track("tenant.reset", {"scope": body.scope, "cleared": cleared}, user["id"])
-    return {"ok": True, "cleared": cleared}
-
-# ---------------- Health ----------------
-@api_router.get("/")
-async def root():
-    return {"app": "EquineSync", "status": "ok"}
+# ---------------- System routes (root + health) extracted to routes/system.py ----------------
 
 # ---------------- Unified Task Engine ----------------
 api_router.include_router(build_task_engine_router(db, get_current_user, _track))
@@ -716,31 +375,21 @@ api_router.include_router(build_operations_router(
     new_id=new_id,
 ))
 
-@api_router.get("/health")
-async def health():
-    """Lightweight readiness probe. Reports config validity + DB connectivity.
+# ---------------- System (root + health, extracted to routes/system.py) ----------------
+api_router.include_router(build_system_router(db))
 
-    Never exposes secret values — only booleans/derived status.
-    """
-    db_ok = False
-    try:
-        await db.command("ping")
-        db_ok = True
-    except Exception:
-        logger.exception("health: database ping failed")
+# ---------------- Admin (seed + tenant-reset, extracted to routes/admin.py) ----------------
+api_router.include_router(build_admin_router(
+    db=db,
+    get_current_user=get_current_user,
+    track=_track,
+    run_seed=run_seed,
+))
 
-    body = {
-        "status": "ok" if db_ok else "degraded",
-        "service": "equinesync-api",
-        "version": os.environ.get("APP_VERSION", "0.1.0"),
-        "database": "connected" if db_ok else "unreachable",
-        "config": {
-            "jwt_configured": bool(os.environ.get("JWT_SECRET", "").strip()),
-            "cors_configured": bool(os.environ.get("CORS_ORIGINS", "").strip()),
-            "environment": "production" if is_production() else "development",
-        },
-    }
-    return JSONResponse(body, status_code=200 if db_ok else 503)
+# ---------------- Analytics (extracted to routes/analytics.py) ----------------
+api_router.include_router(build_analytics_router(db, get_current_user, require_setup_role))
+
+# (health endpoint extracted to routes/system.py)
 
 
 app.include_router(api_router)
@@ -759,12 +408,11 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def on_startup():
-    # Auto-seed if empty
     # Auto-seed if empty — but NEVER in production (Security Patch 2E hardening),
     # so a fresh production DB never silently creates demo accounts.
     if auto_seed_enabled() and await db.users.count_documents({}) == 0:
         try:
-            await _run_seed()
+            await run_seed(db)
             logger.info("Auto-seeded demo data.")
         except Exception as e:
             logger.exception("Seed failed: %s", e)
