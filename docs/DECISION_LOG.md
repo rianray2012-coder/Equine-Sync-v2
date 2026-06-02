@@ -19,6 +19,14 @@ Status:
 
 ## Entries
 
+### 2026-06-02 — Phase 3C: Horse-profile route extraction
+- **Decision:** Extracted the four horse-profile CRUD endpoints (`GET/POST /horses`, `GET/PATCH /horses/{id}`) and the `HorseIn` model from `routes/care.py` into a dedicated **`routes/horses.py`** (`build_router` factory, same injected deps). Behavior-preserving: identical paths, bodies, response shapes, status codes, and auth; **no new validation or permission logic**. `GET /horses/{id}/timeline` was **intentionally left in `task_engine.py`** because it is a task-event projection/aggregation, not horse-profile CRUD. Owners, riders, and clinical records (medications/feed/vet/farrier/injuries/wellness) remain in `care.py` (owners slated for 3E).
+- **Reason:** The horse is the central domain entity; a dedicated module matches the modularization map and de-clutters the `care.py` grab-bag. Verified `HorseIn` was used nowhere else before moving it.
+- **Alternatives Considered:** Re-homing the timeline under the horses router by delegating to the task engine (rejected — would entangle task-engine internals for no client benefit; the URL is unchanged either way); moving riders along with horses (rejected — riders are not horse-profile routes; kept 3C tightly scoped).
+- **Risks:** Very low — mechanical move of 4 handlers + 1 model + one `include_router` wiring; removed now-dead `care.py` imports (`HTTPException`, `Any`, `Dict`). No schema/data/index changes; no frontend changes. New `tests/test_horses_routes.py`; existing horse-touching tests (`test_care_routes`, `test_task_engine`, etc.) unchanged and green. Full suite **271 passed, 3 skipped** (one pre-existing flaky `test_dispatch_retry` passed on clean re-run — shared-DB isolation issue, unrelated to 3C).
+- **Review Date:** Phase 3D.
+- **Status:** Active
+
 ### 2026-05-31 — Phase 3B: System/Admin/Analytics route extraction
 - **Decision:** Extracted three low-risk inline route groups from `server.py` into dedicated routers, behavior-preserving: `routes/system.py` (`GET /`, `GET /health`), `routes/admin.py` (`POST /seed` 2E-hardened + `POST /admin/tenant-reset`), `routes/analytics.py` (`POST /events`, `GET /events/onboarding-funnel`). The destructive seed routine was moved to a self-contained `seed_data.py::run_seed(db)` called by **both** the startup auto-seed and the guarded route. `GET /api/health` gained an **additive, booleans-only** `dependencies` block (`mailer_configured`, `email_verification_enforced`, `rate_limiting_enabled`, `auto_seed_enabled`, `seed_route_enabled`) — no secrets/URLs/keys. `server.py` 891 → 524 lines.
 - **Reason:** Continue Phase 3 modularization; co-locating the 2E seed/admin guards in one auditable module reduces the chance of reintroducing an unguarded destructive route. The health booleans give ops read-only posture visibility.

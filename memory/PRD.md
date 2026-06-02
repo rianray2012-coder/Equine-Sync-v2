@@ -84,6 +84,15 @@ Final narrow hardening pass on Patch 2E (no Phase 3B). Addresses Codex follow-up
 - **Tests:** `tests/test_security_patch_2e.py` expanded with `evaluate_seed_access` (all branches incl. prod-blocked), `auto_seed_enabled`, `user_verification_ok` unit tests + env-gated enforcement HTTP tests. **Full suite: 250 passed, 3 skipped, 0 regressions.** Lint clean.
 - **Next:** GitHub save → Codex re-review → resume Phase 3B.
 
+### Phase 3C — Horse-profile route extraction ✅ (Jun 2 2026)
+Behavior-preserving modularization (no Phase 3D/4, no frontend).
+- **New `routes/horses.py`** — the four horse-profile CRUD endpoints (`GET/POST /horses`, `GET/PATCH /horses/{id}`) + `HorseIn` model, lifted verbatim from `routes/care.py`. No new validation/permissions.
+- **`GET /horses/{id}/timeline` intentionally stays in `task_engine.py`** — it's a task-event projection, not profile CRUD (URL unchanged for clients).
+- `care.py` slimmed (horse handlers + `HorseIn` removed, dead imports cleaned); owners/riders/clinical untouched.
+- **Tests:** new `tests/test_horses_routes.py` (auth-gate, create/list/get/patch round-trip, 404, timeline-still-served). **Full suite: 271 passed, 3 skipped.** Smoke: login + `/horses` CRUD + timeline verified via external URL.
+- One pre-existing flaky test (`test_dispatch_retry`, shared-DB backlog) passed on clean re-run — unrelated to 3C. Docs: `PHASE3_MODULARIZATION_MAP.md`, `DECISION_LOG.md` updated.
+- **Next:** Phase 3D (care/task routes) — not started.
+
 ### Phase 3B — System/Admin/Analytics route extraction ✅ (May 31 2026)
 Behavior-preserving modularization (no Phase 3C/4). `server.py` **891 → 524 lines**.
 - **New `routes/system.py`** — `GET /`, `GET /health`. Health gains an **additive booleans-only** `dependencies` block (`mailer_configured`, `email_verification_enforced`, `rate_limiting_enabled`, `auto_seed_enabled`, `seed_route_enabled`) — no secrets/URLs/keys.

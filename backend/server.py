@@ -59,6 +59,7 @@ from routes.reports import build_router as build_reports_router
 from routes.invites import build_router as build_invites_router
 from routes.onboarding import build_router as build_onboarding_router, ONBOARDING_STEPS
 from routes.care import build_router as build_care_router
+from routes.horses import build_router as build_horses_router
 from routes.operations import build_router as build_operations_router
 from routes.system import build_router as build_system_router
 from routes.admin import build_router as build_admin_router
@@ -352,6 +353,17 @@ api_router.include_router(build_onboarding_router(
     get_current_user=get_current_user,
     require_setup_role=require_setup_role,
     roles=ROLES,
+    list_collection=list_collection,
+    clean=clean,
+    new_id=new_id,
+))
+
+# ---------------- Horses (horse-profile CRUD, extracted to routes/horses.py) ----------------
+# NOTE: GET /horses/{id}/timeline intentionally remains in task_engine.py
+# (it is a task-event projection, not horse-profile CRUD).
+api_router.include_router(build_horses_router(
+    db=db,
+    get_current_user=get_current_user,
     list_collection=list_collection,
     clean=clean,
     new_id=new_id,

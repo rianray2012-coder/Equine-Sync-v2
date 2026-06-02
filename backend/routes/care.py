@@ -1,17 +1,19 @@
-"""routes/care.py — care records: horses, owners, riders, medications,
-vet, farrier, injuries, wellness.
+"""routes/care.py — care records: owners, riders, medications,
+vet, farrier, injuries, wellness, feed-tasks.
 
 Phase-F final sweep extraction (Feb 20 2026). All handlers are trivial
 CRUD over MongoDB collections; they share the `list_collection`, `clean`
 and `new_id` helpers from server.py. Models live here too because they
 are not shared with any other route module.
+
+Note: horse-profile CRUD was extracted to `routes/horses.py` in Phase 3C.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, EmailStr
 
 
@@ -24,30 +26,6 @@ def _iso(dt: datetime) -> str:
 
 
 # ---------------- Models ----------------
-
-class HorseIn(BaseModel):
-    name: str
-    barn_name: Optional[str] = None
-    breed: Optional[str] = None
-    age: Optional[int] = None
-    color: Optional[str] = None
-    height_hands: Optional[float] = None
-    discipline: Optional[str] = None
-    owner_id: Optional[str] = None
-    rider_id: Optional[str] = None
-    trainer_id: Optional[str] = None
-    stall: Optional[str] = None
-    photo_url: Optional[str] = None
-    allergies: Optional[List[str]] = []
-    emergency_notes: Optional[str] = None
-    insurance: Optional[str] = None
-    wellness_score: Optional[int] = 85
-    status: Optional[str] = "active"
-    training_goals: Optional[str] = None
-    feed_plan: Optional[str] = None
-    turnout_group: Optional[str] = None
-    behavior_flags: Optional[List[str]] = []
-
 
 class OwnerIn(BaseModel):
     full_name: str
@@ -130,31 +108,6 @@ class FeedTaskIn(BaseModel):
 
 def build_router(*, db, get_current_user, list_collection, clean, new_id) -> APIRouter:
     router = APIRouter(tags=["care"])
-
-    # ---------------- Horses ----------------
-
-    @router.get("/horses")
-    async def list_horses(user=Depends(get_current_user)):
-        return await list_collection("horses")
-
-    @router.post("/horses")
-    async def create_horse(body: HorseIn, user=Depends(get_current_user)):
-        doc = body.model_dump()
-        doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
-        await db.horses.insert_one(doc)
-        return clean(doc)
-
-    @router.get("/horses/{horse_id}")
-    async def get_horse(horse_id: str, user=Depends(get_current_user)):
-        h = await db.horses.find_one({"id": horse_id}, {"_id": 0})
-        if not h:
-            raise HTTPException(404, "Horse not found")
-        return h
-
-    @router.patch("/horses/{horse_id}")
-    async def update_horse(horse_id: str, body: Dict[str, Any], user=Depends(get_current_user)):
-        await db.horses.update_one({"id": horse_id}, {"$set": body})
-        return await db.horses.find_one({"id": horse_id}, {"_id": 0})
 
     # ---------------- Owners ----------------
 
