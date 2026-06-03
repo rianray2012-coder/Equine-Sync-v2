@@ -84,6 +84,15 @@ Final narrow hardening pass on Patch 2E (no Phase 3B). Addresses Codex follow-up
 - **Tests:** `tests/test_security_patch_2e.py` expanded with `evaluate_seed_access` (all branches incl. prod-blocked), `auto_seed_enabled`, `user_verification_ok` unit tests + env-gated enforcement HTTP tests. **Full suite: 250 passed, 3 skipped, 0 regressions.** Lint clean.
 - **Next:** GitHub save → Codex re-review → resume Phase 3B.
 
+### Phase 3D — Care/Task route consolidation (verification + closure) ✅ (Jun 2 2026)
+No production route changes. Audit confirmed care/task routes are **already** fully modular (`routes/care.py` + `task_engine.py`); nothing care/task remained inline in `server.py` (only the 6 digest/recap routes → 3E).
+- **Documented** that legacy `feed_tasks` (per-meal feed checklist in `care.py`) and the unified TaskEvent engine (`task_engine.py`) intentionally remain separate (merging = feature work, out of scope).
+- **Test hygiene:** hardened flaky `tests/test_dispatch_retry.py` (`assert n == 1` → `assert n >= 1`; per-event assertions retained so dispatcher behavior is still proven).
+- **New guard:** lightweight `tests/test_task_routes_inventory.py` — verifies task/care routes are registered (backend OpenAPI) + GET lists available under auth + require auth. Not a behavioral suite.
+- **No moves** of owner/report/digest routes (→ 3E) or startup/background loops (→ 3G). No path/response/auth/status/schema/DB/frontend changes.
+- **Full suite: 274 passed, 3 skipped, 0 failures.** Docs: `PHASE3_MODULARIZATION_MAP.md`, `DECISION_LOG.md` updated.
+- **Next:** Phase 3E (owner/report/digest routes) — not started.
+
 ### Phase 3C — Horse-profile route extraction ✅ (Jun 2 2026)
 Behavior-preserving modularization (no Phase 3D/4, no frontend).
 - **New `routes/horses.py`** — the four horse-profile CRUD endpoints (`GET/POST /horses`, `GET/PATCH /horses/{id}`) + `HorseIn` model, lifted verbatim from `routes/care.py`. No new validation/permissions.

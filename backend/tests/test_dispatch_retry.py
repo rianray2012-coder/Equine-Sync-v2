@@ -55,7 +55,10 @@ def test_transient_error_retries_until_cap():
 
         try:
             n = await N.drain_once(db)
-            assert n == 1
+            # Isolation-safe: drain_once processes ALL undispatched events in the
+            # shared DB, so other tests/backlog may bump this count. The per-event
+            # assertions below pin the actual dispatcher behavior for THIS event.
+            assert n >= 1
             doc = await db.task_events.find_one({"id": ev_id}, {"_id": 0})
             assert doc.get("dispatched_at") is None
             assert doc.get("dispatch_attempts") == 1
