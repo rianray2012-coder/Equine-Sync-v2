@@ -84,6 +84,15 @@ Final narrow hardening pass on Patch 2E (no Phase 3B). Addresses Codex follow-up
 - **Tests:** `tests/test_security_patch_2e.py` expanded with `evaluate_seed_access` (all branches incl. prod-blocked), `auto_seed_enabled`, `user_verification_ok` unit tests + env-gated enforcement HTTP tests. **Full suite: 250 passed, 3 skipped, 0 regressions.** Lint clean.
 - **Next:** GitHub save → Codex re-review → resume Phase 3B.
 
+### Phase 3E — Owner digest/recap route extraction ✅ (Jun 2 2026)
+Behavior-preserving modularization (no Phase 3F/3G/4, no frontend).
+- **New `routes/digests.py`** — the 6 owner digest/recap HTTP routes (preview/send-me/admin-run-now for daily digest + weekly recap), lifted verbatim from `server.py` with identical auth + role gates (owner-only send-me, admin/barn_manager run-now) and response shapes.
+- **`server.py` now has zero inline API routes.** Trimmed 8 route-only `owner_digest` imports; kept `run_daily_digest_pass`/`run_weekly_recap_pass`/`ensure_digest_indexes` for the staying schedulers.
+- **Intentionally left in `server.py` (→ 3G):** the background digest/recap schedulers + `ensure_digest_indexes`. `/owners` roster CRUD stays in `routes/care.py`. HTTP routes + schedulers share one source of truth (`owner_digest.py`).
+- **Tests:** new lightweight `tests/test_digests_routes.py` (registration, 401 unauth, owner-only/admin-only 403 gates, preview response shape). **Full suite: 279 passed, 3 skipped.** Smoke: all 6 routes verified with owner/admin/non-owner/unauth.
+- Docs: `PHASE3_MODULARIZATION_MAP.md`, `DECISION_LOG.md` updated.
+- **Next:** Phase 3F (billing routes) — not started.
+
 ### Phase 3D — Care/Task route consolidation (verification + closure) ✅ (Jun 2 2026)
 No production route changes. Audit confirmed care/task routes are **already** fully modular (`routes/care.py` + `task_engine.py`); nothing care/task remained inline in `server.py` (only the 6 digest/recap routes → 3E).
 - **Documented** that legacy `feed_tasks` (per-meal feed checklist in `care.py`) and the unified TaskEvent engine (`task_engine.py`) intentionally remain separate (merging = feature work, out of scope).

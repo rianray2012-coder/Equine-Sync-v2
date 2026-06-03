@@ -64,18 +64,11 @@ from routes.operations import build_router as build_operations_router
 from routes.system import build_router as build_system_router
 from routes.admin import build_router as build_admin_router
 from routes.analytics import build_router as build_analytics_router
+from routes.digests import build_router as build_digests_router
 from seed_data import run_seed
 from owner_digest import (
     run_daily_digest_pass,
-    send_digest_to_owner,
-    build_digest_for_owner,
-    render_digest_html,
-    render_digest_text,
     ensure_digest_indexes,
-    build_weekly_recap_for_owner,
-    send_weekly_recap_to_owner,
-    render_weekly_recap_html,
-    render_weekly_recap_text,
     run_weekly_recap_pass,
 )
 
@@ -183,73 +176,11 @@ async def list_collection(coll, query=None, sort_field=None, limit=500):
         cursor = cursor.sort(sort_field, -1)
     return await cursor.to_list(limit)
 
-# ---------------- Owner daily digest (Phase-C) ----------------
-
-@api_router.post("/notifications/digest/preview")
-async def digest_preview(user=Depends(get_current_user)):
-    """Owner: see what their next daily digest would look like."""
-    payload = await build_digest_for_owner(db, user["id"])
-    if not payload:
-        return {"empty": True, "reason": "no_updates_today"}
-    return {
-        "empty": False,
-        "payload": payload,
-        "html": render_digest_html(payload, app_base_url=os.environ.get("PUBLIC_APP_URL", "")),
-        "text": render_digest_text(payload),
-    }
-
-
-@api_router.post("/notifications/digest/send-me")
-async def digest_send_me(user=Depends(get_current_user)):
-    """Owner: trigger their own digest now (useful pre-domain-verification)."""
-    if user.get("role") != "horse_owner":
-        raise HTTPException(403, "Owner accounts only")
-    mailer_handle = {"send": send_email, "render": render_email}
-    res = await send_digest_to_owner(db, mailer_handle, user["id"])
-    return res
-
-
-@api_router.post("/admin/digest/run-now")
-async def digest_run_now(user=Depends(get_current_user)):
-    """Admin: force-run today's digest pass (idempotent — won't double-send)."""
-    if user.get("role") not in ("admin", "barn_manager"):
-        raise HTTPException(403, "Admin/Manager only")
-    mailer_handle = {"send": send_email, "render": render_email}
-    return await run_daily_digest_pass(db, mailer_handle)
-
-
-# ---------------- Owner weekly recap (lightweight Sunday update) ----------------
-
-@api_router.post("/notifications/weekly-recap/preview")
-async def weekly_recap_preview(user=Depends(get_current_user)):
-    """Owner: preview this week's recap. Returns {empty:true} if nothing meaningful."""
-    payload = await build_weekly_recap_for_owner(db, user["id"])
-    if not payload:
-        return {"empty": True, "reason": "no_updates_this_week"}
-    return {
-        "empty": False,
-        "payload": payload,
-        "html": render_weekly_recap_html(payload, app_base_url=os.environ.get("PUBLIC_APP_URL", "")),
-        "text": render_weekly_recap_text(payload),
-    }
-
-
-@api_router.post("/notifications/weekly-recap/send-me")
-async def weekly_recap_send_me(user=Depends(get_current_user)):
-    """Owner: trigger their own weekly recap now."""
-    if user.get("role") != "horse_owner":
-        raise HTTPException(403, "Owner accounts only")
-    mailer_handle = {"send": send_email, "render": render_email}
-    return await send_weekly_recap_to_owner(db, mailer_handle, user["id"])
-
-
-@api_router.post("/admin/weekly-recap/run-now")
-async def weekly_recap_run_now(user=Depends(get_current_user)):
-    """Admin: force-run this week's recap pass (idempotent on ISO week key)."""
-    if user.get("role") not in ("admin", "barn_manager"):
-        raise HTTPException(403, "Admin/Manager only")
-    mailer_handle = {"send": send_email, "render": render_email}
-    return await run_weekly_recap_pass(db, mailer_handle)
+# ---------------- Owner daily digest + weekly recap HTTP routes ----------------
+# (extracted to routes/digests.py — included into api_router below).
+# NOTE: the background digest/recap SCHEDULERS + ensure_digest_indexes remain
+# in this file (startup loops) until Phase 3G; both they and the HTTP routes
+# delegate to the same owner_digest.py domain functions.
 
 
 # ---------------- Dashboard summary (extracted to routes/dashboard.py) ----------------
@@ -400,6 +331,9 @@ api_router.include_router(build_admin_router(
 
 # ---------------- Analytics (extracted to routes/analytics.py) ----------------
 api_router.include_router(build_analytics_router(db, get_current_user, require_setup_role))
+
+# ---------------- Owner digest + weekly recap HTTP routes (extracted to routes/digests.py) ----------------
+api_router.include_router(build_digests_router(db=db, get_current_user=get_current_user))
 
 # (health endpoint extracted to routes/system.py)
 

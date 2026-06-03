@@ -1,6 +1,8 @@
 # Phase 3 — Backend Modularization Map
 
-> Status: **3A + 3B + 3C + 3D complete**. 3E–3G planned. Each sub-phase is separately commit-worthy, testable, and rollback-safe. Target structure follows `ARCHITECTURE.md`.
+> Status: **3A + 3B + 3C + 3D + 3E complete**. 3F–3G planned. Each sub-phase is separately commit-worthy, testable, and rollback-safe. Target structure follows `ARCHITECTURE.md`.
+>
+> **3E done (2026-06-02):** Extracted the **6 owner digest/recap HTTP routes** (`/notifications/digest/preview|send-me`, `/admin/digest/run-now`, `/notifications/weekly-recap/preview|send-me`, `/admin/weekly-recap/run-now`) out of `server.py` into a new **`routes/digests.py`** (verbatim; same auth/role gates + response shapes). Trimmed 8 now-route-only `owner_digest` imports from `server.py`. **`server.py` now has zero inline API routes.** The background digest/recap **schedulers + `ensure_digest_indexes` intentionally remain in `server.py`** (→ 3G); both the HTTP routes and the schedulers delegate to the same `owner_digest.py` domain functions. `/owners` roster CRUD stays in `routes/care.py` (not owner-comms). Added lightweight `tests/test_digests_routes.py`. Suite: 279 passed, 3 skipped.
 >
 > **3D done (2026-06-02):** Verification + documentation closure (no route moves needed). Audit confirmed **all task routes already live in `task_engine.py`** and **all care routes in `routes/care.py`** — nothing remained inline in `server.py` except the 6 digest/recap routes (→ 3E). Legacy `feed_tasks` (per-meal feed checklist in `care.py`) and the unified TaskEvent engine (`task_engine.py`) are **intentionally kept separate** for now (merging would be feature work, out of scope). Fixed the flaky `test_dispatch_retry.py` isolation (relaxed `assert n == 1` → `assert n >= 1`; per-event assertions retained). Added lightweight `tests/test_task_routes_inventory.py` (OpenAPI registration + authed availability guard). Suite: 274 passed, 3 skipped.
 >
@@ -44,7 +46,9 @@ server.py             → core.config, core.auth_tokens, core.login_attempts,
 ## Route Groups Inside server.py (extraction inventory)
 
 ### Already modularized (in `routes/*.py`, included by server.py)
-`auth`, `dashboard`, `reports`, `invites`, `onboarding`, `care`, `operations`, `task_engine`, `notifications`, **`system` (3B)**, **`admin` (3B)**, **`analytics` (3B)**, **`horses` (3C)**. Plus **`seed_data.py`** (self-contained `run_seed(db)`, 3B).
+`auth`, `dashboard`, `reports`, `invites`, `onboarding`, `care`, `operations`, `task_engine`, `notifications`, **`system` (3B)**, **`admin` (3B)**, **`analytics` (3B)**, **`horses` (3C)**, **`digests` (3E)**. Plus **`seed_data.py`** (self-contained `run_seed(db)`, 3B).
+
+> **As of 3E, `server.py` has zero inline API route handlers.** What remains is shared infra + bootstrap (`_track`, `get_current_user`, JWT helpers, `_base_url`, router includes, and the startup/background loops) — all targeted for **3G**.
 
 ### Still inline in server.py (extraction candidates)
 | Lines (approx) | Group | Endpoints | Target sub-phase |
@@ -52,10 +56,10 @@ server.py             → core.config, core.auth_tokens, core.login_attempts,
 | ✅ done (3B) | **System** | `GET /health` (+ `dependencies`), `GET /` | **3B ✅ → routes/system.py** |
 | ✅ done (3B) | **Admin** | `/seed` (2E-hardened), `/admin/tenant-reset` | **3B ✅ → routes/admin.py** |
 | ✅ done (3B) | **Analytics** | `/events`, `/events/onboarding-funnel` | **3B ✅ → routes/analytics.py** |
-| `/notifications/digest/*`, `/notifications/weekly-recap/*`, `/admin/digest/run-now`, `/admin/weekly-recap/run-now` | **Notifications/Digest (inline)** | digest/recap preview + send-me + admin run-now | 3E (with owner/reports) |
+| ✅ done (3E) | **Digests/Recap** | digest/recap preview + send-me + admin run-now (6 routes) | **3E ✅ → routes/digests.py** (schedulers stay → 3G) |
 | ✅ done (3C) | **Horses** | `GET/POST /horses`, `GET/PATCH /horses/{id}` | **3C ✅ → routes/horses.py** (timeline stays in task_engine) |
 | ✅ verified (3D) | **Care/Tasks** | all care routes in `routes/care.py`; all task routes in `task_engine.py` | **3D ✅ — already modular; no moves needed** |
-| owner/report endpoints | **Owner/Reports** | mostly in `routes/reports`, `dashboard` | **3E** |
+| ✅ verified (3E) | **Owner/Reports** | reports in `routes/reports.py`, dashboard in `routes/dashboard.py`, owner roster CRUD in `routes/care.py` | **3E ✅ — already modular; `/owners` stays in care.py** |
 | billing endpoints | **Billing** | — (audit; may not yet exist) | **3F** |
 
 > Note: server.py also holds shared infra that is **not** a route group — `db` setup, JWT helpers (`create_token`), `get_current_user`, `_track`, `_base_url`, and the startup/shutdown bootstrap. These remain until **3G** (app assembly only), where the JWT/auth helpers should move into `core` and the bootstrap into a small `lifespan`/startup module.
@@ -68,7 +72,7 @@ server.py             → core.config, core.auth_tokens, core.login_attempts,
 - **3B ✅ — System/Admin/Analytics routes.** Extracted `routes/system.py` (`/`, `/health` + additive booleans-only `dependencies`), `routes/admin.py` (`/seed` 2E-hardened + `/admin/tenant-reset`), `routes/analytics.py` (`/events*`). Seed moved to self-contained `seed_data.py::run_seed(db)`. `_track` kept in server.py (shared; moves in 3G — superseded the earlier "move `_track` near analytics" note). Digest/recap admin run-now deferred to **3E**. `server.py` 891 → 524 lines. Suite 267 passed / 3 skipped.
 - **3C ✅ — Horse routes.** Extracted the four horse-profile CRUD endpoints + `HorseIn` from `routes/care.py` into **`routes/horses.py`** (verbatim; no new validation/permissions). Cleaned now-dead imports from `care.py`. **`GET /horses/{id}/timeline` intentionally remains in `task_engine.py`** (task-event projection, not profile CRUD). Owners/riders/clinical stay in `care.py`. New `tests/test_horses_routes.py`. Suite 271 passed / 3 skipped.
 - **3D ✅ — Care/Task routes (verification + closure).** Audit confirmed care/task routes are *already* fully modularized (`routes/care.py` + `task_engine.py`); **no route moves were required**. Documented that legacy `feed_tasks` (per-meal checklist in `care.py`) and the unified TaskEvent engine (`task_engine.py`) remain intentionally separate. Fixed flaky `test_dispatch_retry.py` isolation; added lightweight `test_task_routes_inventory.py` registration/availability guard. The 6 inline digest/recap routes in `server.py` remain for **3E**; startup/background loops remain for **3G**. Suite 274 passed / 3 skipped.
-- **3E — Owner/Report routes.** Consolidate owner-facing + reporting + inline notification digest/recap (incl. `/admin/digest/run-now` + `/admin/weekly-recap/run-now`) into `routes/owner.py` / `routes/reports.py`.
+- **3E ✅ — Owner/Report/Digest routes.** Extracted the 6 owner digest/recap HTTP routes from `server.py` into **`routes/digests.py`** (verbatim; same auth/role gates + response shapes); trimmed 8 route-only `owner_digest` imports from `server.py`. **`server.py` now has zero inline API routes.** Reports (`routes/reports.py`) + dashboard (`routes/dashboard.py`) were already modular (no work); `/owners` roster CRUD stays in `routes/care.py` (not owner-comms). Background digest/recap schedulers + `ensure_digest_indexes` stay in `server.py` (→ 3G). Added lightweight `tests/test_digests_routes.py`. Suite 279 passed / 3 skipped.
 - **3F — Billing routes.** Extract/define `routes/billing.py` (audit current state first).
 - **3G — server.py → app assembly only.** server.py becomes: env load → config validate → middleware → router includes → lifespan/startup. Move JWT helpers + `get_current_user` + `_track`/`_base_url` into `core`; move bootstrap into `core/lifespan.py` (or `startup.py`).
 
@@ -80,6 +84,6 @@ Lowest-risk, least-coupled first (system/admin/analytics → 3B), then domain gr
 ## Guardrails for every sub-phase
 1. No API behavior change; no frontend change.
 2. Use `git mv` / additive routers; keep diffs reviewable.
-3. Run full backend suite (currently **274 passed, 3 skipped** as of Phase 3D) + `/api/health` + login smoke before finishing. *(`tests/test_dispatch_retry.py` isolation was hardened in 3D — it no longer asserts a clean global `task_events` backlog.)*
+3. Run full backend suite (currently **279 passed, 3 skipped** as of Phase 3E) + `/api/health` + login smoke before finishing. *(`tests/test_dispatch_retry.py` isolation was hardened in 3D — it no longer asserts a clean global `task_events` backlog.)*
 4. One sub-phase = one commit-worthy checkpoint.
 5. No multi-tenancy/permissions work here (that's Phase 4).
