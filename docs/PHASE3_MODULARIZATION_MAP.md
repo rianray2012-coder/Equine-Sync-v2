@@ -83,7 +83,7 @@ server.py (app assembly) → core.{config,db,auth,helpers,analytics,urls,constan
 | ✅ done (3B) | **System** | `GET /health` (+ `dependencies`), `GET /` | **3B ✅ → routes/system.py** |
 | ✅ done (3B) | **Admin** | `/seed` (2E-hardened), `/admin/tenant-reset` | **3B ✅ → routes/admin.py** |
 | ✅ done (3B) | **Analytics** | `/events`, `/events/onboarding-funnel` | **3B ✅ → routes/analytics.py** |
-| ✅ done (3E) | **Digests/Recap** | digest/recap preview + send-me + admin run-now (6 routes) | **3E ✅ → routes/digests.py** (schedulers moved to `core/lifespan.py` in **3G ✅**) |
+| ✅ done (3E) | **Digests/Recap** | digest/recap preview + send-me + admin run-now (6 routes) | 3E ✅ → routes/digests.py; schedulers moved to core/lifespan.py in 3G ✅ |
 | ✅ done (3C) | **Horses** | `GET/POST /horses`, `GET/PATCH /horses/{id}` | **3C ✅ → routes/horses.py** (timeline stays in task_engine) |
 | ✅ verified (3D) | **Care/Tasks** | all care routes in `routes/care.py`; all task routes in `task_engine.py` | **3D ✅ — already modular; no moves needed** |
 | ✅ verified (3E) | **Owner/Reports** | reports in `routes/reports.py`, dashboard in `routes/dashboard.py`, owner roster CRUD in `routes/care.py` | **3E ✅ — already modular; `/owners` stays in care.py** |
