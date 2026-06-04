@@ -26,7 +26,8 @@ Move from a ~800-line `server.py` + `routes/*.py` toward the documented target:
 
 ---
 
-## Current Module Dependency Graph (as of 3A)
+## Module Dependency Graph (HISTORICAL — as of 3A)
+> ⚠️ **Historical snapshot.** This reflects the graph at **Phase 3A** and is kept for context only. After **3G**, `server.py` is app-assembly only and no longer has the dependency shape below — shared infra now lives in `core/{db,auth,helpers,analytics,urls,constants,lifespan}.py`. See the post-3G shape immediately after this block.
 ```
 core/config.py        → (stdlib only)              [JWT secret, CORS, limits, ttls, env validation]
 core/rate_limit.py    → core.config                [auth-endpoint limiter dependency]
@@ -44,6 +45,28 @@ server.py             → core.config, core.auth_tokens, core.login_attempts,
                         routes.*, task_engine, notifications, auth_security, mailer, db
 ```
 **Importers of the moved modules (all updated in 3A):** `server.py`, `routes/auth.py`, `tests/{test_config,test_rate_limit,test_auth_tokens,test_login_lockout}.py`, and `core/rate_limit.py`→`core.config` (internal).
+
+### Module Dependency Graph (post-3G — current)
+```
+core/config.py        → (stdlib only)              [JWT secret, CORS, limits, ttls, env validation]
+core/db.py            → motor (env: MONGO_URL/DB_NAME)   [shared client + db handle]
+core/helpers.py       → core.db                    [now_utc/iso/new_id/clean/list_collection/_user_safe/_client_meta]
+core/auth.py          → core.config, core.db, auth_security  [security, create_token, hash_pwd, get_current_user (2E gate), require_setup_role]
+core/analytics.py     → core.db, core.helpers       [_track event recorder]
+core/urls.py          → (stdlib + fastapi.Request)  [_base_url link resolution]
+core/constants.py     → (none)                       [ROLES / ROLE_LABELS]
+core/lifespan.py      → core.config, core.db, core.analytics, seed_data,
+                        task_engine, auth_security, notifications, core.auth_tokens,
+                        mailer, owner_digest         [register_lifecycle: startup/shutdown + loops]
+core/rate_limit.py    → core.config
+core/auth_tokens.py   → (stdlib only)
+core/login_attempts.py→ (stdlib only)
+
+server.py (app assembly) → core.{config,db,auth,helpers,analytics,urls,constants,lifespan},
+                        auth_security, mailer, task_engine, notifications, routes.*, seed_data
+```
+**No module imports from `server.py`.** `core.lifespan` receives `send_nudges` via injection (from the reports router assembled in `server.py`) rather than importing it, keeping the dependency direction one-way.
+
 
 ---
 
@@ -88,6 +111,6 @@ Lowest-risk, least-coupled first (system/admin/analytics → 3B), then domain gr
 ## Guardrails for every sub-phase
 1. No API behavior change; no frontend change.
 2. Use `git mv` / additive routers; keep diffs reviewable.
-3. Run full backend suite (currently **282 passed, 3 skipped** as of Phase 3F) + `/api/health` + login smoke before finishing. *(`tests/test_dispatch_retry.py` isolation was hardened in 3D; a couple of other tests — e.g. `test_founder_crud_sprint` incidents — are environmentally order/backlog-sensitive under full-suite load and pass on clean re-run.)*
+3. Run full backend suite (currently **293 passed, 3 skipped** as of Phase 3G) + `/api/health` + login smoke before finishing. *(`tests/test_dispatch_retry.py` isolation was hardened in 3D; a couple of other tests — e.g. `test_founder_crud_sprint` incidents — are environmentally order/backlog-sensitive under full-suite load and pass on clean re-run.)*
 4. One sub-phase = one commit-worthy checkpoint.
 5. No multi-tenancy/permissions work here (that's Phase 4).
