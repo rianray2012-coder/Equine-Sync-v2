@@ -37,6 +37,38 @@ from owner_digest import (
 
 logger = logging.getLogger(__name__)
 
+PRIMARY_BARN_ID = "primary"
+
+# Phase 4A: domain collections that gain a canonical `barn_id`. Excludes the
+# task-engine + `media` collections (they use `tenant_id="default"` — the
+# temporary alias of barn_id="primary", reconciled in the dedicated Phase 4B
+# task-engine sub-phase), the user-keyed notification collections, the `barn`
+# singleton (keyed by its own `id`), and all auth/session/attempt infra.
+BARN_BACKFILL_COLLECTIONS = [
+    "users", "horses", "owners", "riders", "medications", "medication_logs",
+    "feed_tasks", "vet_records", "farrier_history", "injuries", "wellness",
+    "lessons", "training", "invoices", "messages", "service_requests",
+    "incidents", "locations", "feed_templates", "inventory",
+    "recurring_schedules", "staff_invites", "invites", "onboarding_progress",
+    "events",
+]
+
+
+async def _backfill_barn_id(db) -> int:
+    """Idempotent, additive backfill of barn_id=primary on legacy documents.
+
+    Only touches documents missing the field, so it is safe to re-run on every
+    boot (no destructive updates). Returns the total number of docs modified.
+    """
+    total = 0
+    for coll in BARN_BACKFILL_COLLECTIONS:
+        res = await db[coll].update_many(
+            {"barn_id": {"$exists": False}},
+            {"$set": {"barn_id": PRIMARY_BARN_ID}},
+        )
+        total += res.modified_count
+    return total
+
 
 def register_lifecycle(app, *, send_nudges):
     """Attach startup/shutdown handlers (with background loops) to ``app``.
@@ -83,6 +115,14 @@ def register_lifecycle(app, *, send_nudges):
                 logger.info("Task engine: materialized %d initial occurrences.", created)
         except Exception:
             logger.exception("Task engine startup failed")
+
+        # ---------- Phase 4A: multi-tenancy backfill (idempotent, additive) ----------
+        try:
+            barn_filled = await _backfill_barn_id(db)
+            if barn_filled:
+                logger.info("Phase 4A: backfilled barn_id=primary on %d documents.", barn_filled)
+        except Exception:
+            logger.exception("Phase 4A barn_id backfill failed")
 
         async def _materialize_loop():
             await asyncio.sleep(60)

@@ -47,6 +47,7 @@ from core.auth_tokens import (
     PURPOSE_EMAIL_VERIFY,
 )
 from core.login_attempts import check_lockout, record_failure, clear_attempts
+from core.tenancy import PRIMARY_BARN_ID, resolve_barn_id
 
 logger = logging.getLogger(__name__)
 
@@ -67,12 +68,15 @@ def verify_pwd(p: str, h: str) -> bool:
         return False
 
 
-def create_token(user_id: str, role: str) -> str:
+def create_token(user_id: str, role: str, barn_id: Optional[str] = None) -> str:
     payload = {
         "sub": user_id,
         "role": role,
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXP_HOURS),
     }
+    # Phase 4A: forward-compat barn_id claim (never used for authorization).
+    if barn_id is not None:
+        payload["barn_id"] = barn_id
     return pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
 
@@ -103,6 +107,8 @@ def make_current_user_dependency(db):
         # if they hold a pre-issued token. Missing field => treated as verified.
         if not user_verification_ok(user):
             raise HTTPException(status_code=403, detail="Email not verified")
+        # Phase 4A: attach authoritative barn scope from the user doc.
+        user["barn_id"] = resolve_barn_id(user)
         return user
     return _get
 
@@ -234,6 +240,7 @@ def build_router(db) -> APIRouter:
             "email": body.email.lower(),
             "full_name": body.full_name,
             "role": PUBLIC_REGISTRATION_ROLE,
+            "barn_id": PRIMARY_BARN_ID,
             "password_hash": hash_pwd(body.password),
             "email_verified": False,
             "created_at": now_iso(),
@@ -256,7 +263,7 @@ def build_router(db) -> APIRouter:
                 resp["dev_verification_token"] = raw_verify
             return resp
 
-        token = create_token(user["id"], user["role"])
+        token = create_token(user["id"], user["role"], resolve_barn_id(user))
         ua, ip = await client_meta(request)
         refresh = await issue_refresh_token(db, user["id"], user_agent=ua, ip=ip)
         resp = {
@@ -305,7 +312,7 @@ def build_router(db) -> APIRouter:
                 403,
                 "Email not verified. Please check your inbox for the verification link.",
             )
-        token = create_token(user["id"], user["role"])
+        token = create_token(user["id"], user["role"], resolve_barn_id(user))
         refresh = await issue_refresh_token(db, user["id"], user_agent=ua, ip=ip)
         return {
             "token": token,
@@ -320,7 +327,7 @@ def build_router(db) -> APIRouter:
         user = res["user"]
         old = res["record"]
         await revoke_refresh_token(db, body.refresh_token)
-        token = create_token(user["id"], user["role"])
+        token = create_token(user["id"], user["role"], resolve_barn_id(user))
         ua, ip = await client_meta(request)
         new_refresh = await issue_refresh_token(db, user["id"], user_agent=ua, ip=ip)
         await db.refresh_tokens.update_one(

@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 
+from core.tenancy import PRIMARY_BARN_ID
+
 
 class InviteCreate(BaseModel):
     email: EmailStr
@@ -248,6 +250,7 @@ def build_router(
             "email": inv["email"],
             "full_name": full_name,
             "role": inv["role"],
+            "barn_id": inv.get("barn_id") or PRIMARY_BARN_ID,
             "password_hash": hash_pwd(body.password),
             "created_at": _iso(_now_utc()),
             "via_invite_id": inv["id"],
@@ -263,6 +266,7 @@ def build_router(
         has_setup_role = inv["role"] in ("admin", "barn_manager")
         progress = {
             "user_id": new_user["id"],
+            "barn_id": new_user["barn_id"],
             "steps": {s["id"]: "pending" for s in onboarding_steps},
             "current_step": onboarding_steps[0]["id"],
             "data": {},
@@ -273,7 +277,7 @@ def build_router(
         }
         await db.onboarding_progress.insert_one(progress)
 
-        token = create_token(new_user["id"], new_user["role"])
+        token = create_token(new_user["id"], new_user["role"], new_user["barn_id"])
         ua, ip = await client_meta(request)
         refresh = await issue_refresh_token(db, new_user["id"], user_agent=ua, ip=ip)
         await track("invite.accepted",

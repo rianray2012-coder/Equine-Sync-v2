@@ -1,0 +1,57 @@
+# Phase 4 — Multi-tenancy & Permissions Map
+
+> Status: **4A complete (foundations).** 4B (per-domain read/write scoping), 4C (centralized permission enforcement), 4D (registration/invite barn binding), 4E (cross-tenant isolation test suite) are planned and **not started**. Each sub-phase is commit-worthy, additive, and rollback-safe.
+
+## Approved design decisions (locked)
+1. **`barn_id` is canonical.** The task engine's existing `tenant_id="default"` is mapped to `barn_id="primary"` **at the boundary** — no global rename. (Reconciliation of task-engine docs/router is a dedicated 4B sub-phase.)
+2. **One user → one barn** for v1. Multi-barn membership/switching deferred.
+3. **All existing + new users map to the canonical `primary` barn** in 4A/4B. True multi-barn signup deferred to 4D. **Public registration stays low-privilege (`horse_owner`) — never creates admins.**
+4. **Lightweight centralized capability map** (`resource:action` → roles) + `require()` helper. No tightening in 4A.
+5. **Canonical `barn_id = "primary"`** for the founder/demo barn. Startup migration is idempotent + additive.
+
+---
+
+## 4A — Foundations (done 2026-06-04)
+
+**New modules**
+- `core/tenancy.py` — `PRIMARY_BARN_ID="primary"`, `resolve_barn_id(user)` (missing/empty/None ⇒ primary, legacy-safe), `barn_filter(user, extra)`, `stamp_barn(user, doc)`. Pure; no DB; no `server.py` import.
+- `core/permissions.py` — `CAPABILITIES` map (`"barn:manage" → {admin, barn_manager}`), `has_capability`, `require` (fail-closed on unknown capability), and `require_setup_role` re-expressed through `require(...,"barn:manage")` (behavior-identical, same 403 message). **Defined + tested only — NOT wired into routes in 4A.**
+
+**JWT / user `barn_id` handling**
+- Both auth implementations updated in lockstep: `core/auth.py` (app-wide dependency) **and** `routes/auth.py` (its private `create_token` + `make_current_user_dependency`).
+- `create_token(user_id, role, barn_id=None)` adds an **optional, forward-compat** `barn_id` JWT claim.
+- `get_current_user` (both paths) attaches `user["barn_id"] = resolve_barn_id(user)` from the **fresh user document** — the document is the **source of truth** for authorization/scoping; the JWT claim is never trusted for isolation.
+- `login` / `register` / `refresh` / invite-accept now pass the resolved `barn_id` into `create_token`.
+
+**Creation paths stamp `barn_id`**
+- `routes/auth.py::register` → new user gets `barn_id="primary"` (role stays `horse_owner`).
+- `routes/invites.py` accept-flow → `new_user` + `onboarding_progress` get the invite's `barn_id` (defaults to `primary`).
+- `routes/onboarding.py::create_invite` (staff invites) → stamps `barn_id="primary"`.
+- `seed_data.py` → idempotent end-of-seed sweep stamps `barn_id="primary"` on all seeded collections.
+
+**Idempotent startup migration** (`core/lifespan.py::_backfill_barn_id`, additive only, logged once)
+- `update_many({"barn_id": {"$exists": False}}, {"$set": {"barn_id": "primary"}})` across these **25 domain collections**:
+  `users, horses, owners, riders, medications, medication_logs, feed_tasks, vet_records, farrier_history, injuries, wellness, lessons, training, invoices, messages, service_requests, incidents, locations, feed_templates, inventory, recurring_schedules, staff_invites, invites, onboarding_progress, events`.
+- First boot backfilled **3296 documents**; subsequent boots = 0 (idempotent — no log line).
+
+**Explicitly NOT touched in 4A** (with reasons)
+- **Task engine** (`tasks, task_templates, task_completions, task_events`) + **`media`** — these use `tenant_id="default"`; reconciled to `barn_id` in the dedicated **4B task-engine sub-phase** (alias: `tenant_id="default"` ≡ `barn_id="primary"`).
+- **Notification collections** (`notifications, notification_preferences, notification_digest_log`) — user-keyed; isolation follows user→barn.
+- **`barn` singleton** — keyed by its own `id="primary"` (that id *is* the barn id); adding a redundant field would change `GET /barn` response shape.
+- **Auth/session/attempt infra** (`auth_tokens, refresh_tokens, login_attempts`) — user/token-scoped, no barn needed.
+
+**Tests** (all green)
+- `tests/test_tenancy.py` (11) + `tests/test_permissions.py` (7) — pure unit.
+- `tests/test_core_auth_verification_gate.py` extended (+3): both auth paths attach `barn_id`.
+- `tests/test_phase4a_barn_id.py` (1, live): public registration → stored user `barn_id="primary"` **and** role forced to `horse_owner` (Security Patch 2E re-asserted).
+- Full suite: **315 passed / 3 skipped** (one transient HTTPS connection flake to the preview host on full-suite load; passes on clean re-run — unrelated to logic).
+
+**Guardrails honored:** no read/write scoping yet, no route behavior changes, additive-only migration, no `server.py` imports from core, Security Patch 2E + both email-verification gates preserved.
+
+---
+
+## Next sub-phases (NOT started — await approval)
+- **4B** — per-domain `barn_id` read/write scoping (horses → care → operations → billing → onboarding → analytics/dashboard → digests), then the **task-engine reconciliation** (`tenant_id="default"` → `barn_id`, router uses `resolve_barn_id(user)`, coupled doc migration) + `media`. Cross-barn id access returns **404** (not 403).
+- **4C** — swap inline role checks for `core/permissions.require(...)`.
+- **4D** — registration/invite barn binding (multi-barn signup); decide self-serve vs invite-only barn creation.
+- **4E** — two-barn cross-tenant isolation test suite (the security gate).

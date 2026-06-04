@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 
+from core.tenancy import PRIMARY_BARN_ID
+
 
 ONBOARDING_STEPS: List[Dict[str, Any]] = [
     {"id": "barn", "label": "Barn Profile", "required": True},
@@ -322,6 +324,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
         doc = body.model_dump()
         doc["email"] = doc["email"].lower()
         doc.update({"id": new_id(), "status": "pending",
+                    "barn_id": PRIMARY_BARN_ID,
                     "invited_by": user["full_name"],
                     "created_at": _iso(_now_utc())})
         await db.staff_invites.insert_one(doc)

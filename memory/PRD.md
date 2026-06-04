@@ -5,7 +5,9 @@ Premium all-in-one operating system for elite show barns, training facilities, l
 
 Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne accents. Cormorant Garamond (display) + Inter (body).
 
-> **Status (2026-06-04): Phase 3 backend modularization CLOSED (3A–3G).** `server.py` is now app-assembly only; all shared infra + lifecycle moved to `core/*` (`db`, `auth`, `helpers`, `analytics`, `urls`, `constants`, `lifespan`). Zero behavior change; Security Patch 2E preserved. Backend suite: **293 passed / 3 skipped**. Next per plan: **Phase 4 — Multi-tenancy & Permissions** (`barn_id` across entities + centralized permissions). See `/app/docs/PHASE3_MODULARIZATION_MAP.md`.
+> **Status (2026-06-04): Phase 3 backend modularization CLOSED (3A–3G).** `server.py` is now app-assembly only; all shared infra + lifecycle moved to `core/*` (`db`, `auth`, `helpers`, `analytics`, `urls`, `constants`, `lifespan`). Zero behavior change; Security Patch 2E preserved. See `/app/docs/PHASE3_MODULARIZATION_MAP.md`.
+>
+> **Status (2026-06-04): Phase 4A (multi-tenancy foundations) COMPLETE.** Canonical `barn_id` introduced via `core/tenancy.py` + lightweight capability map `core/permissions.py`. Both auth paths attach `barn_id` from the user doc (source of truth; JWT claim is forward-compat only). Idempotent additive startup backfill stamped `barn_id="primary"` on 25 domain collections (3296 docs, first boot only). Public registration stays low-privilege (`horse_owner`). No read/write scoping yet (that's 4B); zero route behavior change. Backend suite: **315 passed / 3 skipped**. See `/app/docs/PHASE4_MULTITENANCY_MAP.md`. Next: **4B** per-domain scoping + task-engine `tenant_id`→`barn_id` reconciliation (awaiting approval).
 
 
 ## User Choices (Feb 17 2026)

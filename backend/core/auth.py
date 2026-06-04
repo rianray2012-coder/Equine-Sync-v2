@@ -15,6 +15,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from core.config import JWT_SECRET, JWT_ALG, user_verification_ok
 from core.db import db
+from core.tenancy import resolve_barn_id
 from auth_security import JWT_EXP_HOURS
 
 security = HTTPBearer(auto_error=False)
@@ -24,12 +25,16 @@ def hash_pwd(p: str) -> str:
     return bcrypt.hashpw(p.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
-def create_token(user_id: str, role: str) -> str:
+def create_token(user_id: str, role: str, barn_id: Optional[str] = None) -> str:
     payload = {
         'sub': user_id,
         'role': role,
         'exp': datetime.now(timezone.utc) + timedelta(hours=JWT_EXP_HOURS),
     }
+    # Phase 4A: forward-compat barn_id claim. Authorization/scoping always reads
+    # the fresh user document, never this claim.
+    if barn_id is not None:
+        payload['barn_id'] = barn_id
     return pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
 
@@ -48,6 +53,9 @@ async def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depen
     # Missing email_verified is treated as verified (legacy/backfilled users).
     if not user_verification_ok(user):
         raise HTTPException(status_code=403, detail="Email not verified")
+    # Phase 4A: attach the authoritative barn scope from the user doc
+    # (source of truth — never the JWT claim; missing => primary, legacy-safe).
+    user["barn_id"] = resolve_barn_id(user)
     return user
 
 

@@ -33,9 +33,10 @@ async def run_seed(db):
     """Idempotent: clears and inserts rich demo data. Returns a small status dict."""
     now_utc, iso, new_id, hash_pwd = _now_utc, _iso, _new_id, _hash_pwd
 
-    for c in ["users", "horses", "owners", "riders", "medications", "medication_logs",
+    seeded_collections = ["users", "horses", "owners", "riders", "medications", "medication_logs",
               "feed_tasks", "vet_records", "injuries", "wellness", "lessons", "training",
-              "invoices", "messages", "service_requests", "incidents"]:
+              "invoices", "messages", "service_requests", "incidents"]
+    for c in seeded_collections:
         await db[c].delete_many({})
 
     # demo users
@@ -286,5 +287,11 @@ async def run_seed(db):
         "status": "open", "follow_up": "Add stall padding & monitor cameras.",
         "reported_by": "Sophia Reyes", "created_at": iso(now_utc()),
     })
+
+    # Phase 4A: stamp the canonical barn on every freshly-seeded document
+    # (idempotent — only sets where missing). Keeps demo data tenant-consistent.
+    for c in seeded_collections:
+        await db[c].update_many({"barn_id": {"$exists": False}},
+                                {"$set": {"barn_id": "primary"}})
 
     return {"ok": True, "seeded": True}
