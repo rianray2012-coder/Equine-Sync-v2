@@ -19,6 +19,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
+from core.tenancy import resolve_barn_id
+
 
 class SendNudgesBody(BaseModel):
     min_days: int = 3
@@ -40,12 +42,13 @@ def build_reports_module(*, db, onboarding_steps: List[dict], mailer_send, track
     so the startup scheduler in server.py can also invoke `send_nudges` directly.
     """
 
-    async def setup_health_payload() -> Dict[str, Any]:
-        total_progress = await db.onboarding_progress.count_documents({})
-        completed_progress = await db.onboarding_progress.count_documents({"completed": True})
+    async def setup_health_payload(barn_id: Optional[str] = None) -> Dict[str, Any]:
+        scope: Dict[str, Any] = {} if barn_id is None else {"barn_id": barn_id}
+        total_progress = await db.onboarding_progress.count_documents(scope)
+        completed_progress = await db.onboarding_progress.count_documents({**scope, "completed": True})
 
         progresses = await db.onboarding_progress.find(
-            {},
+            scope,
             {"_id": 0, "steps": 1, "data": 1, "updated_at": 1, "created_at": 1,
              "completed": 1, "completed_at": 1, "user_id": 1},
         ).to_list(2000)
@@ -73,11 +76,11 @@ def build_reports_module(*, db, onboarding_steps: List[dict], mailer_send, track
 
         median_hours = _median(durations)
 
-        total_invites = await db.invites.count_documents({})
-        accepted = await db.invites.count_documents({"status": "accepted"})
-        pending_invites = await db.invites.count_documents({"status": "pending"})
-        revoked = await db.invites.count_documents({"status": "revoked"})
-        expired = await db.invites.count_documents({"status": "expired"})
+        total_invites = await db.invites.count_documents(scope)
+        accepted = await db.invites.count_documents({**scope, "status": "accepted"})
+        pending_invites = await db.invites.count_documents({**scope, "status": "pending"})
+        revoked = await db.invites.count_documents({**scope, "status": "revoked"})
+        expired = await db.invites.count_documents({**scope, "status": "expired"})
         acceptance_rate = round(100 * accepted / total_invites) if total_invites else 0
 
         return {
@@ -94,10 +97,14 @@ def build_reports_module(*, db, onboarding_steps: List[dict], mailer_send, track
             },
         }
 
-    async def nudge_candidates(min_days: int = 3) -> List[Dict[str, Any]]:
+    async def nudge_candidates(min_days: int = 3,
+                                barn_id: Optional[str] = None) -> List[Dict[str, Any]]:
         cutoff = _now_utc() - timedelta(days=min_days)
+        progress_scope: Dict[str, Any] = {"completed": {"$ne": True}}
+        if barn_id is not None:
+            progress_scope["barn_id"] = barn_id
         rows = await db.onboarding_progress.find(
-            {"completed": {"$ne": True}}, {"_id": 0},
+            progress_scope, {"_id": 0},
         ).to_list(2000)
         out: List[Dict[str, Any]] = []
         for p in rows:
@@ -109,8 +116,11 @@ def build_reports_module(*, db, onboarding_steps: List[dict], mailer_send, track
                 continue
             if updated > cutoff:
                 continue
+            user_scope: Dict[str, Any] = {"id": p["user_id"]}
+            if barn_id is not None:
+                user_scope["barn_id"] = barn_id
             u = await db.users.find_one(
-                {"id": p["user_id"]},
+                user_scope,
                 {"_id": 0, "email": 1, "full_name": 1, "role": 1},
             )
             if not u or not u.get("email"):
@@ -139,12 +149,13 @@ def build_reports_module(*, db, onboarding_steps: List[dict], mailer_send, track
 
     async def send_nudges(request: Optional[Request], inviter_name: str,
                            min_days: int = 3, cooldown_hours: int = 24,
-                           user_ids: Optional[List[str]] = None) -> Dict[str, Any]:
-        candidates = await nudge_candidates(min_days)
+                           user_ids: Optional[List[str]] = None,
+                           barn_id: Optional[str] = None) -> Dict[str, Any]:
+        candidates = await nudge_candidates(min_days, barn_id)
         if user_ids is not None:
             wanted = set(user_ids)
             candidates = [c for c in candidates if c["user_id"] in wanted]
-        barn = await db.barn.find_one({"id": "primary"}, {"_id": 0, "name": 1}) or {}
+        barn = await db.barn.find_one({"id": barn_id or "primary"}, {"_id": 0, "name": 1}) or {}
         sent = 0; skipped = 0; errors = 0; detail: List[Dict[str, Any]] = []
         cooldown = _now_utc() - timedelta(hours=cooldown_hours)
         base = base_url_from_request(request) if request else (
@@ -232,19 +243,20 @@ def build_router(*, db, get_current_user, onboarding_steps, mailer_send, track,
     @router.get("/reports/setup-health")
     async def setup_health(user=Depends(get_current_user)):
         require_setup_role(user)
-        return await setup_health_payload()
+        return await setup_health_payload(resolve_barn_id(user))
 
     @router.get("/reports/nudge-candidates")
     async def list_nudge_candidates(min_days: int = 3, user=Depends(get_current_user)):
         require_setup_role(user)
-        return await nudge_candidates_fn(min_days)
+        return await nudge_candidates_fn(min_days, resolve_barn_id(user))
 
     @router.post("/admin/send-nudges")
     async def admin_send_nudges(body: SendNudgesBody, request: Request,
                                   user=Depends(get_current_user)):
         require_setup_role(user)
         result = await send_nudges_fn(request, user["full_name"], body.min_days,
-                                       body.cooldown_hours, body.user_ids)
+                                       body.cooldown_hours, body.user_ids,
+                                       resolve_barn_id(user))
         await track(
             "admin.nudges_run",
             {"trigger": "manual", **{k: v for k, v in result.items() if k != "detail"}},

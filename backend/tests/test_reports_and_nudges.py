@@ -113,10 +113,10 @@ class TestNudgeCandidates:
         old = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
         db.users.insert_one({
             "id": uid, "email": f"{uid}@example.com", "full_name": "Test Stalled",
-            "role": "barn_manager", "created_at": old,
+            "role": "barn_manager", "barn_id": "primary", "created_at": old,
         })
         db.onboarding_progress.insert_one({
-            "user_id": uid, "completed": False,
+            "user_id": uid, "completed": False, "barn_id": "primary",
             "steps": {"barn": "complete", "locations": "in_progress"},
             "current_step": "locations",
             "created_at": old, "updated_at": old,
@@ -165,10 +165,10 @@ class TestSendNudges:
         old = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         db.users.insert_one({
             "id": uid, "email": seed_email, "full_name": "Cooldown Tester",
-            "role": "barn_manager", "created_at": old,
+            "role": "barn_manager", "barn_id": "primary", "created_at": old,
         })
         db.onboarding_progress.insert_one({
-            "user_id": uid, "completed": False,
+            "user_id": uid, "completed": False, "barn_id": "primary",
             "steps": {"barn": "complete"}, "current_step": "locations",
             "created_at": old, "updated_at": old,
         })

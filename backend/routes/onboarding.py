@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 
-from core.tenancy import PRIMARY_BARN_ID, resolve_barn_id
+from core.tenancy import barn_filter, resolve_barn_id
 
 
 ONBOARDING_STEPS: List[Dict[str, Any]] = [
@@ -214,9 +214,10 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
 
     @router.get("/barn")
     async def get_barn(user=Depends(get_current_user)):
-        doc = await db.barn.find_one({"id": "primary"}, {"_id": 0})
+        barn_id = resolve_barn_id(user)
+        doc = await db.barn.find_one({"id": barn_id}, {"_id": 0})
         if not doc:
-            doc = {"id": "primary", "name": "", "facility_type": "boarding",
+            doc = {"id": barn_id, "name": "", "facility_type": "boarding",
                    "disciplines": [], "address": "", "timezone": "America/New_York",
                    "contact_email": "", "contact_phone": "", "logo_url": "", "banner_url": ""}
         return doc
@@ -224,17 +225,18 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
     @router.put("/barn")
     async def update_barn(body: BarnSettings, user=Depends(get_current_user)):
         require_setup_role(user)
+        barn_id = resolve_barn_id(user)
         doc = body.model_dump()
-        doc["id"] = "primary"
+        doc["id"] = barn_id
         doc["updated_at"] = _iso(_now_utc())
-        await db.barn.update_one({"id": "primary"}, {"$set": doc}, upsert=True)
-        return await db.barn.find_one({"id": "primary"}, {"_id": 0})
+        await db.barn.update_one({"id": barn_id}, {"$set": doc}, upsert=True)
+        return await db.barn.find_one({"id": barn_id}, {"_id": 0})
 
     # ---------- Locations ----------
 
     @router.get("/locations")
     async def list_locations(user=Depends(get_current_user)):
-        return await list_collection("locations")
+        return await list_collection("locations", barn_filter(user))
 
     @router.post("/locations")
     async def create_location(body: LocationIn, user=Depends(get_current_user)):
@@ -245,14 +247,14 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
 
     @router.delete("/locations/{loc_id}")
     async def delete_location(loc_id: str, user=Depends(get_current_user)):
-        await db.locations.delete_one({"id": loc_id})
+        await db.locations.delete_one(barn_filter(user, {"id": loc_id}))
         return {"ok": True}
 
     # ---------- Feed templates ----------
 
     @router.get("/feed-templates")
     async def list_feed_templates(user=Depends(get_current_user)):
-        return await list_collection("feed_templates")
+        return await list_collection("feed_templates", barn_filter(user))
 
     @router.post("/feed-templates")
     async def create_feed_template(body: FeedTemplateIn, user=Depends(get_current_user)):
@@ -263,14 +265,14 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
 
     @router.delete("/feed-templates/{tid}")
     async def delete_feed_template(tid: str, user=Depends(get_current_user)):
-        await db.feed_templates.delete_one({"id": tid})
+        await db.feed_templates.delete_one(barn_filter(user, {"id": tid}))
         return {"ok": True}
 
     # ---------- Inventory ----------
 
     @router.get("/inventory")
     async def list_inventory(user=Depends(get_current_user)):
-        items = await list_collection("inventory")
+        items = await list_collection("inventory", barn_filter(user))
         for it in items:
             it["low_stock"] = (
                 (it.get("reorder_at") or 0) > 0
@@ -287,14 +289,14 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
 
     @router.delete("/inventory/{iid}")
     async def delete_inventory(iid: str, user=Depends(get_current_user)):
-        await db.inventory.delete_one({"id": iid})
+        await db.inventory.delete_one(barn_filter(user, {"id": iid}))
         return {"ok": True}
 
     # ---------- Recurring Schedules ----------
 
     @router.get("/recurring-schedules")
     async def list_rs(user=Depends(get_current_user)):
-        return await list_collection("recurring_schedules")
+        return await list_collection("recurring_schedules", barn_filter(user))
 
     @router.post("/recurring-schedules")
     async def create_rs(body: RecurringScheduleIn, user=Depends(get_current_user)):
@@ -305,14 +307,14 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
 
     @router.delete("/recurring-schedules/{sid}")
     async def delete_rs(sid: str, user=Depends(get_current_user)):
-        await db.recurring_schedules.delete_one({"id": sid})
+        await db.recurring_schedules.delete_one(barn_filter(user, {"id": sid}))
         return {"ok": True}
 
     # ---------- Staff Invites (lightweight onboarding-side store) ----------
 
     @router.get("/staff-invites")
     async def list_invites(user=Depends(get_current_user)):
-        return await list_collection("staff_invites")
+        return await list_collection("staff_invites", barn_filter(user))
 
     @router.post("/staff-invites")
     async def create_invite(body: StaffInviteIn, user=Depends(get_current_user)):
@@ -326,7 +328,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
         doc = body.model_dump()
         doc["email"] = doc["email"].lower()
         doc.update({"id": new_id(), "status": "pending",
-                    "barn_id": PRIMARY_BARN_ID,
+                    "barn_id": resolve_barn_id(user),
                     "invited_by": user["full_name"],
                     "created_at": _iso(_now_utc())})
         await db.staff_invites.insert_one(doc)
@@ -334,7 +336,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
 
     @router.delete("/staff-invites/{sid}")
     async def delete_invite(sid: str, user=Depends(get_current_user)):
-        await db.staff_invites.delete_one({"id": sid})
+        await db.staff_invites.delete_one(barn_filter(user, {"id": sid}))
         return {"ok": True}
 
     # ---------- CSV import ----------
@@ -352,7 +354,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
         if body.kind == "horses":
             existing_names = {
                 h["name"].lower()
-                for h in await db.horses.find({}, {"_id": 0, "name": 1}).to_list(1000)
+                for h in await db.horses.find(barn_filter(user), {"_id": 0, "name": 1}).to_list(1000)
             }
             for r in rows:
                 if (r.get("name") or "").lower() in existing_names:
@@ -360,7 +362,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
         elif body.kind == "owners":
             existing = {
                 o.get("email", "").lower()
-                for o in await db.owners.find({}, {"_id": 0, "email": 1}).to_list(1000)
+                for o in await db.owners.find(barn_filter(user), {"_id": 0, "email": 1}).to_list(1000)
             }
             for r in rows:
                 if (r.get("email") or "").lower() in existing:
@@ -374,11 +376,11 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
         if body.kind == "horses":
             existing_names = {
                 h["name"].lower()
-                for h in await db.horses.find({}, {"_id": 0, "name": 1}).to_list(2000)
+                for h in await db.horses.find(barn_filter(user), {"_id": 0, "name": 1}).to_list(2000)
             }
             owners_map = {
                 o.get("full_name", "").lower(): o["id"]
-                for o in await db.owners.find({}, {"_id": 0}).to_list(2000)
+                for o in await db.owners.find(barn_filter(user), {"_id": 0}).to_list(2000)
             }
 
             def _maybe_int(v):
@@ -428,7 +430,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
         elif body.kind == "owners":
             existing_emails = {
                 o.get("email", "").lower()
-                for o in await db.owners.find({}, {"_id": 0, "email": 1}).to_list(2000)
+                for o in await db.owners.find(barn_filter(user), {"_id": 0, "email": 1}).to_list(2000)
                 if o.get("email")
             }
             for r in body.rows:
