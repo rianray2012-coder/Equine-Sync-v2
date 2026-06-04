@@ -5,6 +5,9 @@ Premium all-in-one operating system for elite show barns, training facilities, l
 
 Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne accents. Cormorant Garamond (display) + Inter (body).
 
+> **Status (2026-06-04): Phase 3 backend modularization CLOSED (3A–3G).** `server.py` is now app-assembly only; all shared infra + lifecycle moved to `core/*` (`db`, `auth`, `helpers`, `analytics`, `urls`, `constants`, `lifespan`). Zero behavior change; Security Patch 2E preserved. Backend suite: **293 passed / 3 skipped**. Next per plan: **Phase 4 — Multi-tenancy & Permissions** (`barn_id` across entities + centralized permissions). See `/app/docs/PHASE3_MODULARIZATION_MAP.md`.
+
+
 ## User Choices (Feb 17 2026)
 - Scope v1: Polished MVP first (core modules + rich demo data)
 - Auth: JWT-based custom auth with role selection

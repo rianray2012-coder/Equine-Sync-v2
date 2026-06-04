@@ -1,58 +1,61 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, Response
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+"""EquineSync API — application assembly (Phase 3G).
+
+This module is intentionally thin: it loads the environment, validates the
+security-critical configuration, constructs the FastAPI app, wires every
+domain router under ``/api``, attaches middleware, and registers the
+application lifecycle (startup bootstrap + background loops).
+
+All shared infrastructure now lives in ``core/*``:
+  - ``core.db``        Mongo client + ``db`` handle
+  - ``core.auth``      JWT helpers, ``get_current_user`` (Security Patch 2E gate)
+  - ``core.helpers``   generic time/id + Mongo listing utilities
+  - ``core.analytics`` ``_track`` event recorder
+  - ``core.urls``      ``_base_url`` link resolution
+  - ``core.constants`` ``ROLES`` / ``ROLE_LABELS``
+  - ``core.lifespan``  startup/shutdown + materializer/dispatcher/digest/nudge loops
+
+No module imports from ``server.py``; the ASGI entrypoint remains ``server:app``.
+"""
+from fastapi import FastAPI, APIRouter
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-import os
 import logging
 from pathlib import Path
 
 # Load .env BEFORE importing any submodule that reads env vars at import time
-# (e.g. routes/auth.py reads JWT_SECRET; auth_security.py reads JWT_EXP_HOURS).
+# (core.config reads JWT_SECRET; core.db reads MONGO_URL/DB_NAME; auth_security
+# reads JWT_EXP_HOURS).
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# Centralized config validation — fail fast on missing/insecure security vars (Phase 2A).
-# Must run after load_dotenv and before security-critical setup below.
-from core.config import (
-    JWT_SECRET, JWT_ALG, validate_config, get_cors_origins,
-    auto_seed_enabled, user_verification_ok,
-)
+# Centralized config validation — fail fast on missing/insecure security vars
+# (Phase 2A). Must run after load_dotenv and before importing modules below
+# that read env at import time.
+from core.config import validate_config, get_cors_origins
 validate_config()
 
-from core.auth_tokens import ensure_auth_token_indexes
-from core.login_attempts import ensure_login_attempt_indexes
-
-from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional, Dict, Any
-import uuid
-from datetime import datetime, timezone, timedelta, date
-import bcrypt
-import jwt as pyjwt
-import secrets
-import hashlib
-import asyncio
-from mailer import send as send_email, render as render_email
-from task_engine import (
-    build_router as build_task_engine_router,
-    TaskEngine,
-    seed_demo_templates,
-    DEFAULT_TENANT_ID as TASK_TENANT_ID,
+# Shared infrastructure (imported only after .env load + config validation).
+from core.db import db
+from core.auth import get_current_user, create_token, hash_pwd, require_setup_role
+from core.helpers import (
+    new_id, clean, list_collection, _user_safe, _client_meta,
 )
+from core.analytics import _track
+from core.urls import _base_url
+from core.constants import ROLES, ROLE_LABELS
+from core.lifespan import register_lifecycle
+
 from auth_security import (
     JWT_EXP_HOURS,
     SecurityHeadersMiddleware,
     issue_refresh_token,
-    consume_refresh_token,
-    revoke_refresh_token,
-    revoke_all_user_refresh_tokens,
-    ensure_refresh_indexes,
 )
-from notifications import (
-    build_router as build_notifications_router,
-    start_dispatcher as start_notification_dispatcher,
-    ensure_indexes as ensure_notification_indexes,
+from mailer import send as send_email
+from task_engine import (
+    build_router as build_task_engine_router,
+    DEFAULT_TENANT_ID as TASK_TENANT_ID,
 )
+from notifications import build_router as build_notifications_router
 from routes.auth import build_router as build_auth_router
 from routes.dashboard import build_router as build_dashboard_router
 from routes.reports import build_router as build_reports_router
@@ -67,168 +70,27 @@ from routes.admin import build_router as build_admin_router
 from routes.analytics import build_router as build_analytics_router
 from routes.digests import build_router as build_digests_router
 from seed_data import run_seed
-from owner_digest import (
-    run_daily_digest_pass,
-    ensure_digest_indexes,
-    run_weekly_recap_pass,
-)
 
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="EquineSync API")
-
 api_router = APIRouter(prefix="/api")
-security = HTTPBearer(auto_error=False)
 
-# ---------------- helpers ----------------
-def now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+# ---------------- Router assembly ----------------
+# Unified Task Engine
+api_router.include_router(build_task_engine_router(db, get_current_user, _track))
 
-def iso(dt: datetime) -> str:
-    return dt.isoformat()
+# Auth (routes/auth.py)
+api_router.include_router(build_auth_router(db))
 
-def new_id() -> str:
-    return str(uuid.uuid4())
+# Notifications
+api_router.include_router(build_notifications_router(db, get_current_user))
 
-def hash_pwd(p: str) -> str:
-    return bcrypt.hashpw(p.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+# Dashboard (routes/dashboard.py)
+api_router.include_router(build_dashboard_router(db, get_current_user, TASK_TENANT_ID))
 
-def verify_pwd(p: str, h: str) -> bool:
-    try:
-        return bcrypt.checkpw(p.encode('utf-8'), h.encode('utf-8'))
-    except Exception:
-        return False
-
-def create_token(user_id: str, role: str) -> str:
-    payload = {
-        'sub': user_id,
-        'role': role,
-        'exp': datetime.now(timezone.utc) + timedelta(hours=JWT_EXP_HOURS),
-    }
-    return pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
-
-async def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(security)):
-    if not creds:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        payload = pyjwt.decode(creds.credentials, JWT_SECRET, algorithms=[JWT_ALG])
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    user = await db.users.find_one({"id": payload['sub']}, {"_id": 0, "password_hash": 0})
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found")
-    # Defense-in-depth (Security Patch 2E hardening): when email verification is
-    # enforced, block unverified users even if they hold an old/pre-issued token.
-    # Missing email_verified is treated as verified (legacy/backfilled users).
-    if not user_verification_ok(user):
-        raise HTTPException(status_code=403, detail="Email not verified")
-    return user
-
-def require_setup_role(user):
-    """Stable Owner / Admin / Barn Manager can edit barn-level setup."""
-    if user.get("role") not in ("admin", "barn_manager"):
-        raise HTTPException(status_code=403, detail="Owner / Barn Manager access required")
-
-# ---------------- Models ----------------
-ROLES = ["admin", "barn_manager", "trainer", "groom", "working_student",
-         "horse_owner", "rider", "parent", "veterinarian", "farrier"]
-
-class UserCreate(BaseModel):
-    email: EmailStr
-    password: str
-    full_name: str
-    role: str = "admin"
-
-class LoginBody(BaseModel):
-    email: EmailStr
-    password: str
-
-
-def _user_safe(user: dict) -> dict:
-    return {k: v for k, v in user.items() if k not in ("password_hash", "_id")}
-
-
-async def _client_meta(request: Request):
-    ua = request.headers.get("user-agent") if request else None
-    ip = request.client.host if request and request.client else None
-    return ua, ip
-
-
-class RefreshBody(BaseModel):
-    refresh_token: str
-
-
-# Auth endpoints extracted to routes/auth.py. Router included below near
-# the bottom of this file along with task engine and notifications.
-
-# ---------------- Generic listing helpers ----------------
-def clean(doc):
-    if not doc:
-        return doc
-    doc.pop("_id", None)
-    return doc
-
-async def list_collection(coll, query=None, sort_field=None, limit=500):
-    q = query or {}
-    cursor = db[coll].find(q, {"_id": 0})
-    if sort_field:
-        cursor = cursor.sort(sort_field, -1)
-    return await cursor.to_list(limit)
-
-# ---------------- Owner daily digest + weekly recap HTTP routes ----------------
-# (extracted to routes/digests.py — included into api_router below).
-# NOTE: the background digest/recap SCHEDULERS + ensure_digest_indexes remain
-# in this file (startup loops) until Phase 3G; both they and the HTTP routes
-# delegate to the same owner_digest.py domain functions.
-
-
-# ---------------- Dashboard summary (extracted to routes/dashboard.py) ----------------
-# See routes/dashboard.py — included into api_router at the bottom of this file.
-
-# ---------------- Seed (extracted to seed_data.py + routes/admin.py) ----------------
-
-# ---------------- Shared analytics + url helpers (used across modules) ----------------
-async def _track(name: str, props: Dict[str, Any], user_id: Optional[str] = None):
-    """Internal: record an analytics event server-side."""
-    try:
-        await db.events.insert_one({
-            "id": new_id(), "name": name, "props": props or {},
-            "user_id": user_id, "at": iso(now_utc()),
-        })
-    except Exception:
-        logger.exception("Failed to record event %s", name)
-
-
-def _base_url(request: Optional[Request] = None) -> str:
-    env_url = (os.environ.get("APP_BASE_URL") or "").strip().rstrip("/")
-    if env_url:
-        return env_url
-    if request is not None:
-        # Honor x-forwarded-* set by ingress so the link points to the user-facing origin
-        proto = request.headers.get("x-forwarded-proto") or request.url.scheme
-        host = request.headers.get("x-forwarded-host") or request.headers.get("origin", "").replace("https://", "").replace("http://", "") or request.url.netloc
-        host = host.split(",")[0].strip().rstrip("/")
-        if host:
-            return f"{proto}://{host}"
-    return "https://herd-hub-19.emergent.host"
-
-
-# ---------------- Magic-link Invites (extracted to routes/invites.py) ----------------
-ROLE_LABELS = {
-    "admin": "Stable Owner / Admin", "barn_manager": "Barn Manager", "trainer": "Trainer",
-    "groom": "Groom", "working_student": "Working Student", "horse_owner": "Horse Owner",
-    "rider": "Rider", "parent": "Parent / Guardian", "veterinarian": "Veterinarian", "farrier": "Farrier",
-}
-
-# ---------------- Analytics (extracted to routes/analytics.py) ----------------
-
-# ---------------- Setup Health Reports (extracted to routes/reports.py) ----------------
-# See routes/reports.py — included into api_router below. The helpers
-# (setup_health_payload, nudge_candidates, send_nudges) are exposed on the
-# router instance via _reports_helpers so the startup auto-nudge scheduler can
-# reuse send_nudges without duplicating the implementation.
+# Reports (routes/reports.py) — exposes send_nudges for the startup auto-nudge loop
 _reports_router = build_reports_router(
     db=db,
     get_current_user=get_current_user,
@@ -239,27 +101,9 @@ _reports_router = build_reports_router(
     require_setup_role=require_setup_role,
 )
 _send_nudges = _reports_router._reports_helpers["send_nudges"]
-
-# ---------------- Tenant Reset (extracted to routes/admin.py) ----------------
-
-# ---------------- System routes (root + health) extracted to routes/system.py ----------------
-
-# ---------------- Unified Task Engine ----------------
-api_router.include_router(build_task_engine_router(db, get_current_user, _track))
-
-# ---------------- Auth routes (extracted to routes/auth.py) ----------------
-api_router.include_router(build_auth_router(db))
-
-# ---------------- Notifications ----------------
-api_router.include_router(build_notifications_router(db, get_current_user))
-
-# ---------------- Dashboard (extracted to routes/dashboard.py) ----------------
-api_router.include_router(build_dashboard_router(db, get_current_user, TASK_TENANT_ID))
-
-# ---------------- Reports (extracted to routes/reports.py) ----------------
 api_router.include_router(_reports_router)
 
-# ---------------- Invites (extracted to routes/invites.py) ----------------
+# Invites (routes/invites.py)
 api_router.include_router(build_invites_router(
     db=db,
     get_current_user=get_current_user,
@@ -279,7 +123,7 @@ api_router.include_router(build_invites_router(
     new_id=new_id,
 ))
 
-# ---------------- Onboarding (extracted to routes/onboarding.py) ----------------
+# Onboarding (routes/onboarding.py)
 api_router.include_router(build_onboarding_router(
     db=db,
     get_current_user=get_current_user,
@@ -290,7 +134,7 @@ api_router.include_router(build_onboarding_router(
     new_id=new_id,
 ))
 
-# ---------------- Horses (horse-profile CRUD, extracted to routes/horses.py) ----------------
+# Horses — horse-profile CRUD (routes/horses.py).
 # NOTE: GET /horses/{id}/timeline intentionally remains in task_engine.py
 # (it is a task-event projection, not horse-profile CRUD).
 api_router.include_router(build_horses_router(
@@ -301,7 +145,7 @@ api_router.include_router(build_horses_router(
     new_id=new_id,
 ))
 
-# ---------------- Care records (extracted to routes/care.py) ----------------
+# Care records (routes/care.py)
 api_router.include_router(build_care_router(
     db=db,
     get_current_user=get_current_user,
@@ -310,7 +154,7 @@ api_router.include_router(build_care_router(
     new_id=new_id,
 ))
 
-# ---------------- Operations (extracted to routes/operations.py) ----------------
+# Operations (routes/operations.py)
 api_router.include_router(build_operations_router(
     db=db,
     get_current_user=get_current_user,
@@ -319,7 +163,7 @@ api_router.include_router(build_operations_router(
     new_id=new_id,
 ))
 
-# ---------------- Billing (invoices, extracted to routes/billing.py) ----------------
+# Billing — invoices (routes/billing.py)
 api_router.include_router(build_billing_router(
     db=db,
     get_current_user=get_current_user,
@@ -328,10 +172,10 @@ api_router.include_router(build_billing_router(
     new_id=new_id,
 ))
 
-# ---------------- System (root + health, extracted to routes/system.py) ----------------
+# System — root + health (routes/system.py)
 api_router.include_router(build_system_router(db))
 
-# ---------------- Admin (seed + tenant-reset, extracted to routes/admin.py) ----------------
+# Admin — seed + tenant-reset (routes/admin.py)
 api_router.include_router(build_admin_router(
     db=db,
     get_current_user=get_current_user,
@@ -339,17 +183,15 @@ api_router.include_router(build_admin_router(
     run_seed=run_seed,
 ))
 
-# ---------------- Analytics (extracted to routes/analytics.py) ----------------
+# Analytics (routes/analytics.py)
 api_router.include_router(build_analytics_router(db, get_current_user, require_setup_role))
 
-# ---------------- Owner digest + weekly recap HTTP routes (extracted to routes/digests.py) ----------------
+# Owner digest + weekly recap HTTP routes (routes/digests.py)
 api_router.include_router(build_digests_router(db=db, get_current_user=get_current_user))
-
-# (health endpoint extracted to routes/system.py)
-
 
 app.include_router(api_router)
 
+# ---------------- Middleware ----------------
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -359,137 +201,5 @@ app.add_middleware(
 )
 app.add_middleware(SecurityHeadersMiddleware)
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-@app.on_event("startup")
-async def on_startup():
-    # Auto-seed if empty — but NEVER in production (Security Patch 2E hardening),
-    # so a fresh production DB never silently creates demo accounts.
-    if auto_seed_enabled() and await db.users.count_documents({}) == 0:
-        try:
-            await run_seed(db)
-            logger.info("Auto-seeded demo data.")
-        except Exception as e:
-            logger.exception("Seed failed: %s", e)
-
-    # ---------- Task Engine bootstrap ----------
-    try:
-        engine = TaskEngine(db, _track)
-        await engine.ensure_indexes()
-        await ensure_refresh_indexes(db)
-        await ensure_notification_indexes(db)
-        await ensure_auth_token_indexes(db)
-        # Safe migration (Phase 2C): backfill email_verified=True for any pre-existing
-        # users missing the field so verification rollout never locks them out.
-        backfill = await db.users.update_many(
-            {"email_verified": {"$exists": False}},
-            {"$set": {"email_verified": True}},
-        )
-        if backfill.modified_count:
-            logger.info("Backfilled email_verified=True for %d existing users.", backfill.modified_count)
-        # Seed demo templates if none exist yet
-        admin_user = await db.users.find_one({"role": "admin"}, {"_id": 0, "id": 1})
-        admin_id = admin_user.get("id") if admin_user else None
-        seed_res = await seed_demo_templates(db, admin_id)
-        if not seed_res.get("skipped"):
-            logger.info("Task engine: seeded %d demo templates.", seed_res.get("templates_created", 0))
-        # Initial materialization for the 14-day horizon
-        created = await engine.materialize_all()
-        if created:
-            logger.info("Task engine: materialized %d initial occurrences.", created)
-    except Exception:
-        logger.exception("Task engine startup failed")
-
-    async def _materialize_loop():
-        await asyncio.sleep(60)
-        engine_loop = TaskEngine(db, _track)
-        while True:
-            try:
-                n = await engine_loop.materialize_all()
-                if n:
-                    logger.info("Task engine: rolling materialization created %d tasks.", n)
-            except Exception:
-                logger.exception("Materialization loop failed")
-            await asyncio.sleep(15 * 60)
-
-    if os.environ.get("DISABLE_TASK_MATERIALIZER", "").lower() not in ("1", "true", "yes"):
-        asyncio.create_task(_materialize_loop())
-
-    # ---------- Notification dispatcher ----------
-    if os.environ.get("DISABLE_NOTIFICATIONS", "").lower() not in ("1", "true", "yes"):
-        mailer_handle = {"send": send_email, "render": render_email}
-        asyncio.create_task(start_notification_dispatcher(db, mailer_handle))
-
-    # ---------- Owner daily digest scheduler (Phase-C) ----------
-    if os.environ.get("DISABLE_OWNER_DIGEST", "").lower() not in ("1", "true", "yes"):
-        try:
-            await ensure_digest_indexes(db)
-        except Exception:
-            logger.exception("Could not create digest indexes")
-
-        async def _digest_loop():
-            # Default delivery hour is 07:00 barn-local; we use UTC offset for simplicity.
-            target_hour = int(os.environ.get("OWNER_DIGEST_HOUR_UTC", "7"))
-            mailer = {"send": send_email, "render": render_email}
-            await asyncio.sleep(30)  # let startup settle
-            while True:
-                try:
-                    now = datetime.now(timezone.utc)
-                    if now.hour == target_hour:
-                        res = await run_daily_digest_pass(db, mailer)
-                        if res.get("sent"):
-                            logger.info("Owner digest pass: sent=%d skipped=%d",
-                                        res["sent"], res["skipped"])
-                except Exception:
-                    logger.exception("Owner digest loop iteration failed")
-                # Sleep until top of next hour
-                now = datetime.now(timezone.utc)
-                seconds_to_next_hour = 3600 - (now.minute * 60 + now.second)
-                await asyncio.sleep(max(60, seconds_to_next_hour))
-
-        asyncio.create_task(_digest_loop())
-
-    # ---------- Owner weekly recap scheduler (lightweight, Sunday-evening) ----------
-    if os.environ.get("DISABLE_OWNER_WEEKLY_RECAP", "").lower() not in ("1", "true", "yes"):
-        async def _weekly_recap_loop():
-            # Default: Sunday 18:00 UTC. Override via env if needed.
-            target_dow = int(os.environ.get("OWNER_WEEKLY_RECAP_DOW", "6"))  # Mon=0 .. Sun=6
-            target_hour = int(os.environ.get("OWNER_WEEKLY_RECAP_HOUR_UTC", "18"))
-            mailer = {"send": send_email, "render": render_email}
-            await asyncio.sleep(45)  # let startup settle (slight offset from daily digest)
-            while True:
-                try:
-                    now = datetime.now(timezone.utc)
-                    if now.weekday() == target_dow and now.hour == target_hour:
-                        res = await run_weekly_recap_pass(db, mailer, now=now)
-                        if res.get("sent"):
-                            logger.info("Owner weekly recap: sent=%d skipped=%d week=%s",
-                                        res["sent"], res["skipped"], res["for_week"])
-                except Exception:
-                    logger.exception("Owner weekly recap loop iteration failed")
-                # Sleep until top of next hour
-                now = datetime.now(timezone.utc)
-                seconds_to_next_hour = 3600 - (now.minute * 60 + now.second)
-                await asyncio.sleep(max(60, seconds_to_next_hour))
-
-        asyncio.create_task(_weekly_recap_loop())
-
-    # Kick off the daily nudge scheduler (24h interval, 6h warm-up after boot).
-    async def _nudge_loop():
-        await asyncio.sleep(6 * 3600)  # initial delay so server is warm + first nudges aren't spam
-        while True:
-            try:
-                result = await _send_nudges(None, "EquineSync Concierge", min_days=3, cooldown_hours=24)
-                logger.info("Daily nudge run: %s", {k: v for k, v in result.items() if k != "detail"})
-                await _track("admin.nudges_run", {"trigger": "auto_daily", "sent": result.get("sent"), "candidates": result.get("candidates")}, None)
-            except Exception:
-                logger.exception("Auto nudge loop failed")
-            await asyncio.sleep(24 * 3600)
-
-    if os.environ.get("DISABLE_AUTO_NUDGES", "").lower() not in ("1", "true", "yes"):
-        asyncio.create_task(_nudge_loop())
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+# ---------------- Lifecycle (startup/shutdown + background loops) ----------------
+register_lifecycle(app, send_nudges=_send_nudges)
