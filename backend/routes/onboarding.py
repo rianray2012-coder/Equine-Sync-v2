@@ -199,6 +199,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
         await db.onboarding_progress.update_one(
             {"user_id": user["id"]},
             {"$set": {
+                "barn_id": resolve_barn_id(user),
                 "completed": False,
                 "completed_at": None,
                 "steps": {s["id"]: "pending" for s in ONBOARDING_STEPS},

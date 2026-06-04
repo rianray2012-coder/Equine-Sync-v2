@@ -7,7 +7,7 @@ Brand: "Quiet luxury" — matte black, graphite, platinum, soft ivory, champagne
 
 > **Status (2026-06-04): Phase 3 backend modularization CLOSED (3A–3G).** `server.py` is now app-assembly only; all shared infra + lifecycle moved to `core/*` (`db`, `auth`, `helpers`, `analytics`, `urls`, `constants`, `lifespan`). Zero behavior change; Security Patch 2E preserved. See `/app/docs/PHASE3_MODULARIZATION_MAP.md`.
 >
-> **Status (2026-06-04): Phase 4A (multi-tenancy foundations) COMPLETE.** Canonical `barn_id` introduced via `core/tenancy.py` + lightweight capability map `core/permissions.py`. Both auth paths attach `barn_id` from the user doc (source of truth; JWT claim is forward-compat only). Idempotent additive startup backfill stamped `barn_id="primary"` on 25 domain collections (3296 docs, first boot only). Public registration stays low-privilege (`horse_owner`). No read/write scoping yet (that's 4B); zero route behavior change. Backend suite: **315 passed / 3 skipped**. See `/app/docs/PHASE4_MULTITENANCY_MAP.md`. Next: **4B** per-domain scoping + task-engine `tenant_id`→`barn_id` reconciliation (awaiting approval).
+> **Status (2026-06-04): Phase 4A (multi-tenancy foundations) COMPLETE.** Canonical `barn_id` introduced via `core/tenancy.py` + lightweight capability map `core/permissions.py`. Both auth paths attach `barn_id` from the user doc (source of truth; JWT claim is forward-compat only). Idempotent additive startup backfill stamped `barn_id="primary"` on 25 domain collections (3296 docs, first boot only). All creation paths stamp `barn_id` at write time (register, invite-accept clamped to primary, onboarding creates incl. reset-upsert + CSV imports); public registration stays low-privilege (`horse_owner`); invite create ignores client-supplied `barn_id`. No read/write scoping yet (that's 4B); zero route behavior change. Backend suite: **320 passed / 3 skipped**. See `/app/docs/PHASE4_MULTITENANCY_MAP.md`. Next: **4B** per-domain scoping + task-engine `tenant_id`→`barn_id` reconciliation (awaiting approval).
 
 
 ## User Choices (Feb 17 2026)
@@ -36,7 +36,7 @@ The founder-beta "freeze" was lifted. The user supplied a full **23-document gov
 Documentation-only pass; **zero runtime changes** (services never restarted).
 - Created `/app/docs/` with all 23 governance docs + `assets/brand/equinesync-icon.png`.
 - Reconciled `DESIGN_TOKENS.md` to Brand Guide 22 (deprecated warm palette).
-- Authored a **code-grounded `KNOWN_TECH_DEBT.md`** (15 items, file/line-referenced). Top criticals: `JWT_SECRET='change-me'` fallback (`server.py:70`, `auth.py:31`); `barn_id` absent platform-wide (only in `invites.py`); no centralized permission service; hard-deletes in `onboarding.py`; no `AuditLog`; no rate limiting; non-standard API responses.
+- Authored a **code-grounded `KNOWN_TECH_DEBT.md`** (15 items, file/line-referenced). Top criticals: `JWT_SECRET='change-me'` fallback (`server.py:70`, `auth.py:31`); ~~`barn_id` absent platform-wide (only in `invites.py`)~~ **— RESOLVED in Phase 4A: canonical `barn_id` now on users + 25 domain collections via `core/tenancy.py` + startup backfill (read/write scoping lands in 4B)**; no centralized permission service **(foundation added in 4A via `core/permissions.py`; broad wiring in 4C)**; hard-deletes in `onboarding.py`; no `AuditLog`; no rate limiting; non-standard API responses.
 - Logged key decisions in `DECISION_LOG.md`.
 
 ### Phase 2A — JWT Hardening & Centralized Config ✅ (May 30 2026)

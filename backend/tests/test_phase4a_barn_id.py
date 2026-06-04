@@ -139,3 +139,85 @@ def test_onboarding_creates_stamp_primary_barn():
     finally:
         for coll, _id in created_ids:
             db[coll].delete_many({"id": _id})
+
+
+def test_onboarding_reset_creates_progress_with_primary_barn():
+    # Fresh user with no onboarding_progress yet -> reset upsert must stamp barn_id.
+    db = _mongo()
+    email = f"reset_{uuid.uuid4().hex[:8]}@example.com"
+    reg = requests.post(f"{API}/auth/register", json={
+        "email": email, "password": "demo1234!", "full_name": "Reset Tester",
+    }, timeout=30)
+    assert reg.status_code == 200, reg.text
+    data = reg.json()
+    token = data.get("token")
+    uid = (data.get("user") or {}).get("id")
+    assert token and uid, data
+    H = {"Authorization": f"Bearer {token}"}
+    try:
+        db.onboarding_progress.delete_many({"user_id": uid})  # ensure none exists
+        r = requests.post(f"{API}/onboarding/reset", headers=H, timeout=30)
+        assert r.status_code == 200, r.text
+        prog = db.onboarding_progress.find_one({"user_id": uid})
+        assert prog is not None, "reset did not create onboarding_progress"
+        assert prog.get("barn_id") == "primary", prog
+    finally:
+        db.onboarding_progress.delete_many({"user_id": uid})
+        db.users.delete_many({"email": email})
+
+
+def test_invite_accept_clamps_legacy_other_barn_to_primary():
+    # Regression: a legacy/malformed invite with barn_id="other" must still
+    # produce a user clamped to the canonical primary barn in Phase 4A.
+    db = _mongo()
+    raw = "rawtok_" + uuid.uuid4().hex
+    email = f"legacy_{uuid.uuid4().hex[:8]}@example.com"
+    db.invites.insert_one({
+        "id": uuid.uuid4().hex,
+        "email": email,
+        "full_name": "Legacy Barn Tester",
+        "role": "groom",
+        "barn_id": "other",  # malformed / pre-4A invite
+        "token_hash": hash_token(raw),
+        "status": "pending",
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "sends": [],
+    })
+    try:
+        r = requests.post(f"{API}/invites/accept",
+                          json={"token": raw, "password": "demo1234!"}, timeout=30)
+        assert r.status_code == 200, r.text
+        user = r.json()["user"]
+        assert user["barn_id"] == "primary", r.text
+        db.users.delete_many({"email": email})
+        db.onboarding_progress.delete_many({"user_id": user["id"]})
+    finally:
+        db.invites.delete_many({"email": email})
+        db.users.delete_many({"email": email})
+
+
+def test_csv_commit_stamps_primary_barn_horses_and_owners():
+    H = _admin_headers()
+    db = _mongo()
+    horse_name = f"CsvHorse_{uuid.uuid4().hex[:8]}"
+    owner_email = f"csvowner_{uuid.uuid4().hex[:8]}@example.com"
+    try:
+        rh = requests.post(f"{API}/onboarding/csv-commit", headers=H, json={
+            "kind": "horses", "rows": [{"name": horse_name}],
+        }, timeout=30)
+        assert rh.status_code == 200, rh.text
+        assert rh.json().get("created") == 1, rh.text
+        horse = db.horses.find_one({"name": horse_name})
+        assert horse is not None and horse.get("barn_id") == "primary", horse
+
+        ro = requests.post(f"{API}/onboarding/csv-commit", headers=H, json={
+            "kind": "owners", "rows": [{"full_name": "CSV Owner", "email": owner_email}],
+        }, timeout=30)
+        assert ro.status_code == 200, ro.text
+        assert ro.json().get("created") == 1, ro.text
+        owner = db.owners.find_one({"email": owner_email})
+        assert owner is not None and owner.get("barn_id") == "primary", owner
+    finally:
+        db.horses.delete_many({"name": horse_name})
+        db.owners.delete_many({"email": owner_email})

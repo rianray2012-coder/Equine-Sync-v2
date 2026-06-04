@@ -254,7 +254,10 @@ def build_router(
             "email": inv["email"],
             "full_name": full_name,
             "role": inv["role"],
-            "barn_id": inv.get("barn_id") or PRIMARY_BARN_ID,
+            # Phase 4A: clamp to the canonical primary barn regardless of any
+            # legacy/malformed barn_id stored on the invite. Per-barn invite
+            # binding is deferred to Phase 4D multi-barn binding.
+            "barn_id": PRIMARY_BARN_ID,
             "password_hash": hash_pwd(body.password),
             "created_at": _iso(_now_utc()),
             "via_invite_id": inv["id"],

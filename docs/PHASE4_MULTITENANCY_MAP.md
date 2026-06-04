@@ -25,8 +25,8 @@
 
 **Creation paths stamp `barn_id`**
 - `routes/auth.py::register` → new user gets `barn_id="primary"` (role stays `horse_owner`).
-- `routes/invites.py::create_invite_with_link` → **ignores any client-supplied `body.barn_id`** and binds the invite to `resolve_barn_id(current_user)` (currently always `primary`); per-barn targeting is deferred to Phase 4D. The accept-flow `new_user` + `onboarding_progress` inherit the invite's (now-forced-primary) `barn_id`.
-- `routes/onboarding.py` → stamps `barn_id=resolve_barn_id(user)` at creation time on `onboarding_progress` (`_ensure_progress`), `locations`, `feed_templates`, `inventory`, `recurring_schedules`, and CSV-imported `horses` + `owners` (no longer relying solely on the startup backfill). Staff invites stamp `barn_id="primary"`. The `barn` singleton is intentionally left keyed by its `id` (unchanged).
+- `routes/invites.py::create_invite_with_link` → **ignores any client-supplied `body.barn_id`** and binds the invite to `resolve_barn_id(current_user)` (currently always `primary`); per-barn targeting is deferred to Phase 4D. The accept-flow `new_user` is **clamped to `PRIMARY_BARN_ID`** (defends against legacy/malformed invite `barn_id`); `onboarding_progress` inherits it.
+- `routes/onboarding.py` → stamps `barn_id=resolve_barn_id(user)` at creation time on `onboarding_progress` (both `_ensure_progress` and the `POST /onboarding/reset` upsert), `locations`, `feed_templates`, `inventory`, `recurring_schedules`, and CSV-imported `horses` + `owners` (no longer relying solely on the startup backfill). Staff invites stamp `barn_id="primary"`. The `barn` singleton is intentionally left keyed by its `id` (unchanged).
 - `seed_data.py` → idempotent end-of-seed sweep stamps `barn_id="primary"` on all seeded collections.
 
 **Idempotent startup migration** (`core/lifespan.py::_backfill_barn_id`, additive only, logged once)
@@ -43,8 +43,9 @@
 **Tests** (all green)
 - `tests/test_tenancy.py` (13) + `tests/test_permissions.py` (7) — pure unit (incl. `barn_filter` override-rejection tests).
 - `tests/test_core_auth_verification_gate.py` extended (+3): both auth paths attach `barn_id`.
-- `tests/test_phase4a_barn_id.py` (live): public registration → `barn_id="primary"` + role forced `horse_owner`; invite create ignores client `barn_id="other"`; invite accept → user `barn_id="primary"`; onboarding creates (`locations`/`feed-templates`/`inventory`/`recurring-schedules`) stamp `barn_id="primary"`.
-- Full suite: **315 passed / 3 skipped** (one transient HTTPS connection flake to the preview host on full-suite load; passes on clean re-run — unrelated to logic).
+- `tests/test_phase4a_barn_id.py` (live): public registration → `barn_id="primary"` + role forced `horse_owner`; invite create ignores client `barn_id="other"`; invite accept (incl. a legacy `barn_id="other"` invite) → user clamped to `barn_id="primary"`; `POST /onboarding/reset` before progress exists → created `onboarding_progress` is `primary`; onboarding creates (`locations`/`feed-templates`/`inventory`/`recurring-schedules`) and `csv-commit` horses+owners stamp `barn_id="primary"`.
+- Full suite: **320 passed / 3 skipped**.
+- Full suite: **320 passed / 3 skipped** (a transient HTTPS connection flake to the preview host can occur under full-suite load; passes on clean re-run — unrelated to logic).
 
 **Guardrails honored:** no read/write scoping yet, no route behavior changes, additive-only migration, no `server.py` imports from core, Security Patch 2E + both email-verification gates preserved.
 
