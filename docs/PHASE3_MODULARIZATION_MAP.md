@@ -83,13 +83,13 @@ server.py (app assembly) → core.{config,db,auth,helpers,analytics,urls,constan
 | ✅ done (3B) | **System** | `GET /health` (+ `dependencies`), `GET /` | **3B ✅ → routes/system.py** |
 | ✅ done (3B) | **Admin** | `/seed` (2E-hardened), `/admin/tenant-reset` | **3B ✅ → routes/admin.py** |
 | ✅ done (3B) | **Analytics** | `/events`, `/events/onboarding-funnel` | **3B ✅ → routes/analytics.py** |
-| ✅ done (3E) | **Digests/Recap** | digest/recap preview + send-me + admin run-now (6 routes) | **3E ✅ → routes/digests.py** (schedulers stay → 3G) |
+| ✅ done (3E) | **Digests/Recap** | digest/recap preview + send-me + admin run-now (6 routes) | **3E ✅ → routes/digests.py** (schedulers moved to `core/lifespan.py` in **3G ✅**) |
 | ✅ done (3C) | **Horses** | `GET/POST /horses`, `GET/PATCH /horses/{id}` | **3C ✅ → routes/horses.py** (timeline stays in task_engine) |
 | ✅ verified (3D) | **Care/Tasks** | all care routes in `routes/care.py`; all task routes in `task_engine.py` | **3D ✅ — already modular; no moves needed** |
 | ✅ verified (3E) | **Owner/Reports** | reports in `routes/reports.py`, dashboard in `routes/dashboard.py`, owner roster CRUD in `routes/care.py` | **3E ✅ — already modular; `/owners` stays in care.py** |
 | ✅ done (3F) | **Billing** | `GET/POST /invoices`, `POST /invoices/{id}/pay` | **3F ✅ → routes/billing.py** (invoice bookkeeping only; no payment processor) |
 
-> Note: server.py also holds shared infra that is **not** a route group — `db` setup, JWT helpers (`create_token`), `get_current_user`, `_track`, `_base_url`, and the startup/shutdown bootstrap. These remain until **3G** (app assembly only), where the JWT/auth helpers should move into `core` and the bootstrap into a small `lifespan`/startup module.
+> Note (updated post-3G): server.py previously also held shared infra that is **not** a route group — `db` setup, JWT helpers (`create_token`), `get_current_user`, `_track`, `_base_url`, and the startup/shutdown bootstrap. **As of 3G ✅ these have all been relocated to `core/*`** — `core/db.py` (`db`), `core/auth.py` (JWT/`get_current_user`), `core/helpers.py`, `core/analytics.py` (`_track`), `core/urls.py` (`_base_url`), `core/constants.py`, and `core/lifespan.py` (startup/shutdown + background loops). `server.py` is now app-assembly only.
 
 ---
 
