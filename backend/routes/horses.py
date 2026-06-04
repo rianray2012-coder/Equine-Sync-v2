@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from core.tenancy import barn_filter, stamp_barn
+
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
@@ -54,25 +56,37 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.get("/horses")
     async def list_horses(user=Depends(get_current_user)):
-        return await list_collection("horses")
+        # Phase 4B-1: scope list reads to the caller's barn.
+        return await list_collection("horses", barn_filter(user))
 
     @router.post("/horses")
     async def create_horse(body: HorseIn, user=Depends(get_current_user)):
         doc = body.model_dump()
         doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
+        # Phase 4B-1: stamp the caller's barn at write time.
+        stamp_barn(user, doc)
         await db.horses.insert_one(doc)
         return clean(doc)
 
     @router.get("/horses/{horse_id}")
     async def get_horse(horse_id: str, user=Depends(get_current_user)):
-        h = await db.horses.find_one({"id": horse_id}, {"_id": 0})
+        # Phase 4B-1: scope by id + barn; a cross-barn id 404s (no existence leak).
+        h = await db.horses.find_one(barn_filter(user, {"id": horse_id}), {"_id": 0})
         if not h:
             raise HTTPException(404, "Horse not found")
         return h
 
     @router.patch("/horses/{horse_id}")
     async def update_horse(horse_id: str, body: Dict[str, Any], user=Depends(get_current_user)):
-        await db.horses.update_one({"id": horse_id}, {"$set": body})
-        return await db.horses.find_one({"id": horse_id}, {"_id": 0})
+        scope = barn_filter(user, {"id": horse_id})
+        existing = await db.horses.find_one(scope, {"_id": 0})
+        if not existing:
+            raise HTTPException(404, "Horse not found")
+        # Phase 4B-1: never allow a client to move a horse between barns
+        # (or rewrite its id) via the free-form PATCH body.
+        updates = {k: v for k, v in body.items() if k not in ("barn_id", "id")}
+        if updates:
+            await db.horses.update_one(scope, {"$set": updates})
+        return await db.horses.find_one(scope, {"_id": 0})
 
     return router

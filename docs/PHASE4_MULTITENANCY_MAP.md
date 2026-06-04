@@ -51,7 +51,8 @@
 ---
 
 ## Next sub-phases (NOT started — await approval)
-- **4B** — per-domain `barn_id` read/write scoping (horses → care → operations → billing → onboarding → analytics/dashboard → digests), then the **task-engine reconciliation** (`tenant_id="default"` → `barn_id`, router uses `resolve_barn_id(user)`, coupled doc migration) + `media`. Cross-barn id access returns **404** (not 403).
+- **4B-1 ✅ — Horses** (`routes/horses.py`, done 2026-06-04). Scoped `GET /horses` list via `barn_filter(user)`; `GET/PATCH /horses/{id}` filter on `id`+`barn_id` (cross-barn ⇒ **404**, no existence leak); `POST /horses` stamps `barn_id` via `stamp_barn(user, doc)`; free-form `PATCH` strips `barn_id`/`id` so a horse can never be moved between barns. New `tests/test_horses_scoping.py` (4): other-barn exclusion from list, GET+PATCH 404, POST→primary, PATCH-cannot-move. Full suite **327 passed / 3 skipped**. *(Scope from the fresh user doc via `resolve_barn_id` only; no task_engine/media changes.)*
+- **4B-2 … 4B-6** — per-domain read/write scoping (care, operations, billing, onboarding+reports incl. barn-settings key switch, aggregations).
 - **4C** — swap inline role checks for `core/permissions.require(...)`.
 - **4D** — registration/invite barn binding (multi-barn signup); decide self-serve vs invite-only barn creation.
 - **4E** — two-barn cross-tenant isolation test suite (the security gate).
