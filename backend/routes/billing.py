@@ -14,8 +14,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from core.tenancy import barn_filter, stamp_barn
 
 
 def _now_utc() -> datetime:
@@ -43,21 +45,27 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.get("/invoices")
     async def list_invoices(user=Depends(get_current_user)):
-        return await list_collection("invoices", sort_field="due_date")
+        return await list_collection("invoices", barn_filter(user), sort_field="due_date")
 
     @router.post("/invoices")
     async def create_invoice(body: InvoiceIn, user=Depends(get_current_user)):
         doc = body.model_dump()
         doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
+        stamp_barn(user, doc)
         await db.invoices.insert_one(doc)
         return clean(doc)
 
     @router.post("/invoices/{invoice_id}/pay")
     async def pay_invoice(invoice_id: str, user=Depends(get_current_user)):
+        # Phase 4B-4: scope by id + barn so a cross-barn invoice 404s (no
+        # existence leak / no mutation). Idempotent "set status=paid" preserved.
+        scope = barn_filter(user, {"id": invoice_id})
+        if not await db.invoices.find_one(scope, {"_id": 0}):
+            raise HTTPException(404, "Invoice not found")
         await db.invoices.update_one(
-            {"id": invoice_id},
+            scope,
             {"$set": {"status": "paid", "paid_at": _iso(_now_utc())}},
         )
-        return await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+        return await db.invoices.find_one(scope, {"_id": 0})
 
     return router
