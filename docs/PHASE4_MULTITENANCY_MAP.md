@@ -44,8 +44,7 @@
 - `tests/test_tenancy.py` (13) + `tests/test_permissions.py` (7) — pure unit (incl. `barn_filter` override-rejection tests).
 - `tests/test_core_auth_verification_gate.py` extended (+3): both auth paths attach `barn_id`.
 - `tests/test_phase4a_barn_id.py` (live): public registration → `barn_id="primary"` + role forced `horse_owner`; invite create ignores client `barn_id="other"`; invite accept (incl. a legacy `barn_id="other"` invite) → user clamped to `barn_id="primary"`; `POST /onboarding/reset` before progress exists → created `onboarding_progress` is `primary`; onboarding creates (`locations`/`feed-templates`/`inventory`/`recurring-schedules`) and `csv-commit` horses+owners stamp `barn_id="primary"`.
-- Full suite: **320 passed / 3 skipped**.
-- Full suite: **320 passed / 3 skipped** (a transient HTTPS connection flake to the preview host can occur under full-suite load; passes on clean re-run — unrelated to logic).
+- Full suite: **323 passed / 3 skipped** (a transient HTTPS connection flake to the preview host can occur under full-suite load; passes on clean re-run — unrelated to logic).
 
 **Guardrails honored:** no read/write scoping yet, no route behavior changes, additive-only migration, no `server.py` imports from core, Security Patch 2E + both email-verification gates preserved.
 
