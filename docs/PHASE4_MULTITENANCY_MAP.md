@@ -1,6 +1,6 @@
 # Phase 4 — Multi-tenancy & Permissions Map
 
-> Status: **4A complete (foundations).** 4B (per-domain read/write scoping), 4C (centralized permission enforcement), 4D (registration/invite barn binding), 4E (cross-tenant isolation test suite) are planned and **not started**. Each sub-phase is commit-worthy, additive, and rollback-safe.
+> Status: **4A complete (foundations); 4B-1 Horses complete.** Remaining 4B sub-phases (4B-2 Care → 4B-6 Aggregations, and 4B-7 task-engine/media reconciliation) are **not started**, along with 4C (centralized permission enforcement), 4D (registration/invite barn binding), and 4E (cross-tenant isolation test suite). Each sub-phase is commit-worthy, additive, and rollback-safe, gated on explicit approval.
 
 ## Approved design decisions (locked)
 1. **`barn_id` is canonical.** The task engine's existing `tenant_id="default"` is mapped to `barn_id="primary"` **at the boundary** — no global rename. (Reconciliation of task-engine docs/router is a dedicated 4B sub-phase.)
@@ -52,7 +52,8 @@
 
 ## Next sub-phases (NOT started — await approval)
 - **4B-1 ✅ — Horses** (`routes/horses.py`, done 2026-06-04). Scoped `GET /horses` list via `barn_filter(user)`; `GET/PATCH /horses/{id}` filter on `id`+`barn_id` (cross-barn ⇒ **404**, no existence leak); `POST /horses` stamps `barn_id` via `stamp_barn(user, doc)`; free-form `PATCH` strips `barn_id`/`id` so a horse can never be moved between barns. New `tests/test_horses_scoping.py` (4): other-barn exclusion from list, GET+PATCH 404, POST→primary, PATCH-cannot-move. Full suite **327 passed / 3 skipped**. *(Scope from the fresh user doc via `resolve_barn_id` only; no task_engine/media changes.)*
-- **4B-2 … 4B-6** — per-domain read/write scoping (care, operations, billing, onboarding+reports incl. barn-settings key switch, aggregations).
+- **4B-2 … 4B-6** — per-domain read/write scoping (care, operations, billing, onboarding+reports incl. barn-settings key switch, aggregations). **Not started.**
+- **4B-7 — task-engine + media reconciliation** (`task_engine.py`, `storage.py`, dashboard tenant param): coupled idempotent migration `tenant_id "default" → "primary"` + router/loops switch to `resolve_barn_id(user)`. **RESERVED — not started; highest risk; its own separate approval gate, executed LAST in 4B.**
 - **4C** — swap inline role checks for `core/permissions.require(...)`.
 - **4D** — registration/invite barn binding (multi-barn signup); decide self-serve vs invite-only barn creation.
 - **4E** — two-barn cross-tenant isolation test suite (the security gate).
