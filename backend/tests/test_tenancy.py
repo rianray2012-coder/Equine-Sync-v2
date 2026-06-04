@@ -32,6 +32,19 @@ def test_barn_filter_merges_extra():
         "barn_id": "b1", "status": "open"}
 
 
+def test_barn_filter_extra_cannot_override_barn_id():
+    # Hardening: a conflicting extra["barn_id"] must be ignored, not honored.
+    out = barn_filter({"barn_id": "b1"}, {"barn_id": "evil", "status": "open"})
+    assert out["barn_id"] == "b1"
+    assert out["status"] == "open"
+
+
+def test_barn_filter_extra_override_with_missing_user_barn():
+    # Even when the user has no barn (=> primary), extra cannot replace it.
+    out = barn_filter({"role": "groom"}, {"barn_id": "evil"})
+    assert out["barn_id"] == "primary"
+
+
 def test_barn_filter_no_extra():
     assert barn_filter({"barn_id": "b2"}) == {"barn_id": "b2"}
 

@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 
-from core.tenancy import PRIMARY_BARN_ID
+from core.tenancy import PRIMARY_BARN_ID, resolve_barn_id
 
 
 ONBOARDING_STEPS: List[Dict[str, Any]] = [
@@ -147,6 +147,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
             return doc
         doc = {
             "user_id": user["id"],
+            "barn_id": resolve_barn_id(user),
             "steps": {s["id"]: "pending" for s in ONBOARDING_STEPS},
             "current_step": ONBOARDING_STEPS[0]["id"],
             "data": {},
@@ -237,7 +238,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
     @router.post("/locations")
     async def create_location(body: LocationIn, user=Depends(get_current_user)):
         doc = body.model_dump()
-        doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
+        doc.update({"id": new_id(), "barn_id": resolve_barn_id(user), "created_at": _iso(_now_utc())})
         await db.locations.insert_one(doc)
         return clean(doc)
 
@@ -255,7 +256,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
     @router.post("/feed-templates")
     async def create_feed_template(body: FeedTemplateIn, user=Depends(get_current_user)):
         doc = body.model_dump()
-        doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
+        doc.update({"id": new_id(), "barn_id": resolve_barn_id(user), "created_at": _iso(_now_utc())})
         await db.feed_templates.insert_one(doc)
         return clean(doc)
 
@@ -279,7 +280,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
     @router.post("/inventory")
     async def create_inventory(body: InventoryIn, user=Depends(get_current_user)):
         doc = body.model_dump()
-        doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
+        doc.update({"id": new_id(), "barn_id": resolve_barn_id(user), "created_at": _iso(_now_utc())})
         await db.inventory.insert_one(doc)
         return clean(doc)
 
@@ -297,7 +298,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
     @router.post("/recurring-schedules")
     async def create_rs(body: RecurringScheduleIn, user=Depends(get_current_user)):
         doc = body.model_dump()
-        doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
+        doc.update({"id": new_id(), "barn_id": resolve_barn_id(user), "created_at": _iso(_now_utc())})
         await db.recurring_schedules.insert_one(doc)
         return clean(doc)
 
@@ -401,6 +402,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
                 existing_names.add(name.lower())
                 doc = {
                     "id": new_id(),
+                    "barn_id": resolve_barn_id(user),
                     "name": name,
                     "barn_name": r.get("barn_name") or name,
                     "breed": r.get("breed"),
@@ -440,6 +442,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
                     existing_emails.add(email)
                 doc = {
                     "id": new_id(),
+                    "barn_id": resolve_barn_id(user),
                     "full_name": name,
                     "email": email or None,
                     "phone": r.get("phone"),

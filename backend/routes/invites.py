@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 
-from core.tenancy import PRIMARY_BARN_ID
+from core.tenancy import PRIMARY_BARN_ID, resolve_barn_id
 
 
 class InviteCreate(BaseModel):
@@ -93,14 +93,18 @@ def build_router(
         raw_token, token_hash = new_token_pair()
         ttl_days = int(os.environ.get("INVITE_TTL_DAYS", "7"))
         expires_at = _now_utc() + timedelta(days=ttl_days)
-        barn = await db.barn.find_one({"id": body.barn_id or "primary"}, {"_id": 0, "name": 1}) or {}
+        # Phase 4A hardening: ignore any client-supplied barn_id and bind the
+        # invite to the inviter's barn (currently always "primary"). Per-barn
+        # targeting via body.barn_id is deferred to Phase 4D multi-barn binding.
+        invite_barn_id = resolve_barn_id(user)
+        barn = await db.barn.find_one({"id": invite_barn_id}, {"_id": 0, "name": 1}) or {}
 
         invite = {
             "id": new_id(),
             "email": email_l,
             "full_name": body.full_name,
             "role": body.role,
-            "barn_id": body.barn_id or "primary",
+            "barn_id": invite_barn_id,
             "token_hash": token_hash,
             "status": "pending",
             "message": body.message,

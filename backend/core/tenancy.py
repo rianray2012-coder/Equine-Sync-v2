@@ -34,10 +34,16 @@ def resolve_barn_id(user: Optional[Dict[str, Any]]) -> str:
 
 
 def barn_filter(user: Optional[Dict[str, Any]], extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Build a Mongo filter scoped to the user's barn, merged with ``extra``."""
-    q: Dict[str, Any] = {"barn_id": resolve_barn_id(user)}
+    """Build a Mongo filter scoped to the user's barn, merged with ``extra``.
+
+    Hardening (Phase 4A): caller-provided ``extra`` can NEVER replace the
+    resolved barn scope. ``extra`` is merged first, then the authoritative
+    ``barn_id`` is set last so a conflicting ``extra["barn_id"]`` is ignored.
+    """
+    q: Dict[str, Any] = {}
     if extra:
         q.update(extra)
+    q["barn_id"] = resolve_barn_id(user)
     return q
 
 
