@@ -84,6 +84,15 @@ Final narrow hardening pass on Patch 2E (no Phase 3B). Addresses Codex follow-up
 - **Tests:** `tests/test_security_patch_2e.py` expanded with `evaluate_seed_access` (all branches incl. prod-blocked), `auto_seed_enabled`, `user_verification_ok` unit tests + env-gated enforcement HTTP tests. **Full suite: 250 passed, 3 skipped, 0 regressions.** Lint clean.
 - **Next:** GitHub save → Codex re-review → resume Phase 3B.
 
+### Phase 3F — Billing (invoice) route extraction ✅ (Jun 2 2026)
+Behavior-preserving modularization (no Phase 3G/4, no frontend, no payment processor).
+- **New `routes/billing.py`** — the 3 invoice routes (`GET/POST /invoices`, `POST /invoices/{id}/pay`) + `InvoiceIn`, lifted verbatim from `routes/operations.py` (same auth, response shapes, `due_date` sort, `status="paid"`/`paid_at` write).
+- **Billing is intentionally invoice-bookkeeping only** — no Stripe/charges/subscriptions; `/pay` is a status flip. Documented so future agents don't assume a gateway.
+- `operations.py` slimmed (invoice section + `InvoiceIn` removed, dead `List/Dict/Any` imports trimmed); lessons/training/messages/service-requests/incidents untouched.
+- **Tests:** new lightweight `tests/test_billing_routes.py` (registration, 401, create/list/pay round-trip). **Full suite: 282 passed, 3 skipped.** Smoke: invoice create→open / list / pay→paid+paid_at verified via external URL.
+- Docs: `PHASE3_MODULARIZATION_MAP.md`, `DECISION_LOG.md` updated.
+- **Next:** Phase 3G (server.py → app-assembly only: move shared infra + bootstrap loops into `core`) — not started.
+
 ### Phase 3E — Owner digest/recap route extraction ✅ (Jun 2 2026)
 Behavior-preserving modularization (no Phase 3F/3G/4, no frontend).
 - **New `routes/digests.py`** — the 6 owner digest/recap HTTP routes (preview/send-me/admin-run-now for daily digest + weekly recap), lifted verbatim from `server.py` with identical auth + role gates (owner-only send-me, admin/barn_manager run-now) and response shapes.

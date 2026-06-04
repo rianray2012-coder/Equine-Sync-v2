@@ -1,4 +1,4 @@
-"""routes/operations.py — operational records: lessons, training, invoices,
+"""routes/operations.py — operational records: lessons, training,
 messages, service requests, incidents.
 
 Phase-F final extraction (Feb 20 2026). Trivial CRUD over MongoDB
@@ -6,11 +6,13 @@ collections, sharing list_collection/clean/new_id helpers. The
 service-request approve/decline flows carry their own role gating
 (admin/barn_manager/trainer) plus a pending-state guard so re-mutation
 returns 409.
+
+Note: invoice/billing routes were extracted to `routes/billing.py` in Phase 3F.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -46,16 +48,6 @@ class TrainingSessionIn(BaseModel):
     notes: Optional[str] = None
     rating: Optional[int] = None
     homework: Optional[str] = None
-
-
-class InvoiceIn(BaseModel):
-    owner_id: str
-    horse_id: Optional[str] = None
-    items: List[Dict[str, Any]]
-    total: float
-    due_date: str
-    status: str = "open"  # open, paid, overdue
-    notes: Optional[str] = None
 
 
 class MessageIn(BaseModel):
@@ -136,27 +128,6 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
         doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
         await db.training.insert_one(doc)
         return clean(doc)
-
-    # ---------------- Invoices ----------------
-
-    @router.get("/invoices")
-    async def list_invoices(user=Depends(get_current_user)):
-        return await list_collection("invoices", sort_field="due_date")
-
-    @router.post("/invoices")
-    async def create_invoice(body: InvoiceIn, user=Depends(get_current_user)):
-        doc = body.model_dump()
-        doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
-        await db.invoices.insert_one(doc)
-        return clean(doc)
-
-    @router.post("/invoices/{invoice_id}/pay")
-    async def pay_invoice(invoice_id: str, user=Depends(get_current_user)):
-        await db.invoices.update_one(
-            {"id": invoice_id},
-            {"$set": {"status": "paid", "paid_at": _iso(_now_utc())}},
-        )
-        return await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
 
     # ---------------- Messages ----------------
 

@@ -19,6 +19,14 @@ Status:
 
 ## Entries
 
+### 2026-06-02 — Phase 3F: Billing (invoice) route extraction
+- **Decision:** Extracted the 3 invoice routes (`GET /invoices`, `POST /invoices`, `POST /invoices/{id}/pay`) + the `InvoiceIn` model from `routes/operations.py` into a new dedicated **`routes/billing.py`** (`build_router(*, db, get_current_user, list_collection, clean, new_id)` factory). Behavior-preserving: identical paths, request body, response shapes, auth, status codes, `due_date` sort, and DB writes (`status="paid"`, `paid_at`). Trimmed now-dead `List/Dict/Any` typing imports from `operations.py` (the invoice model was their only user). Documented that billing is **invoice bookkeeping only — there is no payment processor** (no Stripe/charges/subscriptions); `/invoices/{id}/pay` is a status flip.
+- **Reason:** Billing is a thin-but-genuine cohesive group; isolating it mirrors the 3C precedent (horses out of care.py) and de-clutters the `operations.py` grab-bag. No feature expansion.
+- **Alternatives Considered:** Doc-only closure leaving invoices in `operations.py` (rejected — extraction is consistent with the modularization arc and equally low-risk); adding a real payment processor (explicitly out of scope — would be a separate feature).
+- **Risks:** Low — `InvoiceIn` referenced only in `operations.py`; mechanical move of 3 handlers + 1 model + one `include_router`. No schema/DB/index/frontend/permission changes (same `invoices` collection/fields). New `tests/test_billing_routes.py`; existing invoice tests (`test_operations_routes`, `test_equinesync`) unchanged and green. Full suite **282 passed, 3 skipped** (one pre-existing flaky incidents test passed on clean re-run — shared-DB isolation, unrelated to 3F).
+- **Review Date:** Phase 3G.
+- **Status:** Active
+
 ### 2026-06-02 — Phase 3E: Owner digest/recap route extraction
 - **Decision:** Extracted the 6 owner digest/recap HTTP routes (`/notifications/digest/preview|send-me`, `/admin/digest/run-now`, `/notifications/weekly-recap/preview|send-me`, `/admin/weekly-recap/run-now`) from `server.py` into a new dedicated **`routes/digests.py`** (`build_router(*, db, get_current_user)` factory). Behavior-preserving: identical paths, empty POST bodies, response shapes (`{empty:...}` / `{empty:false, payload, html, text}` / pass-result dicts), auth, and role gates (owner-only `send-me`, admin/barn_manager `run-now`). Trimmed 8 now-route-only names from `server.py`'s `owner_digest` import (kept `run_daily_digest_pass`, `run_weekly_recap_pass`, `ensure_digest_indexes`, used by the staying schedulers). **`server.py` now has zero inline API route handlers.**
 - **Reason:** Last route group inline in `server.py`; isolating it completes the route-extraction arc and leaves `server.py` as shared-infra + bootstrap only (the 3G target).

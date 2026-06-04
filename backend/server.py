@@ -61,6 +61,7 @@ from routes.onboarding import build_router as build_onboarding_router, ONBOARDIN
 from routes.care import build_router as build_care_router
 from routes.horses import build_router as build_horses_router
 from routes.operations import build_router as build_operations_router
+from routes.billing import build_router as build_billing_router
 from routes.system import build_router as build_system_router
 from routes.admin import build_router as build_admin_router
 from routes.analytics import build_router as build_analytics_router
@@ -311,6 +312,15 @@ api_router.include_router(build_care_router(
 
 # ---------------- Operations (extracted to routes/operations.py) ----------------
 api_router.include_router(build_operations_router(
+    db=db,
+    get_current_user=get_current_user,
+    list_collection=list_collection,
+    clean=clean,
+    new_id=new_id,
+))
+
+# ---------------- Billing (invoices, extracted to routes/billing.py) ----------------
+api_router.include_router(build_billing_router(
     db=db,
     get_current_user=get_current_user,
     list_collection=list_collection,
