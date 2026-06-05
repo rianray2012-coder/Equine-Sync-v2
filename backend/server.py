@@ -69,6 +69,7 @@ from routes.system import build_router as build_system_router
 from routes.admin import build_router as build_admin_router
 from routes.analytics import build_router as build_analytics_router
 from routes.digests import build_router as build_digests_router
+from routes.barns import build_router as build_barns_router
 from seed_data import run_seed
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -188,6 +189,16 @@ api_router.include_router(build_analytics_router(db, get_current_user, require_s
 
 # Owner digest + weekly recap HTTP routes (routes/digests.py)
 api_router.include_router(build_digests_router(db=db, get_current_user=get_current_user))
+
+# Barn provisioning — Phase 4D multi-barn (routes/barns.py)
+api_router.include_router(build_barns_router(
+    db=db,
+    get_current_user=get_current_user,
+    hash_pwd=hash_pwd,
+    user_safe=_user_safe,
+    new_id=new_id,
+    onboarding_steps=ONBOARDING_STEPS,
+))
 
 app.include_router(api_router)
 

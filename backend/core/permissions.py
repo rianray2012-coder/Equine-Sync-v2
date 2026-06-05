@@ -27,6 +27,9 @@ CAPABILITIES: Dict[str, Set[str]] = {
     "digest:read_own": {"horse_owner"},
     "digest:admin": {"admin", "barn_manager"},
     "admin:access": {"admin"},
+    # Phase 4D — barn provisioning (founder/platform admin). The route ALSO
+    # enforces caller-in-primary until a real superadmin role exists.
+    "barn:create": {"admin"},
 }
 
 # Per-capability denial messages preserve the exact wording used by the existing
@@ -38,6 +41,7 @@ _DENY_MESSAGES: Dict[str, str] = {
     "digest:read_own": "Owner accounts only",
     "digest:admin": "Admin/Manager only",
     "admin:access": "Admin only",
+    "barn:create": "Admin access required to create barns",
 }
 
 

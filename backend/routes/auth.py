@@ -235,6 +235,9 @@ def build_router(db) -> APIRouter:
             "email": body.email.lower(),
             "full_name": body.full_name,
             "role": PUBLIC_REGISTRATION_ROLE,
+            # Phase 4D: public self-serve registration intentionally stays bound
+            # to the primary barn with a non-privileged role (Security Patch 2E).
+            # Joining any other barn is invite-only.
             "barn_id": PRIMARY_BARN_ID,
             "password_hash": hash_pwd(body.password),
             "email_verified": False,

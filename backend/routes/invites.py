@@ -250,15 +250,20 @@ def build_router(
 
         full_name = (body.full_name or inv.get("full_name")
                      or inv["email"].split('@')[0]).strip()
+        # Phase 4D: bind the new user to the INVITE's barn. Legacy-safe — if the
+        # invite stored a missing/malformed barn_id, or that barn was deleted,
+        # fall back to the primary barn so a valid invitee is never locked out.
+        invite_barn = inv.get("barn_id") or PRIMARY_BARN_ID
+        if invite_barn != PRIMARY_BARN_ID:
+            barn_exists = await db.barn.find_one({"id": invite_barn}, {"_id": 0, "id": 1})
+            if not barn_exists:
+                invite_barn = PRIMARY_BARN_ID
         new_user = {
             "id": new_id(),
             "email": inv["email"],
             "full_name": full_name,
             "role": inv["role"],
-            # Phase 4A: clamp to the canonical primary barn regardless of any
-            # legacy/malformed barn_id stored on the invite. Per-barn invite
-            # binding is deferred to Phase 4D multi-barn binding.
-            "barn_id": PRIMARY_BARN_ID,
+            "barn_id": invite_barn,
             "password_hash": hash_pwd(body.password),
             "created_at": _iso(_now_utc()),
             "via_invite_id": inv["id"],
