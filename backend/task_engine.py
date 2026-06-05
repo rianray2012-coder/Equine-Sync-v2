@@ -410,7 +410,10 @@ class TaskEngine:
         existing_notes = canonical.get("notes") or ""
         new_notes = (existing_notes + ("\n" if existing_notes else "") + extra_note)[:2000]
         await self.db.task_completions.update_one(
-            {"id": canonical["id"]}, {"$set": {"notes": new_notes}},
+            {"id": canonical["id"],
+             "tenant_id": canonical.get("tenant_id", DEFAULT_TENANT_ID),
+             "barn_id": canonical.get("barn_id", PRIMARY_BARN_ID)},
+            {"$set": {"notes": new_notes}},
         )
 
     # -- category post-completion hooks ------------------------------
@@ -561,14 +564,16 @@ class TaskEngine:
 
         # Idempotency: same (task_id, client_completion_id) — return existing.
         existing = await self.db.task_completions.find_one(
-            {"task_id": task_id, "client_completion_id": body.client_completion_id},
+            {"task_id": task_id, "tenant_id": tenant_id, "barn_id": barn_id,
+             "client_completion_id": body.client_completion_id},
             {"_id": 0},
         )
         if existing:
             return {"task": task, "completion": existing, "deduped": True}
 
         canonical = await self.db.task_completions.find_one(
-            {"task_id": task_id, "voided": {"$ne": True}}, {"_id": 0},
+            {"task_id": task_id, "tenant_id": tenant_id, "barn_id": barn_id,
+             "voided": {"$ne": True}}, {"_id": 0},
         )
         completion = self._build_completion_doc(task_id, body, user, tenant_id, barn_id)
 
@@ -587,7 +592,7 @@ class TaskEngine:
 
         new_status = self._outcome_to_status(body.outcome)
         await self.db.tasks.update_one(
-            {"id": task_id},
+            {"id": task_id, "tenant_id": tenant_id, "barn_id": barn_id},
             {"$set": {
                 "status": new_status,
                 "updated_at": iso(now_utc()),
@@ -640,7 +645,7 @@ class TaskEngine:
         if not canonical:
             raise HTTPException(404, "No active completion to void")
         await self.db.task_completions.update_one(
-            {"id": canonical["id"]},
+            {"id": canonical["id"], "tenant_id": tenant_id, "barn_id": barn_id},
             {"$set": {
                 "voided": True,
                 "voided_by_user_id": user["id"],
@@ -648,11 +653,12 @@ class TaskEngine:
             }},
         )
         # revert task status to overdue/due based on time
-        task = await self.db.tasks.find_one({"id": task_id}, {"_id": 0})
+        task = await self.db.tasks.find_one(
+            {"id": task_id, "tenant_id": tenant_id, "barn_id": barn_id}, {"_id": 0})
         if task:
             new_status = self._derive_status({**task, "status": "scheduled"})
             await self.db.tasks.update_one(
-                {"id": task_id},
+                {"id": task_id, "tenant_id": tenant_id, "barn_id": barn_id},
                 {"$set": {"status": new_status, "updated_at": iso(now_utc())}},
             )
             task["status"] = new_status

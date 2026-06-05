@@ -12,7 +12,7 @@ Strategy A: barn_id is added additively; tenant_id stays "default". Proves:
 import os
 import pathlib
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import pymongo
 import requests
@@ -315,3 +315,110 @@ def test_onboarding_funnel_excludes_other_barn():
         assert name not in names, "other-barn onboarding event surfaced in funnel"
     finally:
         db.events.delete_many({"name": name})
+
+
+# --------------------------------------------------------------------------
+# 8. Startup order: backfill BEFORE materialize → no duplicate occurrences
+# --------------------------------------------------------------------------
+def test_backfill_before_materialize_no_duplicate():
+    db = _mongo()
+    H = _admin_headers()
+    # One-occurrence template in the future (within the 14-day horizon).
+    dtstart = (datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+               + timedelta(days=1)).isoformat()
+    tr = requests.post(f"{API}/task-templates", headers=H, json={
+        "category": "custom", "title": "Legacy_" + uuid.uuid4().hex[:8],
+        "rrule": "FREQ=DAILY;COUNT=1", "dtstart": dtstart,
+        "window_minutes_before": 30, "window_minutes_after": 120,
+    }, timeout=30)
+    assert tr.status_code in (200, 201), tr.text
+    tpl_id = tr.json().get("template", tr.json())["id"]
+    try:
+        before = db.tasks.count_documents({"template_id": tpl_id})
+        assert before == 1, f"expected 1 materialized task, got {before}"
+        # Simulate a legacy DB: strip barn_id off the template + its task.
+        db.task_templates.update_one({"id": tpl_id}, {"$unset": {"barn_id": ""}})
+        db.tasks.update_many({"template_id": tpl_id}, {"$unset": {"barn_id": ""}})
+        # The FIX: additive backfill runs BEFORE materialization at startup.
+        db.task_templates.update_many({"id": tpl_id, "barn_id": {"$exists": False}},
+                                      {"$set": {"barn_id": "primary"}})
+        db.tasks.update_many({"template_id": tpl_id, "barn_id": {"$exists": False}},
+                             {"$set": {"barn_id": "primary"}})
+        # Now materialize: the barn-scoped dedup sees the (now-stamped) legacy task.
+        mr = requests.post(f"{API}/tasks/materialize", headers=H, timeout=30)
+        assert mr.status_code == 200, mr.text
+        after = db.tasks.count_documents({"template_id": tpl_id})
+        assert after == 1, f"duplicate occurrence created ({before} -> {after})"
+        legacy = db.tasks.find_one({"template_id": tpl_id})
+        assert legacy.get("barn_id") == "primary", "legacy task not re-stamped"
+    finally:
+        db.task_templates.delete_many({"id": tpl_id})
+        db.tasks.delete_many({"template_id": tpl_id})
+
+
+# --------------------------------------------------------------------------
+# 9. Cross-barn collision: same task_id in another barn cannot affect completion
+# --------------------------------------------------------------------------
+def test_complete_ignores_other_barn_canonical_collision():
+    db = _mongo()
+    H = _admin_headers()
+    cr = requests.post(f"{API}/tasks", headers=H, json={
+        "category": "custom", "title": "Collide_" + uuid.uuid4().hex[:6],
+        "scheduled_at": _today_at(9),
+    }, timeout=30)
+    tid = cr.json().get("task", cr.json())["id"]
+    other_comp_id = "ocomp_" + uuid.uuid4().hex
+    # A colliding "canonical" completion for the SAME task_id in another barn.
+    db.task_completions.insert_one({
+        "id": other_comp_id, "tenant_id": TENANT, "barn_id": "other",
+        "task_id": tid, "voided": False, "outcome": "done",
+        "notes": "OTHER", "completed_at": _iso(),
+    })
+    try:
+        r = requests.post(f"{API}/tasks/{tid}/complete", headers=H, json={
+            "client_completion_id": uuid.uuid4().hex, "outcome": "done",
+        }, timeout=30)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        # Must NOT treat the other-barn completion as canonical.
+        assert not body.get("duplicate_note_appended"), body
+        prim = db.task_completions.find_one(
+            {"task_id": tid, "barn_id": "primary"})
+        assert prim is not None and prim.get("voided") is not True, "primary completion wrongly voided"
+        # Other-barn completion untouched.
+        other = db.task_completions.find_one({"id": other_comp_id})
+        assert other["notes"] == "OTHER" and other["voided"] is False, "other-barn completion mutated"
+    finally:
+        db.tasks.delete_many({"id": tid})
+        db.task_completions.delete_many({"task_id": tid})
+
+
+def test_void_ignores_other_barn_completion_collision():
+    db = _mongo()
+    H = _admin_headers()
+    cr = requests.post(f"{API}/tasks", headers=H, json={
+        "category": "custom", "title": "VoidCollide_" + uuid.uuid4().hex[:6],
+        "scheduled_at": _today_at(9),
+    }, timeout=30)
+    tid = cr.json().get("task", cr.json())["id"]
+    # Complete it (primary canonical completion now exists).
+    requests.post(f"{API}/tasks/{tid}/complete", headers=H, json={
+        "client_completion_id": uuid.uuid4().hex, "outcome": "done",
+    }, timeout=30)
+    other_comp_id = "ocomp_" + uuid.uuid4().hex
+    db.task_completions.insert_one({
+        "id": other_comp_id, "tenant_id": TENANT, "barn_id": "other",
+        "task_id": tid, "voided": False, "outcome": "done", "completed_at": _iso(),
+    })
+    try:
+        r = requests.post(f"{API}/tasks/{tid}/void", headers=H, json={"reason": "test"}, timeout=30)
+        assert r.status_code == 200, r.text
+        # Other-barn completion must remain un-voided.
+        other = db.task_completions.find_one({"id": other_comp_id})
+        assert other["voided"] is False, "void mutated other-barn completion"
+        prim = db.task_completions.find_one({"task_id": tid, "barn_id": "primary"})
+        assert prim.get("voided") is True, "primary completion was not voided"
+    finally:
+        db.tasks.delete_many({"id": tid})
+        db.task_completions.delete_many({"task_id": tid})
+

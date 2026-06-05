@@ -113,20 +113,21 @@ def register_lifecycle(app, *, send_nudges):
             seed_res = await seed_demo_templates(db, admin_id)
             if not seed_res.get("skipped"):
                 logger.info("Task engine: seeded %d demo templates.", seed_res.get("templates_created", 0))
-            # Initial materialization for the 14-day horizon
+            # Phase 4B-7: backfill barn_id BEFORE any materialization so the new
+            # barn-scoped occurrence-dedup check sees legacy (barn_id-less) tasks
+            # and never creates duplicate occurrences for the same template slot.
+            try:
+                barn_filled = await _backfill_barn_id(db)
+                if barn_filled:
+                    logger.info("Phase 4A/4B-7: backfilled barn_id=primary on %d documents.", barn_filled)
+            except Exception:
+                logger.exception("barn_id backfill failed")
+            # Initial materialization for the 14-day horizon (post-backfill)
             created = await engine.materialize_all()
             if created:
                 logger.info("Task engine: materialized %d initial occurrences.", created)
         except Exception:
             logger.exception("Task engine startup failed")
-
-        # ---------- Phase 4A: multi-tenancy backfill (idempotent, additive) ----------
-        try:
-            barn_filled = await _backfill_barn_id(db)
-            if barn_filled:
-                logger.info("Phase 4A: backfilled barn_id=primary on %d documents.", barn_filled)
-        except Exception:
-            logger.exception("Phase 4A barn_id backfill failed")
 
         async def _materialize_loop():
             await asyncio.sleep(60)

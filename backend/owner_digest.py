@@ -200,7 +200,7 @@ async def build_digest_for_owner(db, owner_user_id: str,
 
     # 1. Find horses owned by this user
     horses = await db.horses.find(
-        {"owner_id": owner_user_id}, {"_id": 0, "id": 1, "name": 1},
+        {"owner_id": owner_user_id}, {"_id": 0, "id": 1, "name": 1, "barn_id": 1},
     ).to_list(50)
     if not horses:
         return None
@@ -481,7 +481,7 @@ async def build_weekly_recap_for_owner(db, owner_user_id: str,
     until_7d = now + timedelta(days=7)
 
     horses = await db.horses.find(
-        {"owner_id": owner_user_id}, {"_id": 0, "id": 1, "name": 1},
+        {"owner_id": owner_user_id}, {"_id": 0, "id": 1, "name": 1, "barn_id": 1},
     ).to_list(50)
     if not horses:
         return None
