@@ -73,6 +73,7 @@ class MediaRecord:
     """Persisted shape stored in `media` collection (Mongo)."""
     id: str
     tenant_id: str
+    barn_id: str
     kind: str
     storage_key: str
     public_url: str
@@ -224,12 +225,17 @@ def reset_provider_for_tests() -> None:
 
 # ---------- High-level helpers used by routes -------------------------------
 
-def build_key(tenant_id: str, kind: MediaKind, subject_id: Optional[str], filename: str) -> str:
-    """Stable, namespaced storage key. Never leak DB primary keys directly."""
+def build_key(tenant_id: str, kind: MediaKind, subject_id: Optional[str], filename: str,
+              barn_id: str = "primary") -> str:
+    """Stable, namespaced storage key. Never leak DB primary keys directly.
+
+    Phase 4B-7: keys are namespaced by ``barn_id`` first so media is partitioned
+    per barn at the object-store level (forward-compatible — no live callers yet).
+    """
     safe_filename = "".join(c for c in filename if c.isalnum() or c in ".-_")[-64:] or "file"
     when = datetime.now(timezone.utc).strftime("%Y/%m/%d")
     nonce = secrets.token_urlsafe(8)
-    parts = [tenant_id, kind, when]
+    parts = [barn_id, tenant_id, kind, when]
     if subject_id:
         parts.append(subject_id)
     parts.append(f"{nonce}-{safe_filename}")

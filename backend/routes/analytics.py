@@ -45,7 +45,8 @@ def build_router(db, get_current_user, require_setup_role) -> APIRouter:
     async def onboarding_funnel(user=Depends(get_current_user)):
         require_setup_role(user)
         pipeline = [
-            {"$match": {"name": {"$regex": "^onboarding\\."}}},
+            {"$match": {"name": {"$regex": "^onboarding\\."},
+                        "barn_id": resolve_barn_id(user)}},
             {"$group": {"_id": "$name", "count": {"$sum": 1}}},
             {"$sort": {"_id": 1}},
         ]

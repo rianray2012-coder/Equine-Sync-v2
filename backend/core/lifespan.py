@@ -39,11 +39,13 @@ logger = logging.getLogger(__name__)
 
 PRIMARY_BARN_ID = "primary"
 
-# Phase 4A: domain collections that gain a canonical `barn_id`. Excludes the
-# task-engine + `media` collections (they use `tenant_id="default"` — the
-# temporary alias of barn_id="primary", reconciled in the dedicated Phase 4B
-# task-engine sub-phase), the user-keyed notification collections, the `barn`
-# singleton (keyed by its own `id`), and all auth/session/attempt infra.
+# Phase 4A: domain collections that gain a canonical `barn_id`.
+# Phase 4B-7 extends this to the task-engine + `media` collections (previously
+# excluded): they keep `tenant_id="default"` as the engine partition, and now
+# additionally carry a canonical `barn_id` (the additive backfill below stamps
+# legacy docs; the engine/storage write-paths stamp new docs). The user-keyed
+# notification collections, the `barn` singleton (keyed by its own `id`), and
+# all auth/session/attempt infra remain excluded.
 BARN_BACKFILL_COLLECTIONS = [
     "users", "horses", "owners", "riders", "medications", "medication_logs",
     "feed_tasks", "vet_records", "farrier_history", "injuries", "wellness",
@@ -51,6 +53,8 @@ BARN_BACKFILL_COLLECTIONS = [
     "incidents", "locations", "feed_templates", "inventory",
     "recurring_schedules", "staff_invites", "invites", "onboarding_progress",
     "events",
+    # Phase 4B-7 — task engine + media (tenant_id="default" ≡ barn_id="primary"):
+    "tasks", "task_templates", "task_completions", "task_events", "media",
 ]
 
 

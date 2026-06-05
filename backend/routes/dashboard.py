@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Response
 
-from core.tenancy import barn_filter
+from core.tenancy import barn_filter, resolve_barn_id
 
 
 def _now_utc() -> datetime:
@@ -34,16 +34,16 @@ def build_router(db, get_current_user, tenant_id: str) -> APIRouter:
         stall_rest = await db.horses.count_documents(barn_filter(user, {"status": {"$in": ["stall_rest", "rehab"]}}))
         active_injuries = await db.injuries.count_documents(barn_filter(user, {"status": {"$in": ["active", "monitoring", "improving"]}}))
 
-        feed_q = {"tenant_id": tenant_id, "category": "feed",
+        feed_q = {"tenant_id": tenant_id, "barn_id": resolve_barn_id(user), "category": "feed",
                   "scheduled_at": {"$gte": today_start_iso, "$lt": today_end_iso}}
         feed_today_total = await db.tasks.count_documents(feed_q)
         feed_pending = await db.tasks.count_documents({**feed_q, "status": {"$nin": ["completed", "skipped", "cancelled"]}})
 
-        med_q = {"tenant_id": tenant_id, "category": "medication",
+        med_q = {"tenant_id": tenant_id, "barn_id": resolve_barn_id(user), "category": "medication",
                  "scheduled_at": {"$gte": today_start_iso, "$lt": today_end_iso}}
         meds_due = await db.tasks.count_documents({**med_q, "status": {"$nin": ["completed", "skipped", "cancelled"]}})
         meds_missed = await db.task_completions.count_documents({
-            "tenant_id": tenant_id, "voided": {"$ne": True},
+            "tenant_id": tenant_id, "barn_id": resolve_barn_id(user), "voided": {"$ne": True},
             "outcome": {"$in": ["refused", "skipped"]},
             "completed_at": {"$gte": today_start_iso, "$lt": today_end_iso},
         })
@@ -91,11 +91,11 @@ def build_router(db, get_current_user, tenant_id: str) -> APIRouter:
         today_str = _now_utc().date().isoformat()
 
         feed = await db.tasks.find({
-            "tenant_id": tenant_id, "category": "feed",
+            "tenant_id": tenant_id, "barn_id": resolve_barn_id(user), "category": "feed",
             "scheduled_at": {"$gte": today_start.isoformat(), "$lt": today_end.isoformat()},
         }, {"_id": 0}).sort("scheduled_at", 1).to_list(200)
         meds = await db.tasks.find({
-            "tenant_id": tenant_id, "category": "medication",
+            "tenant_id": tenant_id, "barn_id": resolve_barn_id(user), "category": "medication",
             "scheduled_at": {"$gte": today_start.isoformat(), "$lt": today_end.isoformat()},
         }, {"_id": 0}).sort("scheduled_at", 1).to_list(200)
         lessons = await db.lessons.find(barn_filter(user, {"start_time": {"$regex": f"^{today_str}"}}), {"_id": 0}).to_list(200)

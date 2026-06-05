@@ -205,10 +205,12 @@ async def build_digest_for_owner(db, owner_user_id: str,
     if not horses:
         return None
     horse_ids = [h["id"] for h in horses]
+    owner_barn = horses[0].get("barn_id", "primary")
 
     # 2. Events in last 24h for those horses (curated categories only)
     events_24h_cursor = db.task_events.find(
         {
+            "barn_id": owner_barn,
             "subject_horse_ids": {"$in": horse_ids},
             "category": {"$in": list(OWNER_DIGEST_CATEGORIES)},
             "event_type": {"$in": ["task.completed", "task.skipped"]},
@@ -221,6 +223,7 @@ async def build_digest_for_owner(db, owner_user_id: str,
     # 3. Medication events over the last 7d for the "completed all this week" line
     events_7d_meds = await db.task_events.find(
         {
+            "barn_id": owner_barn,
             "subject_horse_ids": {"$in": horse_ids},
             "category": "medication",
             "event_type": {"$in": ["task.completed", "task.skipped"]},
@@ -234,6 +237,7 @@ async def build_digest_for_owner(db, owner_user_id: str,
     # is just event_type + category + subject_horse_ids.
     events_7d_all = await db.task_events.find(
         {
+            "barn_id": owner_barn,
             "subject_horse_ids": {"$in": horse_ids},
             "category": {"$in": list(OWNER_DIGEST_CATEGORIES) + ["turnout_out", "turnout_in"]},
             "event_type": {"$in": ["task.completed", "task.skipped"]},
@@ -245,6 +249,7 @@ async def build_digest_for_owner(db, owner_user_id: str,
     # 4. Upcoming curated tasks in the next 7 days
     upcoming = await db.tasks.find(
         {
+            "barn_id": owner_barn,
             "linked_horse_ids": {"$in": horse_ids},
             "category": {"$in": ["vet", "farrier"]},
             "status": {"$nin": ["completed", "skipped", "cancelled"]},
@@ -481,9 +486,11 @@ async def build_weekly_recap_for_owner(db, owner_user_id: str,
     if not horses:
         return None
     horse_ids = [h["id"] for h in horses]
+    owner_barn = horses[0].get("barn_id", "primary")
 
     events_7d = await db.task_events.find(
         {
+            "barn_id": owner_barn,
             "subject_horse_ids": {"$in": horse_ids},
             "category": {"$in": list(OWNER_DIGEST_CATEGORIES)},
             "event_type": {"$in": ["task.completed", "task.skipped"]},
@@ -494,6 +501,7 @@ async def build_weekly_recap_for_owner(db, owner_user_id: str,
 
     upcoming = await db.tasks.find(
         {
+            "barn_id": owner_barn,
             "linked_horse_ids": {"$in": horse_ids},
             "category": {"$in": ["vet", "farrier", "rehab"]},
             "status": {"$nin": ["completed", "skipped", "cancelled"]},

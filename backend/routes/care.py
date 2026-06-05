@@ -188,13 +188,11 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.get("/vet-records")
     async def list_vet(horse_id: Optional[str] = None, user=Depends(get_current_user)):
-        # Phase 4B-2: read NOT barn-scoped yet — task_engine completion hooks
-        # (task_engine.py) write vet_records WITHOUT barn_id, so scoping reads
-        # here would hide engine-projected rows. Read-scoping is deferred to
-        # 4B-7 (coupled with the engine reconciliation). The care POST below
-        # still stamps barn_id (additive/forward-compatible).
-        q = {"horse_id": horse_id} if horse_id else {}
-        return await list_collection("vet_records", q, sort_field="date")
+        # Phase 4B-7: read now barn-scoped — the task_engine completion hooks
+        # stamp barn_id on engine-written vet_records (and the startup backfill
+        # covers legacy rows), so barn_filter no longer hides engine-projected rows.
+        extra = {"horse_id": horse_id} if horse_id else None
+        return await list_collection("vet_records", barn_filter(user, extra), sort_field="date")
 
     @router.post("/vet-records")
     async def create_vet(body: VetRecordIn, user=Depends(get_current_user)):
@@ -208,11 +206,10 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.get("/farrier-history")
     async def list_farrier(horse_id: Optional[str] = None, user=Depends(get_current_user)):
-        # Phase 4B-2: read NOT barn-scoped yet — see vet-records note above.
-        # task_engine writes farrier_history rows without barn_id; read-scoping
-        # is deferred to 4B-7. (No care create path for this collection.)
-        q = {"horse_id": horse_id} if horse_id else {}
-        return await db.farrier_history.find(q, {"_id": 0}).sort("date", -1).to_list(500)
+        # Phase 4B-7: read now barn-scoped — engine-written farrier_history rows
+        # stamp barn_id (+ startup backfill for legacy rows). See vet-records note.
+        extra = {"horse_id": horse_id} if horse_id else None
+        return await db.farrier_history.find(barn_filter(user, extra), {"_id": 0}).sort("date", -1).to_list(500)
 
     # ---------------- Injuries ----------------
 
