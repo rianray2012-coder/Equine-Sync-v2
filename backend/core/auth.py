@@ -15,6 +15,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from core.config import JWT_SECRET, JWT_ALG, user_verification_ok
 from core.db import db
+from core.permissions import require
 from core.tenancy import resolve_barn_id
 from auth_security import JWT_EXP_HOURS
 
@@ -60,6 +61,9 @@ async def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depen
 
 
 def require_setup_role(user):
-    """Stable Owner / Admin / Barn Manager can edit barn-level setup."""
-    if user.get("role") not in ("admin", "barn_manager"):
-        raise HTTPException(status_code=403, detail="Owner / Barn Manager access required")
+    """Stable Owner / Admin / Barn Manager can edit barn-level setup.
+
+    Phase 4C: behavior-identical re-expression through the centralized
+    capability map (same roles, same 403 message).
+    """
+    require(user, "barn:manage")

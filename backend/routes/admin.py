@@ -18,6 +18,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
 from core.config import is_production, allow_seed_route, evaluate_seed_access
+from core.permissions import require
 
 _security = HTTPBearer(auto_error=False)
 
@@ -68,8 +69,7 @@ def build_router(*, db, get_current_user, track, run_seed) -> APIRouter:
 
     @router.post("/admin/tenant-reset")
     async def tenant_reset(body: TenantResetBody, user=Depends(get_current_user)):
-        if user.get("role") != "admin":
-            raise HTTPException(403, "Admin only")
+        require(user, "admin:access")
         if body.confirm != "RESET":
             raise HTTPException(400, "Confirmation token required (send confirm=\"RESET\")")
         cleared: Dict[str, int] = {}

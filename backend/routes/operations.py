@@ -17,6 +17,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from core.permissions import require
 from core.tenancy import barn_filter, stamp_barn
 
 
@@ -177,8 +178,7 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.post("/service-requests/{sr_id}/approve")
     async def approve_sr(sr_id: str, user=Depends(get_current_user)):
-        if user.get("role") not in ("admin", "barn_manager", "trainer"):
-            raise HTTPException(403, "Insufficient role to approve service requests")
+        require(user, "service_request:approve")
         scope = barn_filter(user, {"id": sr_id})
         existing = await db.service_requests.find_one(scope, {"_id": 0, "status": 1})
         if not existing:
@@ -196,8 +196,7 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
     @router.post("/service-requests/{sr_id}/decline")
     async def decline_sr(sr_id: str, body: Optional[DeclineSRBody] = None,
                           user=Depends(get_current_user)):
-        if user.get("role") not in ("admin", "barn_manager", "trainer"):
-            raise HTTPException(403, "Insufficient role to decline service requests")
+        require(user, "service_request:decline")
         scope = barn_filter(user, {"id": sr_id})
         existing = await db.service_requests.find_one(scope, {"_id": 0, "status": 1})
         if not existing:

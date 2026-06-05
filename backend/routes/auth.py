@@ -113,11 +113,6 @@ def make_current_user_dependency(db):
     return _get
 
 
-def require_setup_role(user):
-    if user.get("role") not in ("admin", "barn_manager"):
-        raise HTTPException(status_code=403, detail="Owner / Barn Manager access required")
-
-
 def user_safe(user: dict) -> dict:
     return {k: v for k, v in user.items() if k not in ("password_hash", "_id")}
 

@@ -21,12 +21,23 @@ SETUP_ROLES: Set[str] = {"admin", "barn_manager"}
 
 CAPABILITIES: Dict[str, Set[str]] = {
     "barn:manage": set(SETUP_ROLES),
+    # Phase 4C — capabilities wired into routes (behavior-identical role sets):
+    "service_request:approve": {"admin", "barn_manager", "trainer"},
+    "service_request:decline": {"admin", "barn_manager", "trainer"},
+    "digest:read_own": {"horse_owner"},
+    "digest:admin": {"admin", "barn_manager"},
+    "admin:access": {"admin"},
 }
 
 # Per-capability denial messages preserve the exact wording used by the existing
 # guards so swapping them in later (Phase 4C) is behavior-identical.
 _DENY_MESSAGES: Dict[str, str] = {
     "barn:manage": "Owner / Barn Manager access required",
+    "service_request:approve": "Insufficient role to approve service requests",
+    "service_request:decline": "Insufficient role to decline service requests",
+    "digest:read_own": "Owner accounts only",
+    "digest:admin": "Admin/Manager only",
+    "admin:access": "Admin only",
 }
 
 
