@@ -5,7 +5,7 @@
 ## Approved design decisions (locked)
 1. **`barn_id` is canonical.** The task engine's existing `tenant_id="default"` is mapped to `barn_id="primary"` **at the boundary** — no global rename. (Reconciliation of task-engine docs/router is a dedicated 4B sub-phase.)
 2. **One user → one barn** for v1. Multi-barn membership/switching deferred.
-3. **All existing + new users map to the canonical `primary` barn** in 4A/4B. True multi-barn signup deferred to 4D. **Public registration stays low-privilege (`horse_owner`) — never creates admins.**
+3. **All existing + new users map to the canonical `primary` barn** in 4A/4B; true multi-barn signup delivered in **4D** (invite-only / founder-provisioned). **Public registration stays low-privilege (`horse_owner`) — never creates admins.**
 4. **Lightweight centralized capability map** (`resource:action` → roles) + `require()` helper. No tightening in 4A.
 5. **Canonical `barn_id = "primary"`** for the founder/demo barn. Startup migration is idempotent + additive.
 
@@ -25,7 +25,7 @@
 
 **Creation paths stamp `barn_id`**
 - `routes/auth.py::register` → new user gets `barn_id="primary"` (role stays `horse_owner`).
-- `routes/invites.py::create_invite_with_link` → **ignores any client-supplied `body.barn_id`** and binds the invite to `resolve_barn_id(current_user)` (currently always `primary`); per-barn targeting is deferred to Phase 4D. The accept-flow `new_user` is **clamped to `PRIMARY_BARN_ID`** (defends against legacy/malformed invite `barn_id`); `onboarding_progress` inherits it.
+- `routes/invites.py::create_invite_with_link` → **ignores any client-supplied `body.barn_id`** and binds the invite to `resolve_barn_id(current_user)` (a barn-2 admin can only invite into barn 2). The accept flow binds the `new_user` (+ `onboarding_progress`) to the **invite's validated `barn_id`** since **4D**, with a legacy-safe fallback to `primary` if that barn is missing/deleted.
 - `routes/onboarding.py` → stamps `barn_id=resolve_barn_id(user)` at creation time on `onboarding_progress` (both `_ensure_progress` and the `POST /onboarding/reset` upsert), `locations`, `feed_templates`, `inventory`, `recurring_schedules`, and CSV-imported `horses` + `owners` (no longer relying solely on the startup backfill). Staff invites stamp `barn_id="primary"`. The `barn` singleton is intentionally left keyed by its `id` (unchanged).
 - `seed_data.py` → idempotent end-of-seed sweep stamps `barn_id="primary"` on all seeded collections.
 
@@ -43,7 +43,7 @@
 **Tests** (all green)
 - `tests/test_tenancy.py` (13) + `tests/test_permissions.py` (7) — pure unit (incl. `barn_filter` override-rejection tests).
 - `tests/test_core_auth_verification_gate.py` extended (+3): both auth paths attach `barn_id`.
-- `tests/test_phase4a_barn_id.py` (live): public registration → `barn_id="primary"` + role forced `horse_owner`; invite create ignores client `barn_id="other"`; invite accept (incl. a legacy `barn_id="other"` invite) → user clamped to `barn_id="primary"`; `POST /onboarding/reset` before progress exists → created `onboarding_progress` is `primary`; onboarding creates (`locations`/`feed-templates`/`inventory`/`recurring-schedules`) and `csv-commit` horses+owners stamp `barn_id="primary"`.
+- `tests/test_phase4a_barn_id.py` (live): public registration → `barn_id="primary"` + role forced `horse_owner`; invite create ignores client `barn_id="other"`; invite accept of a legacy `barn_id="other"` invite → user resolves to `barn_id="primary"` (the non-existent barn triggers 4D's legacy-safe fallback); `POST /onboarding/reset` before progress exists → created `onboarding_progress` is `primary`; onboarding creates (`locations`/`feed-templates`/`inventory`/`recurring-schedules`) and `csv-commit` horses+owners stamp `barn_id="primary"`.
 - Full suite: **323 passed / 3 skipped** (a transient HTTPS connection flake to the preview host can occur under full-suite load; passes on clean re-run — unrelated to logic).
 
 **Guardrails honored:** no read/write scoping yet, no route behavior changes, additive-only migration, no `server.py` imports from core, Security Patch 2E + both email-verification gates preserved.

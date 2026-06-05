@@ -93,9 +93,8 @@ def build_router(
         raw_token, token_hash = new_token_pair()
         ttl_days = int(os.environ.get("INVITE_TTL_DAYS", "7"))
         expires_at = _now_utc() + timedelta(days=ttl_days)
-        # Phase 4A hardening: ignore any client-supplied barn_id and bind the
-        # invite to the inviter's barn (currently always "primary"). Per-barn
-        # targeting via body.barn_id is deferred to Phase 4D multi-barn binding.
+        # Security: ignore any client-supplied barn_id and bind the invite to the
+        # inviter's own barn (Phase 4D — a barn-2 admin can only invite into barn 2).
         invite_barn_id = resolve_barn_id(user)
         barn = await db.barn.find_one({"id": invite_barn_id}, {"_id": 0, "name": 1}) or {}
 
