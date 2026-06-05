@@ -202,8 +202,11 @@ def build_reports_module(*, db, onboarding_steps: List[dict], mailer_send, track
                 detail.append({"email": c["email"], "result": "error",
                                "error": mail.get("error", "")[:120]})
             if sent_ok:
+                update_scope: Dict[str, Any] = {"user_id": c["user_id"]}
+                if barn_id is not None:
+                    update_scope["barn_id"] = barn_id
                 await db.onboarding_progress.update_one(
-                    {"user_id": c["user_id"]},
+                    update_scope,
                     {"$set": {"last_nudged_at": _iso(_now_utc())},
                      "$inc": {"nudges_sent": 1}},
                 )

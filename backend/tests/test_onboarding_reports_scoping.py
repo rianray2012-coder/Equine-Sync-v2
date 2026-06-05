@@ -108,6 +108,31 @@ def test_staff_invites_other_barn_excluded():
         db.staff_invites.delete_many({"id": other_id})
 
 
+def test_staff_invite_other_barn_dup_does_not_block():
+    db = _mongo()
+    H = _admin_headers()
+    email = f"dupinvite_{uuid.uuid4().hex[:8]}@example.com"
+    other_id = "other_" + uuid.uuid4().hex
+    # A pending invite for the same email in ANOTHER barn must not block/leak.
+    db.staff_invites.insert_one({
+        "id": other_id, "barn_id": "other", "email": email,
+        "role": "groom", "status": "pending", "created_at": _iso(),
+    })
+    created_id = None
+    try:
+        r = requests.post(f"{API}/staff-invites", headers=H,
+                          json={"email": email, "role": "groom", "full_name": "Dup Tester"}, timeout=30)
+        assert r.status_code == 200, r.text
+        doc = r.json()
+        created_id = doc.get("id")
+        assert doc.get("barn_id") == "primary", doc
+        assert doc.get("email") == email, doc
+    finally:
+        db.staff_invites.delete_many({"id": other_id})
+        if created_id:
+            db.staff_invites.delete_many({"id": created_id})
+
+
 # --------------------------------------------------------------------------
 # Create stamps primary; cross-barn delete is a silent no-op.
 # --------------------------------------------------------------------------
@@ -224,6 +249,36 @@ def test_reports_nudge_candidates_excludes_other_barn():
     finally:
         db.users.delete_one({"id": uid})
         db.onboarding_progress.delete_one({"user_id": uid})
+
+
+def test_send_nudges_other_barn_user_not_updated():
+    db = _mongo()
+    H = _admin_headers()
+    uid = "TEST_otherbarn_" + uuid.uuid4().hex[:8]
+    old = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    db.users.insert_one({"id": uid, "email": f"{uid}@example.com", "full_name": "Other Barn",
+                         "role": "barn_manager", "barn_id": "other", "created_at": old})
+    db.onboarding_progress.insert_one({
+        "user_id": uid, "completed": False, "barn_id": "other",
+        "steps": {"barn": "complete"}, "current_step": "locations",
+        "created_at": old, "updated_at": old,
+    })
+    try:
+        r = requests.post(f"{API}/admin/send-nudges", headers=H,
+                          json={"min_days": 5, "cooldown_hours": 24, "user_ids": [uid]}, timeout=30)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["candidates"] == 0, d  # other-barn row never becomes a candidate
+        assert d["sent"] == 0, d
+        # The other-barn progress doc must remain untouched.
+        doc = db.onboarding_progress.find_one({"user_id": uid})
+        assert doc is not None
+        assert doc.get("last_nudged_at") is None, "other-barn last_nudged_at was set"
+        assert "nudges_sent" not in doc, "other-barn nudges_sent was incremented"
+    finally:
+        db.users.delete_one({"id": uid})
+        db.onboarding_progress.delete_one({"user_id": uid})
+
 
 
 def test_reports_setup_health_excludes_other_barn():

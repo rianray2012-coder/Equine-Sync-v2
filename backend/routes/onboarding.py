@@ -321,7 +321,7 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
         require_setup_role(user)
         if body.role not in roles:
             raise HTTPException(400, "Invalid role")
-        if await db.staff_invites.find_one({"email": body.email.lower()}):
+        if await db.staff_invites.find_one(barn_filter(user, {"email": body.email.lower()})):
             raise HTTPException(409, "Already invited")
         if await db.users.find_one({"email": body.email.lower()}):
             raise HTTPException(409, "User already exists")
