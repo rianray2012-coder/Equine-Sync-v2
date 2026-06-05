@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Response
 
+from core.tenancy import barn_filter
+
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
@@ -28,9 +30,9 @@ def build_router(db, get_current_user, tenant_id: str) -> APIRouter:
         today_start_iso = today_start.isoformat()
         today_end_iso = today_end.isoformat()
 
-        total_horses = await db.horses.count_documents({})
-        stall_rest = await db.horses.count_documents({"status": {"$in": ["stall_rest", "rehab"]}})
-        active_injuries = await db.injuries.count_documents({"status": {"$in": ["active", "monitoring", "improving"]}})
+        total_horses = await db.horses.count_documents(barn_filter(user))
+        stall_rest = await db.horses.count_documents(barn_filter(user, {"status": {"$in": ["stall_rest", "rehab"]}}))
+        active_injuries = await db.injuries.count_documents(barn_filter(user, {"status": {"$in": ["active", "monitoring", "improving"]}}))
 
         feed_q = {"tenant_id": tenant_id, "category": "feed",
                   "scheduled_at": {"$gte": today_start_iso, "$lt": today_end_iso}}
@@ -46,17 +48,17 @@ def build_router(db, get_current_user, tenant_id: str) -> APIRouter:
             "completed_at": {"$gte": today_start_iso, "$lt": today_end_iso},
         })
 
-        pending_sr = await db.service_requests.count_documents({"status": "pending"})
-        open_incidents = await db.incidents.count_documents({"status": {"$ne": "closed"}})
-        lessons_today = await db.lessons.count_documents({"start_time": {"$regex": f"^{_now_utc().date().isoformat()}"}})
+        pending_sr = await db.service_requests.count_documents(barn_filter(user, {"status": "pending"}))
+        open_incidents = await db.incidents.count_documents(barn_filter(user, {"status": {"$ne": "closed"}}))
+        lessons_today = await db.lessons.count_documents(barn_filter(user, {"start_time": {"$regex": f"^{_now_utc().date().isoformat()}"}}))
 
         overdue_list = await db.invoices.find(
-            {"status": {"$in": ["open", "overdue"]}}, {"_id": 0, "total": 1},
+            barn_filter(user, {"status": {"$in": ["open", "overdue"]}}), {"_id": 0, "total": 1},
         ).to_list(1000)
         overdue_invoices = len(overdue_list)
         overdue_amount = sum(i.get("total", 0) for i in overdue_list)
 
-        wellness_list = await db.horses.find({}, {"_id": 0, "wellness_score": 1}).to_list(1000)
+        wellness_list = await db.horses.find(barn_filter(user), {"_id": 0, "wellness_score": 1}).to_list(1000)
         avg_wellness = round(sum(h.get("wellness_score", 0) for h in wellness_list) / max(1, len(wellness_list))) if wellness_list else 0
 
         return {
@@ -96,9 +98,9 @@ def build_router(db, get_current_user, tenant_id: str) -> APIRouter:
             "tenant_id": tenant_id, "category": "medication",
             "scheduled_at": {"$gte": today_start.isoformat(), "$lt": today_end.isoformat()},
         }, {"_id": 0}).sort("scheduled_at", 1).to_list(200)
-        lessons = await db.lessons.find({"start_time": {"$regex": f"^{today_str}"}}, {"_id": 0}).to_list(200)
-        stall_rest = await db.horses.find({"status": {"$in": ["stall_rest", "rehab"]}}, {"_id": 0}).to_list(100)
-        incidents = await db.incidents.find({}, {"_id": 0}).sort("occurred_at", -1).to_list(5)
+        lessons = await db.lessons.find(barn_filter(user, {"start_time": {"$regex": f"^{today_str}"}}), {"_id": 0}).to_list(200)
+        stall_rest = await db.horses.find(barn_filter(user, {"status": {"$in": ["stall_rest", "rehab"]}}), {"_id": 0}).to_list(100)
+        incidents = await db.incidents.find(barn_filter(user), {"_id": 0}).sort("occurred_at", -1).to_list(5)
         return {
             "date": today_str,
             "feed": feed,

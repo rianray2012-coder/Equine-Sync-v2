@@ -13,6 +13,8 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from core.tenancy import resolve_barn_id
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -34,7 +36,8 @@ def build_router(db, get_current_user, require_setup_role) -> APIRouter:
     async def track_event(body: EventIn, user=Depends(get_current_user)):
         await db.events.insert_one({
             "id": _new_id(), "name": body.name, "props": body.props or {},
-            "user_id": user["id"], "user_role": user.get("role"), "at": _now_iso(),
+            "user_id": user["id"], "user_role": user.get("role"),
+            "barn_id": resolve_barn_id(user), "at": _now_iso(),
         })
         return {"ok": True}
 
