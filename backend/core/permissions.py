@@ -32,6 +32,11 @@ CAPABILITIES: Dict[str, Set[str]] = {
     "barn:create": {"admin"},
     # Phase 5D — read the immutable audit trail (barn-scoped reads).
     "audit:read": {"admin", "barn_manager"},
+    # Phase 7A — Owner Update lifecycle (Owner Trust Layer). Additive; scoped to
+    # the new /owner-updates routes only — no existing capability/role changed.
+    "owner_update:create": {"admin", "barn_manager", "trainer"},
+    "owner_update:publish": {"admin", "barn_manager", "trainer"},
+    "owner_update:archive": {"admin", "barn_manager", "trainer"},
 }
 
 # Per-capability denial messages preserve the exact wording used by the existing
@@ -45,6 +50,9 @@ _DENY_MESSAGES: Dict[str, str] = {
     "admin:access": "Admin only",
     "barn:create": "Admin access required to create barns",
     "audit:read": "Admin/Manager access required to view audit logs",
+    "owner_update:create": "Insufficient role to manage owner updates",
+    "owner_update:publish": "Insufficient role to publish owner updates",
+    "owner_update:archive": "Insufficient role to archive owner updates",
 }
 
 

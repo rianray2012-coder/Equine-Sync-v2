@@ -71,6 +71,7 @@ from routes.analytics import build_router as build_analytics_router
 from routes.digests import build_router as build_digests_router
 from routes.barns import build_router as build_barns_router
 from routes.audit import build_router as build_audit_router
+from routes.owner_updates import build_router as build_owner_updates_router
 from seed_data import run_seed
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -203,6 +204,15 @@ api_router.include_router(build_barns_router(
 
 # Audit log read API — Phase 5D (routes/audit.py)
 api_router.include_router(build_audit_router(db=db, get_current_user=get_current_user))
+
+# Owner Updates — Phase 7A Owner Trust Layer (routes/owner_updates.py)
+api_router.include_router(build_owner_updates_router(
+    db=db,
+    get_current_user=get_current_user,
+    list_collection=list_collection,
+    clean=clean,
+    new_id=new_id,
+))
 
 app.include_router(api_router)
 
