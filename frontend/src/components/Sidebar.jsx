@@ -1,13 +1,14 @@
-import React from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Cat, UserCircle2, Users, GraduationCap, Dumbbell,
   Stethoscope, BedDouble, Pill, Trees, UtensilsCrossed, Package, Receipt,
   AlertTriangle, MessageSquare, BarChart3, Settings,
-  LogOut, Crown, Sparkles, ListChecks
+  LogOut, Crown, Sparkles, ListChecks, ClipboardCheck
 } from "lucide-react";
 import { Logo } from "./Logo";
 import { useAuth } from "../context/AuthContext";
+import { api } from "../lib/api";
 
 const NAV_SECTIONS = [
   {
@@ -41,6 +42,7 @@ const NAV_SECTIONS = [
     items: [
       { to: "/owners", label: "Owners", icon: Users },
       { to: "/owner-portal", label: "Owner Portal", icon: Crown },
+      { to: "/review-queue", label: "Review Queue", icon: ClipboardCheck, reviewerOnly: true },
       { to: "/billing", label: "Billing", icon: Receipt },
       { to: "/messaging", label: "Messaging", icon: MessageSquare },
     ],
@@ -62,9 +64,33 @@ const NAV_SECTIONS = [
   },
 ];
 
+const REVIEW_ROLES = ["admin", "barn_manager", "trainer"];
+
 export default function Sidebar({ onNavigate }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const canReview = REVIEW_ROLES.includes(user?.role);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  const refreshPending = useCallback(() => {
+    if (!REVIEW_ROLES.includes(user?.role)) return;
+    api
+      .get("/owner-updates?status=pending_review")
+      .then((r) => setPendingCount(Array.isArray(r.data) ? r.data.length : 0))
+      .catch(() => {});
+  }, [user?.role]);
+
+  useEffect(() => {
+    if (!canReview) return;
+    refreshPending();
+    const t = setInterval(refreshPending, 60000);
+    const onChange = () => refreshPending();
+    window.addEventListener("owner-updates-changed", onChange);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("owner-updates-changed", onChange);
+    };
+  }, [canReview, refreshPending]);
 
   return (
     <aside className="h-full w-[290px] bg-equine-navy border-r border-equine-navyDeep flex flex-col text-equine-platinum/90" data-testid="sidebar">
@@ -78,7 +104,7 @@ export default function Sidebar({ onNavigate }) {
         {NAV_SECTIONS.map((sec, si) => (
           <div key={sec.label} className={si > 0 ? "mt-5" : ""}>
             <div className="px-3 pb-2 text-[9.5px] tracking-[0.28em] uppercase text-equine-brassLight/70 font-semibold">{sec.label}</div>
-            {sec.items.map((item) => {
+            {sec.items.filter((item) => !item.reviewerOnly || canReview).map((item) => {
               const Icon = item.icon;
               return (
                 <NavLink
@@ -99,6 +125,14 @@ export default function Sidebar({ onNavigate }) {
                     <>
                       <Icon strokeWidth={1.5} className={`w-[18px] h-[18px] transition-colors ${isActive ? "text-equine-brassLight" : "group-hover:text-equine-brassLight/90"}`} />
                       <span className="text-[13.5px] tracking-wide flex-1">{item.label}</span>
+                      {item.to === "/review-queue" && pendingCount > 0 && (
+                        <span
+                          data-testid="review-queue-badge"
+                          className="min-w-[18px] h-[18px] px-1.5 rounded-full bg-equine-brassLight text-equine-navy text-[10.5px] font-semibold flex items-center justify-center"
+                        >
+                          {pendingCount > 9 ? "9+" : pendingCount}
+                        </span>
+                      )}
                       {isActive && <span className="w-1 h-1 rounded-full bg-equine-brassLight shadow-[0_0_10px_rgba(194,205,236,0.9)]" />}
                     </>
                   )}

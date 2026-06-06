@@ -29,6 +29,7 @@ import AcceptInvite from "./pages/AcceptInvite";
 import ResetPassword from "./pages/ResetPassword";
 import VerifyEmail from "./pages/VerifyEmail";
 import Reports from "./pages/Reports";
+import ReviewQueue from "./pages/ReviewQueue";
 import Today from "./pages/Today";
 import Rehab from "./pages/Rehab";
 import Turnout from "./pages/Turnout";
@@ -70,6 +71,7 @@ function App() {
               <Route path="/feed" element={<Feed />} />
               <Route path="/inventory" element={<Inventory />} />
               <Route path="/billing" element={<Billing />} />
+              <Route path="/review-queue" element={<ReviewQueue />} />
               <Route path="/incidents" element={<Incidents />} />
               {/* Removed for founder beta — Shows / Documents / Maintenance / Staff
                   redirect to safe destinations so old bookmarks don't 404. */}
