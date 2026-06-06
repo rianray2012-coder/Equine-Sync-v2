@@ -197,10 +197,16 @@ def test_dashboard_summary_counts_are_barn_scoped():
     db = mongo()
     a_sum = _get(WORLD.h_a, "/dashboard/summary")
     b_sum = _get(WORLD.h_b, "/dashboard/summary")
+    # Each barn's horse count equals exactly its own DB count.
     assert a_sum["total_horses"] == db.horses.count_documents({"barn_id": "primary"})
     assert b_sum["total_horses"] == db.horses.count_documents({"barn_id": WORLD.barn_b})
-    # Barn B is freshly provisioned -> strictly fewer horses than the primary barn.
-    assert b_sum["total_horses"] < a_sum["total_horses"]
+    # Direct isolation (no size assumption): the two barns' horse rosters are
+    # disjoint, and neither summary counts the other barn's seeded horse.
+    a_horse_ids = _ids(_get(WORLD.h_a, "/horses"))
+    b_horse_ids = _ids(_get(WORLD.h_b, "/horses"))
+    assert a_horse_ids.isdisjoint(b_horse_ids)
+    assert WORLD.b["horse"] not in a_horse_ids and WORLD.b["owner_horse"] not in a_horse_ids
+    assert WORLD.a["horse"] not in b_horse_ids
 
 
 def test_dashboard_barn_board_lists_are_barn_scoped():

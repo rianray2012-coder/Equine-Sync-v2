@@ -92,19 +92,46 @@ def test_task_patch_reassign_cross_barn_404():
                    {"assignee_role": "groom"}) == 404
 
 
-def test_task_skip_void_cross_barn_404_no_mutation():
+def test_task_complete_skip_void_cross_barn_isolation_both_directions():
+    """Cross-barn complete / skip / void are each rejected (404) in BOTH
+    directions, with no mutation, no stray completion, and no event leak in
+    the actor's barn — and the victim's own completion stays intact.
+    """
     db = mongo()
-    # The seeded task in each barn was completed during world build.
-    a_before = db.tasks.find_one({"id": WORLD.a["task"]}, {"_id": 0, "status": 1})
-    # Cross-barn skip -> 404 (valid SkipBody so we reach the barn-scope check).
-    assert _status("post", WORLD.h_a, f"/tasks/{WORLD.b['task']}/skip",
-                   {"client_completion_id": uuid.uuid4().hex, "reason": "x"}) == 404
-    # Cross-barn void -> 404; A's completion is untouched.
-    assert _status("post", WORLD.h_b, f"/tasks/{WORLD.a['task']}/void",
-                   {"reason": "x"}) == 404
-    a_comp = db.task_completions.find_one({"task_id": WORLD.a["task"]}, {"_id": 0})
-    assert a_comp is not None and a_comp.get("voided") is not True
-    assert db.tasks.find_one({"id": WORLD.a["task"]}, {"_id": 0, "status": 1})["status"] == a_before["status"]
+    pairs = [
+        (WORLD.h_a, "primary", WORLD.b["task"], WORLD.barn_b),
+        (WORLD.h_b, WORLD.barn_b, WORLD.a["task"], "primary"),
+    ]
+    for actor, actor_barn, victim_task, victim_barn in pairs:
+        before_task = db.tasks.find_one(
+            {"id": victim_task}, {"_id": 0, "status": 1, "updated_at": 1})
+        before_total_comps = db.task_completions.count_documents({"task_id": victim_task})
+
+        # complete -> 404 (fresh client_completion_id so no idempotent shortcut).
+        assert _status("post", actor, f"/tasks/{victim_task}/complete",
+                       {"client_completion_id": uuid.uuid4().hex, "outcome": "done"}) == 404
+        # skip -> 404.
+        assert _status("post", actor, f"/tasks/{victim_task}/skip",
+                       {"client_completion_id": uuid.uuid4().hex, "reason": "x"}) == 404
+        # void -> 404 (no active completion in the actor's barn to void).
+        assert _status("post", actor, f"/tasks/{victim_task}/void", {"reason": "x"}) == 404
+
+        # No mutation on the victim task.
+        after_task = db.tasks.find_one(
+            {"id": victim_task}, {"_id": 0, "status": 1, "updated_at": 1})
+        assert after_task == before_task
+        # No stray completion created under the actor's barn for the victim task,
+        # and the global completion total is unchanged.
+        assert db.task_completions.count_documents(
+            {"task_id": victim_task, "barn_id": actor_barn}) == 0
+        assert db.task_completions.count_documents({"task_id": victim_task}) == before_total_comps
+        # The victim's own completion (in its barn) survives and is not voided.
+        own = db.task_completions.find_one(
+            {"task_id": victim_task, "barn_id": victim_barn, "voided": {"$ne": True}}, {"_id": 0})
+        assert own is not None
+        # No event leaked into the actor's barn for the victim task.
+        assert db.task_events.count_documents(
+            {"task_id": victim_task, "barn_id": actor_barn}) == 0
 
 
 # --------------------------------------------------------------------------
