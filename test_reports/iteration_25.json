@@ -1,0 +1,37 @@
+{
+  "summary": "Phase 7C-2 staff composer for Owner Updates (HorseProfile 'Updates' tab) fully verified end-to-end. All 8 scenarios in the review request passed with zero console/page errors. Role gating works (admin sees tab; owner & groom do not). Composer creates draft -> non-sensitive publish -> archive (soft, row remains) AND sensitive draft -> submit-for-review (awaiting review, read-only). Edit/submit/publish controls only show on draft rows; pending_review and archived rows are read-only. Sensitive hint copy is exact. No 7C-3 review controls (approve/request-changes/review-note) leaked into this tab.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "HorseOwnerUpdates.jsx is well-scoped (~245 lines), single responsibility, uses data-testid throughout. No refactor needed for 7C-2 scope.",
+    "Minor: api.delete/cleanup for created owner_updates is not exposed in this tab; that's acceptable since 7C-2 is author-only. Cleanup leftover demo rows (see ids below) only if barn QA hygiene matters.",
+    "Minor (non-blocking): act() handles error.response.data.detail but create()/saveEdit() use generic toast text — they would miss a server-provided 409 message (e.g. attempting to publish a sensitive draft). Not reachable from this UI since publish button is hidden for sensitive drafts, but worth noting for defense in depth."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (skipped per request)", "frontend": "100% (8/8 scenarios)" },
+  "test_credentials": "admin@equinesync.com / demo1234, owner@equinesync.com / demo1234, groom@equinesync.com / demo1234 — all valid.",
+  "seed_data_creation": "Created 3 owner_updates on horse 023be6c4-502f-4208-bfad-65ec79c01e61 (Valentino) during testing. IDs: 3b82604c-ecfc-4371-80b2-b2e128a57a49 (non-sensitive, ended in archived state), c0a46822-7ca5-4c54-b289-11f6bec1eb43 (sensitive, ended in pending_review state), a0180159-2849-4a49-aa3f-519d3c8b3333 (edit-test, ended in draft state with body 'Edited body TEST-E-...'). All barn-scoped to 'primary'. Safe to leave or purge.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 7C-2 (staff composer) verified 100% pass. Next phase is 7C-3 (manager review queue with approve/request-changes/review-note). The pending_review row created here (id c0a46822-7ca5-4c54-b289-11f6bec1eb43) is a ready-made fixture for 7C-3 testing — it already lives at status=pending_review on Valentino. Backend route exists (per review note) but is not surfaced in 7C-2 UI. Auth token is stored via httpOnly cookie (localStorage was empty for admin); backend fetch cross-check via Authorization Bearer was skipped, but UI state transitions confirm POST /publish, /submit, /archive and PATCH /owner-updates/{id} are wired correctly because status pills updated and toasts appeared on every action.",
+  "verified_scenarios": {
+    "1_role_gating_owner_no_tab": "PASS",
+    "1_role_gating_groom_no_tab": "PASS",
+    "1_role_gating_admin_sees_tab": "PASS",
+    "2_composer_create_draft": "PASS (status pill = draft, row data-testid = owner-update-row-<uuid>)",
+    "3_publish_non_sensitive": "PASS (row transitions to status 'published', toast 'Published to the owner.' appeared)",
+    "4_sensitive_hint_text": "PASS (exact text: 'Sensitive updates go to a manager for review before owners see them.')",
+    "4_sensitive_no_publish_button": "PASS (update-publish-<id> absent on sensitive draft)",
+    "4_sensitive_submit_transitions": "PASS (status -> 'awaiting review')",
+    "5_edit_draft_only": "PASS (Edit/Save updates body via PATCH; edit controls absent on pending_review/published/archived rows)",
+    "6_archive_published_soft": "PASS (status -> 'archived', row remains visible)",
+    "7_pending_review_readonly": "PASS (no edit/submit/publish/archive on pending_review; no approve/request-changes/review-note testids anywhere)",
+    "8_no_console_errors": "PASS (0 console errors, 0 page errors)"
+  }
+}

@@ -4,11 +4,16 @@ import { api, fmtDate, money } from "../lib/api";
 import { Card, StatusPill } from "../components/Primitives";
 import { ArrowLeft } from "lucide-react";
 import CuratedTimeline from "../components/CuratedTimeline";
+import HorseOwnerUpdates from "../components/HorseOwnerUpdates";
+import { useAuth } from "../context/AuthContext";
 
-const TABS = ["Overview", "Timeline", "Feed", "Training", "Health", "Injuries", "Medications", "Wellness", "Billing", "Owner"];
+const BASE_TABS = ["Overview", "Timeline", "Feed", "Training", "Health", "Injuries", "Medications", "Wellness", "Billing", "Owner"];
 
 export default function HorseProfile() {
   const { id } = useParams();
+  const { user } = useAuth();
+  const canManage = ["admin", "barn_manager", "trainer"].includes(user?.role);
+  const TABS = canManage ? [...BASE_TABS, "Updates"] : BASE_TABS;
   const [horse, setHorse] = useState(null);
   const [meds, setMeds] = useState([]);
   const [vet, setVet] = useState([]);
@@ -106,6 +111,7 @@ export default function HorseProfile() {
       {tab === "Feed" && <Card><p className="text-equine-silver/80">{horse.feed_plan}</p></Card>}
       {tab === "Billing" && <Card hover={false}><p className="text-equine-platinum/60">See <Link to="/billing" className="text-equine-champagne">Billing</Link> for full invoice history.</p></Card>}
       {tab === "Owner" && <Card><div className="label-eyebrow mb-2">Owner ID</div><p className="text-equine-silver/80">{horse.owner_id}</p></Card>}
+      {tab === "Updates" && canManage && <HorseOwnerUpdates horseId={id} />}
     </div>
   );
 }
