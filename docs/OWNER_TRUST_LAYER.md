@@ -22,7 +22,8 @@
     your barn" feed on Owner Portal. *(this doc)*
   - **7C-2 — Staff composer** ✅ **DONE (2026-06-06)** — HorseProfile "Updates" tab:
     create/edit draft, publish non-sensitive, submit sensitive, archive. *(this doc)*
-  - **7C-3 — Manager review queue** — `/review-queue` page + pending badge + approve/request-changes. *(planned)*
+  - **7C-3 — Manager review queue** ✅ **DONE (2026-06-06)** — `/review-queue` page +
+    reviewer-only sidebar item + pending badge + approve/request-changes + four-eyes UX. *(this doc)*
 - **7D — Owner dashboard polish + docs/test consolidation** — billing/upcoming
   visibility, recap integration, framework↔implementation map. *(planned)*
 
@@ -184,8 +185,30 @@ the author lifecycle (review actions stay in 7C-3).
   create draft, publish non-sensitive, sensitive hint + no-publish + submit, draft-only inline edit,
   soft archive, pending_review read-only (no 7C-3 controls leaked), zero console errors.
 
+## 7C-3 — Manager review queue ✅
+Frontend only — **no backend changes**. Reviewers clear `pending_review` updates.
+
+- New `frontend/src/pages/ReviewQueue.jsx` at route `/review-queue` (in App.js, inside AppShell).
+  Role guard: non-reviewers (`role ∉ {admin, barn_manager, trainer}`) → `<Navigate to="/" />`.
+  Lists `GET /owner-updates?status=pending_review` (+ `GET /horses` for names). Per row:
+  **Approve** (`/approve`) and **Request changes** (modal, optional `review_note`, `/request-changes`).
+  **Four-eyes:** for a `sensitive` item authored by the current reviewer, Approve is disabled with
+  *"You authored this — another reviewer must approve."* (Request changes stays enabled; backend
+  also returns 403 defensively). testids: `review-queue`, `review-row-<id>`, `review-approve-<id>`,
+  `review-approve-blocked-<id>`, `review-request-changes-<id>`, `review-note-modal|input|submit`,
+  `review-empty`.
+- `frontend/src/components/Sidebar.jsx`: new **"Review Queue"** item (Business section), rendered
+  **only for reviewers**; a pending **badge** (`review-queue-badge`) polls
+  `GET /owner-updates?status=pending_review` every 60s and refreshes instantly on the
+  `owner-updates-changed` window event (dispatched by the queue page after approve/request-changes).
+  The existing **EquineSync logo header was preserved untouched** (verified non-regressed).
+- **Verified** by testing_agent (iteration_26): **100% frontend, 10/10 behaviours** — reviewer-only
+  item + live badge, non-reviewer redirect, four-eyes block (admin can't approve own sensitive),
+  second-reviewer (trainer) approve, request-changes modal (optional note), instant badge refresh,
+  empty state, **logo non-regression**, zero app console errors. **Phase 7C is complete.**
+
 ## Deferred / backlog (NOT in 7A)
-- **Frontend** — 7C-3 (manager review queue) still pending.
+- **Frontend** — Phase 7C is complete (7C-1/7C-2/7C-3). 7D (owner dashboard polish + docs/test consolidation) remains.
 - **Frontend** (owner feed, staff composer, review queue) — **7C**.
 - Additive index on `owner_updates(barn_id, horse_id, status)` if read volume warrants.
 - `owner_update:read` split (grooms/vets read access) if needed.

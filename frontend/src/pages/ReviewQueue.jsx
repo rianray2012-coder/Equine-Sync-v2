@@ -38,6 +38,9 @@ export default function ReviewQueue() {
     if (!canReview) return;
     load();
     api.get("/horses").then((r) => setHorses(r.data || [])).catch(() => {});
+    const onChange = () => load();
+    window.addEventListener("owner-updates-changed", onChange);
+    return () => window.removeEventListener("owner-updates-changed", onChange);
   }, [canReview, load]);
 
   if (!canReview) return <Navigate to="/" replace />;
