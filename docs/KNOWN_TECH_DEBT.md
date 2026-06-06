@@ -38,7 +38,7 @@
 ## 7. No Audit Logging — **Severity: Medium**
 - **Observed:** No `AuditLog` model/collection or audit service exists in `backend/`. `OWNER_TRUST_FRAMEWORK.md` and `ROLE_PERMISSION_MATRIX.md` both assume audit trails.
 - **Risks:** Reduced accountability, poor debugging, legal/compliance gaps.
-- **Recommended Action:** Create immutable `AuditLog` (see `DATA_MODEL.md`) + audit service + tests. **(Phase 5)**
+- **Recommended Action:** Create immutable `AuditLog` (see `DATA_MODEL.md`) + audit service + tests. **(Phase 5)** — 🟡 **PARTIALLY RESOLVED (Phase 5A, 2026-06-06):** immutable, fail-open, barn-stamped, PII-redacting audit service shipped (`core/audit.py` → `audit_log` collection + startup indexes + 10 unit tests). Write-side route instrumentation (5B/5C) + read API (5D) pending. See `docs/AUDIT_LOGGING.md`.
 
 ## 8. Missing Security Hardening — **Severity: High (security)** — 🟡 PARTIALLY RESOLVED (Phase 2B, 2026-05-30)
 - **Observed:** No rate limiting; CORS defaulted to `*` (`server.py` → `os.environ.get('CORS_ORIGINS', '*')`); no email verification or password-reset endpoints (`routes/auth.py` exposes register/login/refresh/logout/me only). `SecurityHeadersMiddleware` + refresh-token rotation **are** implemented (`auth_security.py`) — good baseline.

@@ -28,6 +28,7 @@ from notifications import (
     ensure_indexes as ensure_notification_indexes,
 )
 from core.auth_tokens import ensure_auth_token_indexes
+from core.audit import ensure_audit_indexes
 from mailer import send as send_email, render as render_email
 from owner_digest import (
     run_daily_digest_pass,
@@ -99,6 +100,8 @@ def register_lifecycle(app, *, send_nudges):
             await ensure_refresh_indexes(db)
             await ensure_notification_indexes(db)
             await ensure_auth_token_indexes(db)
+            # Phase 5A: additive indexes for the immutable audit_log collection.
+            await ensure_audit_indexes(db)
             # Safe migration (Phase 2C): backfill email_verified=True for any pre-existing
             # users missing the field so verification rollout never locks them out.
             backfill = await db.users.update_many(
