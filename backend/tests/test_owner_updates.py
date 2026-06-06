@@ -192,6 +192,34 @@ def test_other_barn_update_never_leaks():
 
 
 # --------------------------------------------------------------------------
+# Sensitive drafts are publish-blocked in 7A (review gate lands in 7B)
+# --------------------------------------------------------------------------
+def test_sensitive_draft_cannot_be_published_in_7a():
+    upd = _create(ADMIN_H, STATE["horse_owned"], kind="incident",
+                  visibility="owner_facing", sensitive=True).json()
+    STATE["updates"].append(upd["id"])
+    assert upd["sensitive"] is True and upd["status"] == "draft"
+
+    p = requests.post(f"{API}/owner-updates/{upd['id']}/publish", headers=ADMIN_H, timeout=30)
+    assert p.status_code == 409
+    assert p.json()["detail"] == "Sensitive updates require review"
+
+    # status unchanged in DB
+    row = DB.owner_updates.find_one({"id": upd["id"]}, {"_id": 0})
+    assert row["status"] == "draft" and row["published_at"] is None
+
+    # still invisible to the owner (draft)
+    ids = [u["id"] for u in requests.get(f"{API}/owner-updates", headers=OWNER_H, timeout=30).json()]
+    assert upd["id"] not in ids
+    assert requests.get(f"{API}/owner-updates/{upd['id']}", headers=OWNER_H, timeout=30).status_code == 404
+
+    # no published audit row was written
+    assert DB.audit_log.count_documents({
+        "resource_type": "owner_update", "resource_id": upd["id"],
+        "action": "owner_update.published"}) == 0
+
+
+# --------------------------------------------------------------------------
 # Audit — high-signal lifecycle events, minimal non-PII metadata
 # --------------------------------------------------------------------------
 def test_publish_and_archive_emit_minimal_audit():

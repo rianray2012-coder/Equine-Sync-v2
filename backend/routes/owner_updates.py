@@ -190,6 +190,10 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
         if doc["status"] != "draft":
             # 7A only publishes from draft. (Sensitive -> pending_review is 7B.)
             raise HTTPException(409, "Only draft updates can be published")
+        if doc.get("sensitive"):
+            # 7A guardrail: sensitive updates cannot be published until the 7B
+            # review gate exists. Status is unchanged; no publish audit emitted.
+            raise HTTPException(409, "Sensitive updates require review")
         now = _iso(_now_utc())
         await db.owner_updates.update_one(scope, {"$set": {
             "status": "published", "published_at": now, "published_by": user["id"], "updated_at": now,

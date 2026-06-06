@@ -35,7 +35,7 @@ This is the first concrete primitive of the Owner Trust Layer.
 | `kind` | `routine \| training \| wellness \| incident \| billing \| recap` (422 on other) |
 | `body` | required, non-empty (422 on empty) |
 | `visibility` | `internal \| owner_facing` (default `owner_facing`) |
-| `sensitive` | bool, **stored for forward-compat — NOT acted on in 7A** (gating is 7B) |
+| `sensitive` | bool, **stored in 7A but publish-blocked** — a sensitive draft cannot be published until the 7B review gate exists (publish returns `409`). Not otherwise acted on in 7A. |
 | `status` | `draft \| pending_review \| published \| archived` (full enum; 7A wires only draft→published→archived) |
 | `created_at` / `updated_at` | ISO |
 | `published_at` / `published_by` | set on publish |
@@ -49,7 +49,7 @@ This is the first concrete primitive of the Owner Trust Layer.
 | `GET /owner-updates?horse_id=&status=` | owner ⇒ own horses' published+owner_facing; staff (create-cap) ⇒ barn-scoped all; else 403 | list (owner sort `published_at`, staff sort `created_at`) |
 | `GET /owner-updates/{id}` | same model as list | read one (owner: generic 404 for draft/internal/foreign) |
 | `PATCH /owner-updates/{id}` | `owner_update:create` | edit **draft only** (`409` otherwise) |
-| `POST /owner-updates/{id}/publish` | `owner_update:publish` | `draft → published` (`409` otherwise); emits audit |
+| `POST /owner-updates/{id}/publish` | `owner_update:publish` | `draft → published` (`409` otherwise); **sensitive drafts are publish-blocked → `409 "Sensitive updates require review"`** (status unchanged, no audit emitted); emits audit on success |
 | `POST /owner-updates/{id}/archive` | `owner_update:archive` | `published → archived` (`409` otherwise); soft; emits audit |
 
 ### Permissions (additive in `core/permissions.py` — no existing capability changed)
@@ -82,14 +82,16 @@ read access.
   `metadata={"kind", "visibility"}` only — **no body/title/owner/horse/email text**.
 
 ### Tests
-`tests/test_owner_updates.py` (8) — staff lifecycle + 409 guards; edit-draft-only;
+`tests/test_owner_updates.py` (9) — staff lifecycle + 409 guards; edit-draft-only;
 foreign horse 404 + empty body 422; owner/groom cannot create; groom cannot read;
 owner sees only own published owner-facing updates (drafts/internal/foreign hidden,
-404 on direct GET); other-barn update never leaks; publish/archive emit minimal,
-non-PII audit. Backend suite: **498 passed / 3 skipped** (490 + 8).
+404 on direct GET); **sensitive draft is publish-blocked (409, stays draft, owner
+can't see it, no publish audit)**; other-barn update never leaks; publish/archive
+emit minimal, non-PII audit. Backend suite: **499 passed / 3 skipped** (490 + 9).
 
 ## Deferred / backlog (NOT in 7A)
-- **Sensitive-content review gating** (`sensitive → pending_review`, manager approve) — **7B**.
+- **Sensitive-content review gating** (`sensitive → pending_review`, manager approve,
+  publish-enable) — **7B**. In 7A, sensitive drafts are stored but **publish-blocked**.
 - **Frontend** (owner feed, staff composer, review queue) — **7C**.
 - Additive index on `owner_updates(barn_id, horse_id, status)` if read volume warrants.
 - `owner_update:read` split (grooms/vets read access) if needed.
