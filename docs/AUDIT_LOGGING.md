@@ -14,8 +14,14 @@ debugging, and (future) compliance. Closes `KNOWN_TECH_DEBT.md #7`.
    the trail inherits Phase-4 multi-tenant isolation. The 5D read API will scope
    reads with `barn_filter`.
 3. **PII-minimized.** A redaction pass strips sensitive keys from `metadata`
-   (passwords, hashes, tokens, secrets, api keys, dev tokens, accept URLs) at
-   any nesting depth, truncates long strings (500 chars) and caps lists (50).
+   by **normalized variant matching** — keys are lowercased and collapsed
+   (separators/camelCase removed), then redacted if they contain any sensitive
+   fragment (`password`, `passwd`, `token`, `secret`, `authorization`,
+   `credential`, `apikey`, `jwt`, `hash`) or exactly match a token-bearing URL
+   key (`accept_url`/`reset_url`/`verify_url`/`dev_accept_url`). This catches
+   variants like `resetToken`, `verificationToken`, `authorization_header`,
+   `apiKey`, `secretKey`, `session_token_id`, `password_hash` at any nesting
+   depth. Long strings are truncated (500 chars) and lists capped (50).
 4. **Immutable.** Append-only; no update/delete API. v1 has **no read API**.
 5. **Indefinite retention (v1).** No TTL index. TTL/archival/export policy is
    deferred until compliance requirements are defined (customer contracts,

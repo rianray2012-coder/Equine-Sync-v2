@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
@@ -31,14 +32,19 @@ from core.tenancy import PRIMARY_BARN_ID, resolve_barn_id
 
 logger = logging.getLogger(__name__)
 
-# Keys whose values must NEVER be persisted in audit metadata. Matched
-# case-insensitively against dict keys at any nesting depth.
-_SENSITIVE_KEYS = {
-    "password", "new_password", "current_password", "old_password",
-    "password_hash", "token", "raw_token", "refresh_token", "access_token",
-    "token_hash", "authorization", "secret", "jwt_secret", "api_key",
-    "apikey", "dev_token", "dev_verification_token", "dev_accept_url",
-    "credentials",
+# Sensitive-data redaction. A metadata key is redacted when its normalized form
+# (lowercased, separators/camelCase boundaries collapsed to alphanumerics) either
+# (a) contains any sensitive *fragment* — so variants like `resetToken`,
+# `verificationToken`, `authorization_header`, `apiKey`, `secretKey`, `jwt`,
+# `session_token_id`, `password_hash` are all caught — or (b) exactly matches a
+# token-bearing key whose name has no obvious fragment (e.g. accept/reset/verify
+# URLs that embed a raw token).
+_SENSITIVE_FRAGMENTS = (
+    "password", "passwd", "token", "secret", "authorization",
+    "credential", "apikey", "jwt", "hash",
+)
+_SENSITIVE_EXACT = {
+    "devaccepturl", "accepturl", "reseturl", "verifyurl",
 }
 _MAX_STR = 500          # truncate over-long metadata strings
 _MAX_LIST = 50          # cap metadata list length
@@ -48,13 +54,26 @@ _MAX_DEPTH = 6          # guard against pathological nesting
 _bg_tasks: set = set()
 
 
+def _collapse_key(key: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", key.lower())
+
+
+def _is_sensitive_key(key: Any) -> bool:
+    if not isinstance(key, str):
+        return False
+    collapsed = _collapse_key(key)
+    if collapsed in _SENSITIVE_EXACT:
+        return True
+    return any(frag in collapsed for frag in _SENSITIVE_FRAGMENTS)
+
+
 def _redact(value: Any, _depth: int = 0) -> Any:
     if _depth > _MAX_DEPTH:
         return "…"
     if isinstance(value, dict):
         out: Dict[str, Any] = {}
         for k, v in value.items():
-            if isinstance(k, str) and k.lower() in _SENSITIVE_KEYS:
+            if _is_sensitive_key(k):
                 out[k] = "[redacted]"
             else:
                 out[k] = _redact(v, _depth + 1)

@@ -103,6 +103,42 @@ def test_redaction_truncates_long_strings_and_caps_lists():
     assert len(e["metadata"]["arr"]) == 50
 
 
+def test_redaction_catches_sensitive_key_variants_nested():
+    meta = {
+        "outer": {
+            "resetToken": "r",
+            "verificationToken": "v",
+            "authorization_header": "Bearer abc",
+            "apiKey": "k",
+            "secretKey": "s",
+            "jwt": "e.y.z",
+            "session_token_id": "sid",
+            "password_hash": "h",
+            # legitimate keys that must SURVIVE redaction:
+            "photo_url": "https://x/p.png",
+            "full_name": "Jane Doe",
+            "count": 3,
+        }
+    }
+    o = audit.build_entry(action="x", metadata=meta)["metadata"]["outer"]
+    for k in ("resetToken", "verificationToken", "authorization_header", "apiKey",
+              "secretKey", "jwt", "session_token_id", "password_hash"):
+        assert o[k] == "[redacted]", f"{k} not redacted"
+    assert o["photo_url"] == "https://x/p.png"
+    assert o["full_name"] == "Jane Doe"
+    assert o["count"] == 3
+
+
+def test_redaction_catches_token_bearing_urls_by_exact_name():
+    meta = {"accept_url": "https://app/accept?token=raw", "reset_url": "https://app/r?token=x",
+            "verify_url": "https://app/v?token=y", "barn_url": "https://app/barn"}
+    m = audit.build_entry(action="x", metadata=meta)["metadata"]
+    assert m["accept_url"] == "[redacted]"
+    assert m["reset_url"] == "[redacted]"
+    assert m["verify_url"] == "[redacted]"
+    assert m["barn_url"] == "https://app/barn"  # not token-bearing → kept
+
+
 # --------------------------------------------------------------------------
 # record() — fail-open + happy path
 # --------------------------------------------------------------------------
@@ -156,3 +192,29 @@ def test_record_denial_schedules_write_on_running_loop():
     assert docs[0]["action"] == "permission.denied"
     assert docs[0]["outcome"] == "denied"
     assert docs[0]["resource_id"] == "admin:access"
+
+
+# --------------------------------------------------------------------------
+# ensure_audit_indexes() — requests the expected three indexes
+# --------------------------------------------------------------------------
+class _IdxColl:
+    def __init__(self):
+        self.requested = []
+
+    async def create_index(self, spec):
+        self.requested.append(spec)
+
+
+class _IdxDB:
+    def __init__(self):
+        self.audit_log = _IdxColl()
+
+
+def test_ensure_audit_indexes_requests_expected_three():
+    fake = _IdxDB()
+    asyncio.run(audit.ensure_audit_indexes(fake))
+    assert fake.audit_log.requested == [
+        [("barn_id", 1), ("ts", -1)],
+        [("action", 1), ("ts", -1)],
+        [("actor_user_id", 1), ("ts", -1)],
+    ]
