@@ -20,7 +20,8 @@
 - **7C — Owner-facing update controls (frontend)** — gated sub-phases:
   - **7C-1 — Owner feed (read-only)** ✅ **DONE (2026-06-06)** — owner "Updates from
     your barn" feed on Owner Portal. *(this doc)*
-  - **7C-2 — Staff composer** — HorseProfile "Updates" tab (create/edit/submit/publish). *(planned)*
+  - **7C-2 — Staff composer** ✅ **DONE (2026-06-06)** — HorseProfile "Updates" tab:
+    create/edit draft, publish non-sensitive, submit sensitive, archive. *(this doc)*
   - **7C-3 — Manager review queue** — `/review-queue` page + pending badge + approve/request-changes. *(planned)*
 - **7D — Owner dashboard polish + docs/test consolidation** — billing/upcoming
   visibility, recap integration, framework↔implementation map. *(planned)*
@@ -163,8 +164,28 @@ horse **Valentino** (`023be6c4-502f-4208-bfad-65ec79c01e61`), original `owner_id
 Revert with `python -m seed_owner_demo_link --reset`. Does not alter product code, migrations,
 or multi-tenant isolation.
 
+## 7C-2 — Staff composer (HorseProfile "Updates" tab) ✅
+Frontend only — **no backend changes**. Lets staff author Owner Updates per horse and drive
+the author lifecycle (review actions stay in 7C-3).
+
+- New `frontend/src/components/HorseOwnerUpdates.jsx` — composer (kind / visibility / body /
+  sensitive, with a calm hint when sensitive is checked) + a per-horse list. Per-row actions by
+  status: `draft` → **Edit** (inline; `PATCH`) · **Submit for review** (`/submit`) · **Publish**
+  (`/publish`, shown for **non-sensitive only** — sensitive drafts offer Submit only); `pending_review`
+  → read-only **"awaiting review"**; `published` → **Archive** (`/archive`); `archived` → none.
+  testids: `updates-composer`, `composer-kind|visibility|body|sensitive|submit`,
+  `composer-sensitive-hint`, `owner-update-row-<id>`, `update-edit|submit|publish|archive-<id>`,
+  `edit-save-<id>`.
+- Wired into `frontend/src/pages/HorseProfile.jsx` — adds an **"Updates"** tab (last tab),
+  rendered **only when `canManage = role ∈ {admin, barn_manager, trainer}`** (owners/grooms/vets
+  never see it). Composer auto-uses the current horse.
+- Palette: HorseProfile `equine-platinum/ivory/champagne/steel` family.
+- **Verified** by testing_agent (iteration_25): **100% frontend, 8/8 scenarios** — role gating,
+  create draft, publish non-sensitive, sensitive hint + no-publish + submit, draft-only inline edit,
+  soft archive, pending_review read-only (no 7C-3 controls leaked), zero console errors.
+
 ## Deferred / backlog (NOT in 7A)
-- **Frontend** — 7C-2 (staff composer) + 7C-3 (manager review queue) still pending.
+- **Frontend** — 7C-3 (manager review queue) still pending.
 - **Frontend** (owner feed, staff composer, review queue) — **7C**.
 - Additive index on `owner_updates(barn_id, horse_id, status)` if read volume warrants.
 - `owner_update:read` split (grooms/vets read access) if needed.
