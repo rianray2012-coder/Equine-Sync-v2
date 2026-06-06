@@ -10,8 +10,9 @@
 - **6A — Care Input Integrity / Cross-Barn Validation** ✅ **DONE (2026-06-06)**
 - **6B — Care Record State Guards** ✅ **DONE (2026-06-06)** — idempotent feed-task
   re-complete + opt-in `client_log_id` med-log idempotency.
-- **6C — Care Search / Filtering Polish** — tighten existing list filters/sorting,
-  barn-scoped + predictable; no frontend unless separately approved. *(planned)*
+- **6C — Care Search / Filtering Polish** ✅ **DONE (2026-06-06)** — deterministic
+  `created_at`-desc sort on the previously-unsorted lists + harmonized farrier read +
+  opt-in barn-scoped `medication_id` filter on medication-logs.
 - **6D — Care Documentation / Test Consolidation** — docs + care-route regression
   consolidation around the strengthened behaviors. *(planned)*
 
@@ -69,6 +70,33 @@ success response shapes are unchanged.
 - New `tests/test_care_state_guards.py` — feed-task re-complete preserves first
   completion; `client_log_id` repeat returns same log + no duplicate; no-key posts
   still insert distinctly. Full backend suite: **486 passed / 3 skipped**.
+
+
+## 6C — Care Search / Filtering Polish ✅
+Care list reads are now predictable and consistent; **bare-array responses are
+unchanged** (no pagination envelope) and all reads stay barn-scoped.
+
+- **Deterministic ordering** — the five previously-unsorted lists now sort
+  `created_at` desc (newest-first), matching the existing `wellness` convention:
+  `GET /owners`, `GET /riders`, `GET /medications`, `GET /feed-tasks`,
+  `GET /injuries`. (Lists that were already sorted — `medication-logs` by
+  `scheduled_time`, `vet-records`/`farrier-history` by `date` — are unchanged.)
+- **Harmonized `GET /farrier-history`** to route through
+  `list_collection(..., sort_field="date")` instead of the bespoke
+  `.find().sort("date", -1).to_list(500)` — **zero behavior change**, consistency only.
+- **Opt-in `medication_id` filter on `GET /medication-logs`** — the only care list
+  whose child resource couldn't be filtered now accepts an optional, barn-scoped
+  `medication_id` (parity with the `horse_id` filter elsewhere). Omitting it is
+  behavior-identical to before.
+- **Filter-id → 404 validation intentionally skipped.** A foreign/unknown filter id
+  (`horse_id` / `medication_id`) returns an **empty array** (barn_filter scopes it) —
+  no 404, no existence leak, no client-breakage. Documented as deferred.
+
+### Tests
+- New `tests/test_care_filtering.py` (4 tests) — newest-first ordering on
+  medications + owners/riders/injuries; barn-scoped `medication_id` filter narrows
+  results and an unknown id returns `[]` (not 404). Full backend suite: **490 passed
+  / 3 skipped** (one cross-test analytics-isolation flake passes in isolation).
 
 
 ## Deferred / backlog (documented, NOT implemented in Phase 6 unless re-scoped)

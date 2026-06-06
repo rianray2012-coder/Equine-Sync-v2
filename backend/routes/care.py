@@ -134,7 +134,8 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.get("/owners")
     async def list_owners(user=Depends(get_current_user)):
-        return await list_collection("owners", barn_filter(user))
+        # Phase 6C: deterministic newest-first ordering (created_at desc).
+        return await list_collection("owners", barn_filter(user), sort_field="created_at")
 
     @router.post("/owners")
     async def create_owner(body: OwnerIn, user=Depends(get_current_user)):
@@ -151,7 +152,8 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.get("/riders")
     async def list_riders(user=Depends(get_current_user)):
-        return await list_collection("riders", barn_filter(user))
+        # Phase 6C: deterministic newest-first ordering (created_at desc).
+        return await list_collection("riders", barn_filter(user), sort_field="created_at")
 
     @router.post("/riders")
     async def create_rider(body: RiderIn, user=Depends(get_current_user)):
@@ -169,7 +171,8 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
     @router.get("/medications")
     async def list_meds(horse_id: Optional[str] = None, user=Depends(get_current_user)):
         extra = {"horse_id": horse_id} if horse_id else {}
-        return await list_collection("medications", barn_filter(user, extra))
+        # Phase 6C: deterministic newest-first ordering (created_at desc).
+        return await list_collection("medications", barn_filter(user, extra), sort_field="created_at")
 
     @router.post("/medications")
     async def create_med(body: MedicationIn, user=Depends(get_current_user)):
@@ -181,8 +184,14 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
         return clean(doc)
 
     @router.get("/medication-logs")
-    async def list_med_logs(user=Depends(get_current_user)):
-        return await list_collection("medication_logs", barn_filter(user), sort_field="scheduled_time")
+    async def list_med_logs(medication_id: Optional[str] = None, user=Depends(get_current_user)):
+        # Phase 6C: optional barn-scoped medication_id filter (parity with the
+        # horse_id filter on the other care lists). A foreign/unknown id simply
+        # returns an empty array (barn_filter scopes it) — no 404, no leak.
+        extra = {"medication_id": medication_id} if medication_id else {}
+        return await list_collection(
+            "medication_logs", barn_filter(user, extra), sort_field="scheduled_time"
+        )
 
     @router.post("/medication-logs")
     async def create_med_log(body: MedLogIn, user=Depends(get_current_user)):
@@ -207,7 +216,8 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
     @router.get("/feed-tasks")
     async def list_feed(date_str: Optional[str] = None, user=Depends(get_current_user)):
         extra = {"date": date_str} if date_str else {}
-        return await list_collection("feed_tasks", barn_filter(user, extra))
+        # Phase 6C: deterministic newest-first ordering (created_at desc).
+        return await list_collection("feed_tasks", barn_filter(user, extra), sort_field="created_at")
 
     @router.post("/feed-tasks/{task_id}/complete")
     async def complete_feed(task_id: str, user=Depends(get_current_user)):
@@ -248,15 +258,18 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
     async def list_farrier(horse_id: Optional[str] = None, user=Depends(get_current_user)):
         # Phase 4B-7: read now barn-scoped — engine-written farrier_history rows
         # stamp barn_id (+ startup backfill for legacy rows). See vet-records note.
+        # Phase 6C: harmonized to route through list_collection (date desc) — same
+        # behavior as the bespoke .find().sort().to_list(500) it replaced.
         extra = {"horse_id": horse_id} if horse_id else None
-        return await db.farrier_history.find(barn_filter(user, extra), {"_id": 0}).sort("date", -1).to_list(500)
+        return await list_collection("farrier_history", barn_filter(user, extra), sort_field="date")
 
     # ---------------- Injuries ----------------
 
     @router.get("/injuries")
     async def list_injuries(horse_id: Optional[str] = None, user=Depends(get_current_user)):
         extra = {"horse_id": horse_id} if horse_id else {}
-        return await list_collection("injuries", barn_filter(user, extra))
+        # Phase 6C: deterministic newest-first ordering (created_at desc).
+        return await list_collection("injuries", barn_filter(user, extra), sort_field="created_at")
 
     @router.post("/injuries")
     async def create_injury(body: InjuryIn, user=Depends(get_current_user)):
