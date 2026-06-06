@@ -13,12 +13,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
 from core.config import is_production, allow_seed_route, evaluate_seed_access
 from core.permissions import require
+from core.tenancy import resolve_barn_id
+from core import audit
 
 _security = HTTPBearer(auto_error=False)
 
@@ -45,10 +47,12 @@ def build_router(*, db, get_current_user, track, run_seed) -> APIRouter:
     @router.post("/seed")
     async def seed_route(
         body: Optional[SeedBody] = None,
+        request: Request = None,
         creds: Optional[HTTPAuthorizationCredentials] = Depends(_security),
     ):
         """Destructive wipe-and-reseed of demo data (Security Patch 2E hardened)."""
         role = None
+        user = None
         if creds is not None:
             try:
                 user = await get_current_user(creds)
@@ -63,12 +67,21 @@ def build_router(*, db, get_current_user, track, run_seed) -> APIRouter:
             role=role,
             confirm_ok=confirm_ok,
         )
+        await audit.record(
+            action="admin.seed.attempt", request=request, user=user, actor_role=role,
+            resource_type="system", resource_id="seed",
+            outcome=("success" if allowed else "denied"),
+            status_code=(200 if allowed else code),
+            metadata={"is_production": is_production(), "role": role,
+                      "confirm_ok": confirm_ok, "code": code},
+        )
         if not allowed:
             raise HTTPException(status_code=code, detail=detail)
         return await run_seed(db)
 
     @router.post("/admin/tenant-reset")
-    async def tenant_reset(body: TenantResetBody, user=Depends(get_current_user)):
+    async def tenant_reset(body: TenantResetBody, request: Request,
+                            user=Depends(get_current_user)):
         require(user, "admin:access")
         if body.confirm != "RESET":
             raise HTTPException(400, "Confirmation token required (send confirm=\"RESET\")")
@@ -84,6 +97,11 @@ def build_router(*, db, get_current_user, track, run_seed) -> APIRouter:
         else:
             raise HTTPException(400, "Unknown scope")
         await track("tenant.reset", {"scope": body.scope, "cleared": cleared}, user["id"])
+        await audit.record(
+            action="admin.tenant_reset", request=request, user=user,
+            resource_type="barn", resource_id=resolve_barn_id(user),
+            metadata={"scope": body.scope, "cleared": cleared},
+        )
         return {"ok": True, "cleared": cleared}
 
     return router

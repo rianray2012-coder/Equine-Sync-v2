@@ -54,10 +54,16 @@ def has_capability(user: Dict[str, Any], capability: str) -> bool:
 
 def require(user: Dict[str, Any], capability: str) -> None:
     if not has_capability(user, capability):
-        raise HTTPException(
-            status_code=403,
-            detail=_DENY_MESSAGES.get(capability, "Insufficient permissions"),
-        )
+        message = _DENY_MESSAGES.get(capability, "Insufficient permissions")
+        # Phase 5B: emit a fire-and-forget `permission.denied` audit event for the
+        # centralized capability gates. Behavior-identical — same 403, same message;
+        # the audit write never blocks or alters this denial.
+        try:
+            from core.audit import record_denial
+            record_denial(user, capability, message)
+        except Exception:  # pragma: no cover - audit must never break require()
+            pass
+        raise HTTPException(status_code=403, detail=message)
 
 
 def require_setup_role(user: Dict[str, Any]) -> None:

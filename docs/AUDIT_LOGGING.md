@@ -1,7 +1,8 @@
 # Audit Logging (Phase 5)
 
-> Status: **5A foundation COMPLETE (write-side service + schema + tests).**
-> Route instrumentation (5B/5C) and the read API (5D) are separately gated.
+> Status: **5A foundation COMPLETE + 5B auth/session + admin/destructive instrumentation COMPLETE.**
+> Remaining: 5C (barn/invite lifecycle + SR approve/decline + invoice.paid) and the
+> 5D read API are separately gated.
 
 ## Purpose
 An immutable, append-only operational/security audit trail for accountability,
@@ -61,15 +62,19 @@ Indexes (additive, idempotent): `(barn_id, ts desc)`, `(action, ts desc)`,
 - **Auth/session:** `auth.login.success`, `auth.login.failure`, `auth.login.locked`,
   `auth.token.refreshed`, `auth.logout`, `auth.logout_all`,
   `auth.password_reset.requested`, `auth.password_reset.completed`,
-  `auth.email.verified`.
+  `auth.email.verified`. ✅ **5B (`routes/auth.py`)**
 - **Admin/destructive:** `admin.seed.attempt` (with outcome), `admin.tenant_reset`,
-  `barn.created`.
-- **Barn/invite lifecycle:** `invite.created`, `invite.resent`, `invite.revoked`,
-  `invite.accepted`, `barn.settings.updated`.
-- **Operational approvals:** `service_request.approved`, `service_request.declined`.
-- **Billing:** `invoice.paid`.
+  `barn.created`. ✅ **5B (`routes/admin.py`, `routes/barns.py`)** — `admin.tenant_reset`
+  success-path audit is wired but **not exercised destructively in tests** (the wipe is
+  `delete_many({})` on the shared DB); verified by code review + the denied-gate test
+  until a safer isolated harness exists.
 - **Access control:** `permission.denied` — emitted by `core.permissions.require()`
-  for the centralized capability gates only.
+  for the centralized capability gates only. ✅ **5B** (fire-and-forget; behavior-identical
+  403; IP/user-agent capture for denials is a future enhancement).
+- **Barn/invite lifecycle:** `invite.created`, `invite.resent`, `invite.revoked`,
+  `invite.accepted`, `barn.settings.updated`. → **5C (pending)**
+- **Operational approvals:** `service_request.approved`, `service_request.declined`. → **5C**
+- **Billing:** `invoice.paid`. → **5C**
 
 ## Explicitly OUT OF SCOPE for v1 (later phases)
 - A read/list API (`GET /api/audit-logs`) + `audit:read` capability + auditing

@@ -48,6 +48,7 @@ from core.auth_tokens import (
 )
 from core.login_attempts import check_lockout, record_failure, clear_attempts
 from core.tenancy import PRIMARY_BARN_ID, resolve_barn_id
+from core import audit
 
 logger = logging.getLogger(__name__)
 
@@ -284,6 +285,11 @@ def build_router(db) -> APIRouter:
             remaining = await check_lockout(db, email)
             if remaining:
                 mins = (remaining + 59) // 60
+                await audit.record(
+                    action="auth.login.locked", actor_email=email, request=request,
+                    resource_type="session", outcome="denied", status_code=423,
+                    metadata={"reason": "account_locked", "retry_after_minutes": mins},
+                )
                 raise HTTPException(
                     423,
                     f"Account temporarily locked due to repeated failed attempts. "
@@ -299,6 +305,12 @@ def build_router(db) -> APIRouter:
                     lockout_minutes=login_lockout_minutes(),
                     ip=ip,
                 )
+            await audit.record(
+                action="auth.login.failure", actor_email=email, request=request,
+                barn_id=(resolve_barn_id(user) if user else None),
+                resource_type="session", outcome="failure", status_code=401,
+                metadata={"reason": "invalid_credentials"},
+            )
             raise HTTPException(401, "Invalid credentials")
         # Successful auth — clear any failed-attempt history.
         if login_lockout_enabled():
@@ -312,6 +324,10 @@ def build_router(db) -> APIRouter:
             )
         token = create_token(user["id"], user["role"], resolve_barn_id(user))
         refresh = await issue_refresh_token(db, user["id"], user_agent=ua, ip=ip)
+        await audit.record(
+            action="auth.login.success", user=user, request=request,
+            resource_type="session", resource_id=user["id"],
+        )
         return {
             "token": token,
             "refresh_token": refresh,
@@ -331,6 +347,10 @@ def build_router(db) -> APIRouter:
         await db.refresh_tokens.update_one(
             {"id": old["id"]}, {"$set": {"rotated_to": new_refresh[:8] + "…"}},
         )
+        await audit.record(
+            action="auth.token.refreshed", user=user, request=request,
+            resource_type="session", resource_id=user["id"],
+        )
         return {
             "token": token,
             "refresh_token": new_refresh,
@@ -339,16 +359,25 @@ def build_router(db) -> APIRouter:
         }
 
     @router.post("/auth/logout")
-    async def logout(body: RefreshBody, user=Depends(get_current_user)):
+    async def logout(body: RefreshBody, request: Request, user=Depends(get_current_user)):
         try:
             await revoke_refresh_token(db, body.refresh_token)
         except Exception:
             logger.exception("logout: refresh revoke failed")
+        await audit.record(
+            action="auth.logout", user=user, request=request,
+            resource_type="session", resource_id=user["id"],
+        )
         return {"ok": True}
 
     @router.post("/auth/logout-all")
-    async def logout_all(user=Depends(get_current_user)):
+    async def logout_all(request: Request, user=Depends(get_current_user)):
         await revoke_all_user_refresh_tokens(db, user["id"])
+        await audit.record(
+            action="auth.logout_all", user=user, request=request,
+            resource_type="session", resource_id=user["id"],
+            metadata={"scope": "all_sessions"},
+        )
         return {"ok": True}
 
     @router.get("/auth/me")
@@ -371,6 +400,12 @@ def build_router(db) -> APIRouter:
             await _send_reset_email(user, raw, ttl)
             if not is_production():
                 resp["dev_token"] = raw
+        await audit.record(
+            action="auth.password_reset.requested", request=request,
+            user=(user or None), actor_email=body.email.lower(),
+            resource_type="user", resource_id=(user["id"] if user else None),
+            metadata={"email_dispatched": bool(user)},
+        )
         return resp
 
     @router.post("/auth/reset-password", dependencies=[Depends(auth_rate_limiter)])
@@ -386,17 +421,35 @@ def build_router(db) -> APIRouter:
         )
         # Invalidate all existing sessions after a password change.
         await revoke_all_user_refresh_tokens(db, rec["user_id"])
+        u = await db.users.find_one(
+            {"id": rec["user_id"]},
+            {"_id": 0, "id": 1, "email": 1, "role": 1, "barn_id": 1},
+        )
+        await audit.record(
+            action="auth.password_reset.completed", request=request, user=u,
+            actor_email=(u or {}).get("email"),
+            resource_type="user", resource_id=rec["user_id"],
+            metadata={"sessions_revoked": True},
+        )
         return {"ok": True, "message": "Password updated. Please sign in with your new password."}
 
     # ---------------- email verification ----------------
 
     @router.post("/auth/verify-email")
-    async def verify_email(body: TokenBody):
+    async def verify_email(body: TokenBody, request: Request):
         rec = await consume_token(db, body.token, PURPOSE_EMAIL_VERIFY)
         if not rec:
             raise HTTPException(400, "Invalid or expired verification token")
         await db.users.update_one(
             {"id": rec["user_id"]}, {"$set": {"email_verified": True}}
+        )
+        u = await db.users.find_one(
+            {"id": rec["user_id"]},
+            {"_id": 0, "id": 1, "email": 1, "role": 1, "barn_id": 1},
+        )
+        await audit.record(
+            action="auth.email.verified", request=request, user=u,
+            resource_type="user", resource_id=rec["user_id"],
         )
         return {"ok": True, "message": "Email verified."}
 

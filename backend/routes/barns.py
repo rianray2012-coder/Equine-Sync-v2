@@ -12,11 +12,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 
 from core.permissions import require
 from core.tenancy import PRIMARY_BARN_ID, resolve_barn_id
+from core import audit
 
 
 class BarnCreate(BaseModel):
@@ -36,7 +37,7 @@ def build_router(*, db, get_current_user, hash_pwd, user_safe, new_id,
     router = APIRouter(prefix="/barns", tags=["barns"])
 
     @router.post("")
-    async def create_barn(body: BarnCreate, user=Depends(get_current_user)):
+    async def create_barn(body: BarnCreate, request: Request, user=Depends(get_current_user)):
         require(user, "barn:create")
         # Founder-only for now: only the primary barn can provision new barns.
         if resolve_barn_id(user) != PRIMARY_BARN_ID:
@@ -84,6 +85,14 @@ def build_router(*, db, get_current_user, hash_pwd, user_safe, new_id,
             "updated_at": _now_iso(),
         }
         await db.onboarding_progress.insert_one(progress)
+
+        await audit.record(
+            action="barn.created", request=request, user=user,
+            resource_type="barn", resource_id=barn_id,
+            metadata={"name": body.name,
+                      "facility_type": barn_doc["facility_type"],
+                      "new_admin_user_id": admin_user["id"]},
+        )
 
         return {
             "barn": {k: v for k, v in barn_doc.items() if k != "_id"},
