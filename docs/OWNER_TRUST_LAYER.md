@@ -17,8 +17,11 @@
   workflow `draft → pending_review → published` (+ `request-changes → draft`),
   dedicated `owner_update:review` cap, four-eyes on sensitive approvals, audit
   `submitted`/`approved`/`changes_requested`. *(this doc)*
-- **7C — Owner dashboard + update controls (frontend)** — owner-facing "Updates
-  from your barn" feed, a staff composer, and a manager review queue. *(planned)*
+- **7C — Owner-facing update controls (frontend)** — gated sub-phases:
+  - **7C-1 — Owner feed (read-only)** ✅ **DONE (2026-06-06)** — owner "Updates from
+    your barn" feed on Owner Portal. *(this doc)*
+  - **7C-2 — Staff composer** — HorseProfile "Updates" tab (create/edit/submit/publish). *(planned)*
+  - **7C-3 — Manager review queue** — `/review-queue` page + pending badge + approve/request-changes. *(planned)*
 - **7D — Owner dashboard polish + docs/test consolidation** — billing/upcoming
   visibility, recap integration, framework↔implementation map. *(planned)*
 
@@ -135,7 +138,33 @@ state guards (`approve`/`request-changes` only from pending_review; `submit` onl
 role gates (groom can't submit, owner can't review); non-sensitive submit + self-approve
 allowed. Backend suite: **503 passed / 3 skipped** (499 + 4).
 
+## 7C-1 — Owner-facing feed (read-only) ✅
+Frontend only — **no backend changes**. Makes published Owner Updates visible to owners.
+
+- New `frontend/src/components/OwnerUpdatesFeed.jsx` — fetches `GET /api/owner-updates`
+  (the backend auto-scopes a `horse_owner` to ONLY their horses' `published` +
+  `owner_facing` updates), renders calm date-grouped, **read-only** cards (kind chip,
+  horse name, body). Loading / empty states. testids: `owner-updates-feed`,
+  `owner-updates-loading`, `owner-updates-empty`, `owner-update-<id>`.
+- Wired into `frontend/src/pages/OwnerPortal.jsx` — rendered **only for `role==='horse_owner'`**,
+  between the digest card and the Care Timeline. No composer / review actions (those are 7C-2/7C-3).
+- Palette: matches the Owner Portal `equine-ink/navy/soft/hairline` family (the dual-palette
+  reconciliation remains Phase 8 / Tech Debt #11).
+- **Verified** by testing_agent (iteration_24): 100% frontend, 6/6 scenarios — feed renders &
+  positioned correctly, seeded update visible, read-only (no controls), owner-scoping holds,
+  staff don't see the feed, empty/loading states safe. Zero UI/integration/design bugs.
+
+### Manual-verification demo seed (NOT product code, NOT in the 7C-1 zip)
+`backend/seed_owner_demo_link.py` — a one-off, **reversible**, marker-tagged helper that links
+one demo horse to `owner@equinesync.com` and seeds a single published owner-facing update so
+the feed shows real data during manual review. Marker `owner-demo-link-7c1`. Currently applied:
+horse **Valentino** (`023be6c4-502f-4208-bfad-65ec79c01e61`), original `owner_id`
+`7d0da75b-cd95-4a46-b1e1-ebc40ae9cb4a` preserved for exact restore.
+Revert with `python -m seed_owner_demo_link --reset`. Does not alter product code, migrations,
+or multi-tenant isolation.
+
 ## Deferred / backlog (NOT in 7A)
+- **Frontend** — 7C-2 (staff composer) + 7C-3 (manager review queue) still pending.
 - **Frontend** (owner feed, staff composer, review queue) — **7C**.
 - Additive index on `owner_updates(barn_id, horse_id, status)` if read volume warrants.
 - `owner_update:read` split (grooms/vets read access) if needed.
