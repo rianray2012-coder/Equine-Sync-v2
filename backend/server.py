@@ -72,6 +72,7 @@ from routes.digests import build_router as build_digests_router
 from routes.barns import build_router as build_barns_router
 from routes.audit import build_router as build_audit_router
 from routes.owner_updates import build_router as build_owner_updates_router
+from routes.owner import build_router as build_owner_router
 from seed_data import run_seed
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -213,6 +214,9 @@ api_router.include_router(build_owner_updates_router(
     clean=clean,
     new_id=new_id,
 ))
+
+# Owner self-service reads — Phase 7D-2 (routes/owner.py)
+api_router.include_router(build_owner_router(db=db, get_current_user=get_current_user))
 
 app.include_router(api_router)
 

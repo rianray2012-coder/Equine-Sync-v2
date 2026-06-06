@@ -5,6 +5,7 @@ import CuratedTimeline from "../components/CuratedTimeline";
 import OwnerDigestCard from "../components/OwnerDigestCard";
 import OwnerUpdatesFeed from "../components/OwnerUpdatesFeed";
 import OwnerBillingCard from "../components/OwnerBillingCard";
+import OwnerUpcomingCard from "../components/OwnerUpcomingCard";
 import { useAuth } from "../context/AuthContext";
 import { Heart, X, Check } from "lucide-react";
 import { toast } from "sonner";
@@ -84,6 +85,9 @@ export default function OwnerPortal() {
 
       {/* ───── Updates from your barn (owner only) — Phase 7C-1 ─────────── */}
       {isOwner && <OwnerUpdatesFeed horses={horses} />}
+
+      {/* ───── Looking ahead (owner only) — Phase 7D-2 ──────────────────── */}
+      {isOwner && <OwnerUpcomingCard />}
 
       {/* ───── Billing (owner only) — Phase 7D-1 ────────────────────────── */}
       {isOwner && <OwnerBillingCard />}

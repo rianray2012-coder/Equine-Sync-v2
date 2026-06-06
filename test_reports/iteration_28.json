@@ -1,0 +1,30 @@
+{
+  "summary": "Phase 7D-2 'Looking ahead' owner card validated. Frontend renders the read-only card with 18 upcoming items for owner@equinesync.com. Backend cross-check confirms owner-only access, exact whitelist payload, 14-day window, vet/farrier/rehab categories, and soonest-first ordering. Admin correctly blocked with 403.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Owner Portal — Looking ahead card", "issues": ["Item titles surface engine-generated raw IDs (e.g. 'Follow-up: vetfu-a257e5d9-9f2e-4501-8b30-f518c74de7fa') which are not owner-friendly. Cosmetic, but considering the card is owner-facing, the title should read like 'Vet follow-up' or similar humanized text instead of leaking the internal task id."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional (cosmetic): Humanize the title used by the upcoming feed for engine-generated follow-up tasks so owners don't see raw IDs like 'vetfu-...'. Suggest stripping the suffix in the response or falling back to category label client-side when the title contains a UUID-like pattern."
+  ],
+  "critical_code_review_comments": [
+    "OwnerUpcomingCard.jsx silently swallows fetch errors (.catch(()=>setItems([]))) which makes a real backend outage look identical to an empty state. Consider surfacing a soft inline error message distinct from owner-upcoming-empty.",
+    "Item titles bleed internal engine IDs — backend route or component should sanitize/humanize 'Follow-up: vetfu-<uuid>' titles before showing to owners."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "owner@equinesync.com/demo1234 (horse_owner); admin@equinesync.com/demo1234 (admin) — both worked as expected.",
+  "seed_data_creation": "None; relied on existing demo data (owner owns Valentino with engine-generated upcoming care).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 7D-2 complete. Owner has 18 upcoming items (all category=vet, Valentino, 2026-06-10) due to engine-generated follow-ups stacking up. If next phase reduces noise, expect fewer items. Card order on /owner-portal: Digest → Updates feed → Looking ahead → Billing → Care Timeline → Concierge form. data-testids: owner-upcoming-card, owner-upcoming-item-<id>, owner-upcoming-countdown-<id>, owner-upcoming-empty. Auth uses token in localStorage + httpOnly cookie; for API tests use Bearer token from POST /api/auth/login.",
+  "rca of the issue": "No bugs identified. All acceptance criteria for Phase 7D-2 met: (1) card renders for owner with rows containing title/horse/date/category chip/countdown; (2) zero buttons inside the card (read-only); (3) admin GET /api/owner/upcoming → 403 with detail 'This view is for horse owners'; (4) admin /owner-portal does not render the card; (5) backend payload restricted to whitelist keys {id,category,title,scheduled_at,horse_id,horse_name}, categories ⊂ {vet,farrier,rehab}, scheduled_at within 14d, scoped to owner's horse Valentino, sorted soonest-first; (6) no JS/console errors observed."
+}
