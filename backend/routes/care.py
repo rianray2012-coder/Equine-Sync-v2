@@ -65,6 +65,10 @@ class MedLogIn(BaseModel):
     scheduled_time: str
     status: str
     notes: Optional[str] = None
+    # Phase 6B: optional client-supplied idempotency key. When provided, repeat
+    # posts with the same (barn, client_log_id) return the same log instead of
+    # inserting a duplicate. Omitting it preserves the original insert behavior.
+    client_log_id: Optional[str] = None
 
 
 class VetRecordIn(BaseModel):
@@ -186,6 +190,13 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
         doc = body.model_dump()
         doc.update({"id": new_id(), "completed_by": user["id"], "completed_at": _iso(_now_utc())})
         stamp_barn(user, doc)
+        # Phase 6B: opt-in idempotency. With a client_log_id, atomically upsert
+        # keyed by (barn_id, client_log_id) so repeat submits return the first
+        # log and never duplicate. Without it, behave exactly as before.
+        if body.client_log_id:
+            key = barn_filter(user, {"client_log_id": body.client_log_id})
+            await db.medication_logs.update_one(key, {"$setOnInsert": doc}, upsert=True)
+            return clean(await db.medication_logs.find_one(key, {"_id": 0}))
         await db.medication_logs.insert_one(doc)
         return clean(doc)
 
@@ -201,8 +212,11 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
         scope = barn_filter(user, {"id": task_id})
         if not await db.feed_tasks.find_one(scope, {"_id": 0}):
             raise HTTPException(404, "Feed task not found")
+        # Phase 6B: idempotent completion — only set fields when not already
+        # completed, so a re-complete preserves the original completer/timestamp.
+        # Response shape is unchanged (still the feed-task doc).
         await db.feed_tasks.update_one(
-            scope,
+            barn_filter(user, {"id": task_id, "completed": {"$ne": True}}),
             {"$set": {"completed": True, "completed_by": user["full_name"], "completed_at": _iso(_now_utc())}},
         )
         return await db.feed_tasks.find_one(scope, {"_id": 0})

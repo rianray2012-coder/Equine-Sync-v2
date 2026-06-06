@@ -8,9 +8,8 @@
 
 ## Sub-phases
 - **6A — Care Input Integrity / Cross-Barn Validation** ✅ **DONE (2026-06-06)**
-- **6B — Care Record State Guards** — idempotency + state-transition guardrails
-  where care records can be completed/updated/logged repeatedly; preserve
-  response shapes unless explicitly approved. *(planned)*
+- **6B — Care Record State Guards** ✅ **DONE (2026-06-06)** — idempotent feed-task
+  re-complete + opt-in `client_log_id` med-log idempotency.
 - **6C — Care Search / Filtering Polish** — tighten existing list filters/sorting,
   barn-scoped + predictable; no frontend unless separately approved. *(planned)*
 - **6D — Care Documentation / Test Consolidation** — docs + care-route regression
@@ -43,6 +42,28 @@ Every care create now validates its referenced id against the caller's barn
   (`test_care_create_with_real_refs_stamps_primary`), and the other-barn wellness
   test now asserts **404 + no wellness doc + other horse untouched**.
 - Full backend suite: **483 passed / 3 skipped**.
+
+## 6B — Care Record State Guards ✅
+The two repeatable care-records mutations are now retry-safe (atomic, idempotent);
+success response shapes are unchanged.
+
+- **Feed-task re-complete (`POST /feed-tasks/{id}/complete`)** — idempotent no-op:
+  a conditional update (`completed: {$ne: True}`) sets the completion only when not
+  already complete, so a re-complete **preserves the original `completed_by` /
+  `completed_at`** and still returns the feed-task doc (same shape). 404 path
+  unchanged ("Feed task not found").
+- **Medication-log idempotency (`POST /medication-logs`)** — new **optional**
+  `client_log_id`. When provided, an atomic upsert keyed by
+  `(barn_id, client_log_id)` with `$setOnInsert` makes repeat posts return the
+  **first** log (no duplicate, first-write-wins). When omitted, behavior is
+  exactly as before (plain insert). 6A's `_require_medication` check is preserved.
+- **Status stays free-text** in 6B (no `{given,missed,refused,skipped}` allow-list).
+
+### Tests
+- New `tests/test_care_state_guards.py` — feed-task re-complete preserves first
+  completion; `client_log_id` repeat returns same log + no duplicate; no-key posts
+  still insert distinctly. Full backend suite: **486 passed / 3 skipped**.
+
 
 ## Deferred / backlog (documented, NOT implemented in Phase 6 unless re-scoped)
 - **`rider.trainer_id` validation** — references a *user/staff* record (cross-domain
