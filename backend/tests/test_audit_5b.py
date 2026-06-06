@@ -76,6 +76,7 @@ def teardown_module(module):
     for bid in STATE["barn_ids"]:
         db.barn.delete_many({"id": bid})
         db.users.delete_many({"barn_id": bid})
+        db.onboarding_progress.delete_many({"barn_id": bid})
 
 
 def _capture(query, timeout=6.0):
