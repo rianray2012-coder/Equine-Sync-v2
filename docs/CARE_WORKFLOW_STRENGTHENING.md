@@ -53,10 +53,16 @@ success response shapes are unchanged.
   `completed_at`** and still returns the feed-task doc (same shape). 404 path
   unchanged ("Feed task not found").
 - **Medication-log idempotency (`POST /medication-logs`)** — new **optional**
-  `client_log_id`. When provided, an atomic upsert keyed by
-  `(barn_id, client_log_id)` with `$setOnInsert` makes repeat posts return the
-  **first** log (no duplicate, first-write-wins). When omitted, behavior is
-  exactly as before (plain insert). 6A's `_require_medication` check is preserved.
+  `client_log_id`. When provided, an upsert keyed by `(barn_id, client_log_id)`
+  with `$setOnInsert` makes repeat posts return the **first** log (first-write-wins).
+  When omitted, behavior is exactly as before (plain insert) and `client_log_id`
+  is **not stored or returned** (no `client_log_id: null` in the doc/response).
+  6A's `_require_medication` check is preserved. **Scope of the guarantee:** this is
+  **retry / double-submit safe for the same idempotency key** (sequential repeats
+  return the first log). It is **not** a hard concurrency guarantee under truly
+  simultaneous upserts because no unique index was added — an additive unique index
+  on `(barn_id, client_log_id)` is noted as **backlog** if concurrent protection is
+  ever required.
 - **Status stays free-text** in 6B (no `{given,missed,refused,skipped}` allow-list).
 
 ### Tests

@@ -197,6 +197,8 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
             key = barn_filter(user, {"client_log_id": body.client_log_id})
             await db.medication_logs.update_one(key, {"$setOnInsert": doc}, upsert=True)
             return clean(await db.medication_logs.find_one(key, {"_id": 0}))
+        # No key: preserve the original shape — don't persist/return client_log_id: null.
+        doc.pop("client_log_id", None)
         await db.medication_logs.insert_one(doc)
         return clean(doc)
 

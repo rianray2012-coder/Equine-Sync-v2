@@ -127,3 +127,7 @@ def test_med_log_without_key_inserts_normally():
     STATE["logs"].extend([id1, id2])
     # no key -> original behavior: two distinct inserts
     assert id1 != id2
+    # omitted-key shape stays as before: client_log_id absent from response AND DB
+    assert "client_log_id" not in r1.json() and "client_log_id" not in r2.json()
+    for doc_id in (id1, id2):
+        assert "client_log_id" not in DB.medication_logs.find_one({"id": doc_id}, {"_id": 0})
