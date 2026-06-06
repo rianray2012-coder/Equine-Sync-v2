@@ -1,0 +1,54 @@
+{
+  "summary": "Phase 7C-1 frontend-only verification of the owner-facing 'Updates from your barn' read feed on /owner-portal. All 6 requested scenarios pass: feed renders for owner with correct positioning between OwnerDigestCard and Care Timeline, seeded Valentino published+owner_facing update displays with 'Care' chip and 'JUN 6, 2026' date header, feed is fully read-only (no buttons/forms/inputs/textareas inside the card), backend scoping confirmed via direct API check (only status=published & visibility=owner_facing returned), staff (admin) does not see the feed and the Owner Portal page still renders cleanly, and loading/empty state code paths are present with correct testids.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_evidence": {
+    "owner_flow": {
+      "feed_visible": true,
+      "owner_update_items_count": 1,
+      "chip_label_textContent": "Care",
+      "horse_name_visible": "Valentino",
+      "seeded_body_visible": true,
+      "date_header_rendered": "JUN 6, 2026",
+      "interactive_elements_inside_feed": [],
+      "vertical_order_y_px": {"owner-digest-card": 299, "owner-updates-feed": 743, "owner-timeline-card": 999}
+    },
+    "backend_scoping_api_check": {
+      "endpoint": "GET /api/owner-updates (owner token)",
+      "count": 1,
+      "sample": {"status": "published", "visibility": "owner_facing", "kind": "routine", "body_start": "Today's care routine was completed as scheduled"}
+    },
+    "admin_flow": {
+      "owner_updates_feed_visible": false,
+      "owner_portal_page_loads": true
+    },
+    "console_errors": [
+      "One generic 'Failed to load resource: 401' observed during owner page load; not coming from /api/owner-updates (that call succeeded and returned the seeded item). Likely from an unrelated stale request on the page (e.g. service-requests / digest). Out of scope for 7C-1 — flagging only."
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(Optional/non-blocking) Investigate origin of the lone 401 console message that appears on /owner-portal for the horse_owner session; not produced by OwnerUpdatesFeed and does not affect 7C-1 functionality."
+  ],
+  "critical_code_review_comments": [
+    "OwnerUpdatesFeed.jsx: useEffect dependency [] is fine for one-shot load; if 7C-2/3 adds publish actions, switch to a re-fetch trigger or invalidation hook.",
+    "OwnerUpdatesFeed.jsx: horseName() falls back to 'Your horse' silently when horse_id is unknown; acceptable for read-only, but log a warning to surface stale linkages during dev.",
+    "Read-only contract is correctly enforced — no compose/edit/approve/publish/archive controls present inside owner-updates-feed card.",
+    "Page wiring in OwnerPortal.jsx correctly gates the feed behind user.role === 'horse_owner' and renders it between OwnerDigestCard and the Care Timeline card."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100%"},
+  "test_credentials": "owner@equinesync.com / demo1234 (horse_owner), admin@equinesync.com / demo1234 (admin) — both from /app/memory/test_credentials.md",
+  "seed_data_creation": "None created during this run. Used the existing one-off reversible seed (Valentino linked to owner@equinesync.com with one published owner-facing routine update).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 7C-1 owner-facing read feed is verified. innerText test in Playwright will show 'CARE' instead of 'Care' because of CSS text-transform:uppercase on the chip; use textContent (or check for 'CARE' case-insensitively) when asserting the chip label. Date header is rendered visually as 'JUN 6, 2026' (uppercase) via the same CSS treatment; the underlying value comes from fmtDate('YYYY-MM-DD'). For staff role gating, the feed is conditionally rendered via `{isOwner && <OwnerUpdatesFeed/>}` in OwnerPortal.jsx, so it never mounts for admin/trainer/groom/vet. Next sub-phases 7C-2 (composer) and 7C-3 (review actions) are NOT built yet.",
+  "rca of the issue": "No bugs found in 7C-1 scope; nothing to RCA."
+}

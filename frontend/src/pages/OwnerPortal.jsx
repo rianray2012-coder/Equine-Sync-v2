@@ -3,6 +3,7 @@ import { api, fmtDate } from "../lib/api";
 import { Card, PageHeader, StatusPill } from "../components/Primitives";
 import CuratedTimeline from "../components/CuratedTimeline";
 import OwnerDigestCard from "../components/OwnerDigestCard";
+import OwnerUpdatesFeed from "../components/OwnerUpdatesFeed";
 import { useAuth } from "../context/AuthContext";
 import { Heart, X, Check } from "lucide-react";
 import { toast } from "sonner";
@@ -79,6 +80,9 @@ export default function OwnerPortal() {
 
       {/* ───── Daily Digest (owner only) ───────────────────────────────── */}
       {isOwner && <OwnerDigestCard />}
+
+      {/* ───── Updates from your barn (owner only) — Phase 7C-1 ─────────── */}
+      {isOwner && <OwnerUpdatesFeed horses={horses} />}
 
       {/* ───── Curated Timeline ──────────────────────────────────────────── */}
       <Card className="mb-8" data-testid="owner-timeline-card">
