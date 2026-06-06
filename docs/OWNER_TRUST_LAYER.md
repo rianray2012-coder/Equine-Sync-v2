@@ -13,8 +13,10 @@
   foundation: the `owner_updates` collection + `/api/owner-updates` lifecycle
   (`draft → published → archived`), barn + owner isolation, role gates, and
   high-signal audit. *(this doc)*
-- **7B — Approval flow for sensitive updates** — sensitive kinds route
-  `draft → pending_review → published` with a manager/trainer approve gate. *(planned)*
+- **7B — Approval flow for sensitive updates** ✅ **DONE (2026-06-06)** — review
+  workflow `draft → pending_review → published` (+ `request-changes → draft`),
+  dedicated `owner_update:review` cap, four-eyes on sensitive approvals, audit
+  `submitted`/`approved`/`changes_requested`. *(this doc)*
 - **7C — Owner dashboard + update controls (frontend)** — owner-facing "Updates
   from your barn" feed, a staff composer, and a manager review queue. *(planned)*
 - **7D — Owner dashboard polish + docs/test consolidation** — billing/upcoming
@@ -89,9 +91,51 @@ owner sees only own published owner-facing updates (drafts/internal/foreign hidd
 can't see it, no publish audit)**; other-barn update never leaks; publish/archive
 emit minimal, non-PII audit. Backend suite: **499 passed / 3 skipped** (490 + 9).
 
+## 7B — Approval flow for sensitive updates ✅
+Adds the human-review path so sensitive Owner Updates can reach owners safely.
+Backend only — no frontend.
+
+### Lifecycle (7B adds the review transitions)
+```
+draft ──submit──▶ pending_review ──approve──▶ published ──archive──▶ archived
+  ▲                     │
+  └──request-changes────┘
+draft ──publish──▶ published      (non-sensitive only; sensitive draft publish → 409)
+```
+
+### New endpoints — `routes/owner_updates.py`
+| Method / Path | Access | Transition | Notes |
+|---|---|---|---|
+| `POST /owner-updates/{id}/submit` | `owner_update:create` | `draft → pending_review` | any draft may submit; sensitive drafts MUST use this; `409` if not draft; audit `owner_update.submitted` |
+| `POST /owner-updates/{id}/approve` | `owner_update:review` | `pending_review → published` | stamps `reviewed_by` + `published_at/by`; **four-eyes**: author cannot approve their own *sensitive* update → `403 "Author cannot approve their own sensitive update"`; `409` if not pending_review; audit `owner_update.approved` |
+| `POST /owner-updates/{id}/request-changes` | `owner_update:review` | `pending_review → draft` | optional capped `review_note` (≤500) stored on the update, **never audited**; stamps `reviewed_by`; `409` if not pending_review; audit `owner_update.changes_requested` |
+
+- `publish` unchanged (non-sensitive `draft → published`; sensitive draft still `409`).
+- `PATCH` unchanged (draft-only). `archive` unchanged.
+
+### Permissions (additive)
+- New `owner_update:review` = {admin, barn_manager, trainer}, deny `"Insufficient role to review owner updates"`. `submit` reuses `owner_update:create`.
+
+### Four-eyes (separation of duties)
+- Enforced for **sensitive** updates only: `doc.sensitive and author_user_id == approver.id → 403`. Non-sensitive submissions may be self-approved by the author.
+
+### Audit (existing fail-open service)
+- `owner_update.submitted`, `owner_update.approved`, `owner_update.changes_requested`
+  — all `resource_type="owner_update"`, metadata `{kind, visibility}` only.
+  The `review_note` is **never** written to audit.
+
+### New field
+- `review_note` (`str|None`, ≤500) — stored on the update by `request-changes`; defaults `None` on create.
+
+### Tests
+`tests/test_owner_updates.py` extended (now 13) — sensitive happy path (publish-blocked →
+submit → owner-hidden while pending → four-eyes 403 → second-reviewer approve → owner-visible)
+with `submitted`+`approved` audit; `request-changes` stores the note but audits without it;
+state guards (`approve`/`request-changes` only from pending_review; `submit` only from draft);
+role gates (groom can't submit, owner can't review); non-sensitive submit + self-approve
+allowed. Backend suite: **503 passed / 3 skipped** (499 + 4).
+
 ## Deferred / backlog (NOT in 7A)
-- **Sensitive-content review gating** (`sensitive → pending_review`, manager approve,
-  publish-enable) — **7B**. In 7A, sensitive drafts are stored but **publish-blocked**.
 - **Frontend** (owner feed, staff composer, review queue) — **7C**.
 - Additive index on `owner_updates(barn_id, horse_id, status)` if read volume warrants.
 - `owner_update:read` split (grooms/vets read access) if needed.

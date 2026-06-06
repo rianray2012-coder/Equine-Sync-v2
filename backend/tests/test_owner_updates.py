@@ -19,9 +19,12 @@ import requests
 from ._care_helpers import API, auth_headers, mongo_db
 from ._test_creds import ADMIN, GROOM, OWNER
 
+TRAINER = {"email": "trainer@equinesync.com", "password": "demo1234"}
+
 ADMIN_H = auth_headers(ADMIN)
 OWNER_H = auth_headers(OWNER)
 GROOM_H = auth_headers(GROOM)
+TRAINER_H = auth_headers(TRAINER)
 DB = mongo_db()
 
 STATE = {"updates": [], "horse_owned": None, "horse_other": None,
@@ -217,6 +220,113 @@ def test_sensitive_draft_cannot_be_published_in_7a():
     assert DB.audit_log.count_documents({
         "resource_type": "owner_update", "resource_id": upd["id"],
         "action": "owner_update.published"}) == 0
+
+
+def _audit_actions(update_id):
+    return {r["action"]: r for r in DB.audit_log.find(
+        {"resource_type": "owner_update", "resource_id": update_id}, {"_id": 0})}
+
+
+# --------------------------------------------------------------------------
+# Phase 7B — sensitive-update approval flow
+# --------------------------------------------------------------------------
+def test_7b_sensitive_review_happy_path_with_four_eyes():
+    trainer = DB.users.find_one({"email": TRAINER["email"]}, {"_id": 0, "id": 1})
+    assert trainer, "trainer demo account missing"
+
+    upd = _create(ADMIN_H, STATE["horse_owned"], kind="incident",
+                  visibility="owner_facing", sensitive=True).json()
+    STATE["updates"].append(upd["id"])
+    uid = upd["id"]
+
+    # sensitive cannot be published directly (still 409 from 7A)
+    assert requests.post(f"{API}/owner-updates/{uid}/publish", headers=ADMIN_H, timeout=30).status_code == 409
+
+    # submit (author, create cap) -> pending_review
+    s = requests.post(f"{API}/owner-updates/{uid}/submit", headers=ADMIN_H, timeout=30)
+    assert s.status_code == 200 and s.json()["status"] == "pending_review"
+
+    # owner cannot see a pending_review update
+    ids = [u["id"] for u in requests.get(f"{API}/owner-updates", headers=OWNER_H, timeout=30).json()]
+    assert uid not in ids
+    assert requests.get(f"{API}/owner-updates/{uid}", headers=OWNER_H, timeout=30).status_code == 404
+
+    # four-eyes: the author cannot approve their own sensitive update
+    fe = requests.post(f"{API}/owner-updates/{uid}/approve", headers=ADMIN_H, timeout=30)
+    assert fe.status_code == 403 and fe.json()["detail"] == "Author cannot approve their own sensitive update"
+    assert DB.owner_updates.find_one({"id": uid}, {"_id": 0})["status"] == "pending_review"
+
+    # a different reviewer (trainer) approves -> published
+    ap = requests.post(f"{API}/owner-updates/{uid}/approve", headers=TRAINER_H, timeout=30)
+    assert ap.status_code == 200
+    body = ap.json()
+    assert body["status"] == "published" and body["reviewed_by"] == trainer["id"]
+    assert body["published_by"] == trainer["id"] and body["published_at"]
+
+    # owner now sees it
+    ids2 = [u["id"] for u in requests.get(f"{API}/owner-updates", headers=OWNER_H, timeout=30).json()]
+    assert uid in ids2
+
+    # audit: submitted + approved, minimal metadata only
+    actions = _audit_actions(uid)
+    assert "owner_update.submitted" in actions and "owner_update.approved" in actions
+    for a in actions.values():
+        assert a["metadata"] == {"kind": "incident", "visibility": "owner_facing"}
+        assert "review_note" not in a["metadata"] and "body" not in a["metadata"]
+
+
+def test_7b_request_changes_stores_note_and_audits_without_it():
+    upd = _create(ADMIN_H, STATE["horse_owned"], kind="wellness",
+                  visibility="owner_facing", sensitive=True).json()
+    STATE["updates"].append(upd["id"])
+    uid = upd["id"]
+    requests.post(f"{API}/owner-updates/{uid}/submit", headers=ADMIN_H, timeout=30)
+
+    rc = requests.post(f"{API}/owner-updates/{uid}/request-changes", headers=TRAINER_H,
+                       json={"review_note": "Please add the vet contact."}, timeout=30)
+    assert rc.status_code == 200
+    back = rc.json()
+    assert back["status"] == "draft"
+    assert back["review_note"] == "Please add the vet contact."
+    assert back["reviewed_by"] == DB.users.find_one({"email": TRAINER["email"]}, {"id": 1})["id"]
+
+    # the review note is stored on the update but NEVER in the audit metadata
+    cr = _audit_actions(uid).get("owner_update.changes_requested")
+    assert cr is not None
+    assert cr["metadata"] == {"kind": "wellness", "visibility": "owner_facing"}
+    assert "review_note" not in cr["metadata"]
+
+
+def test_7b_state_guards_and_role_gates():
+    # approve / request-changes only valid from pending_review
+    d = _create(ADMIN_H, STATE["horse_owned"]).json()
+    STATE["updates"].append(d["id"])
+    assert requests.post(f"{API}/owner-updates/{d['id']}/approve", headers=TRAINER_H, timeout=30).status_code == 409
+    assert requests.post(f"{API}/owner-updates/{d['id']}/request-changes", headers=TRAINER_H,
+                         json={}, timeout=30).status_code == 409
+
+    # submit only valid from draft
+    requests.post(f"{API}/owner-updates/{d['id']}/submit", headers=ADMIN_H, timeout=30)
+    assert requests.post(f"{API}/owner-updates/{d['id']}/submit", headers=ADMIN_H, timeout=30).status_code == 409
+
+    # role gates: groom can't submit (no create cap); owner can't review
+    g = _create(ADMIN_H, STATE["horse_owned"]).json()
+    STATE["updates"].append(g["id"])
+    assert requests.post(f"{API}/owner-updates/{g['id']}/submit", headers=GROOM_H, timeout=30).status_code == 403
+    requests.post(f"{API}/owner-updates/{g['id']}/submit", headers=ADMIN_H, timeout=30)
+    ow = requests.post(f"{API}/owner-updates/{g['id']}/approve", headers=OWNER_H, timeout=30)
+    assert ow.status_code == 403 and "review owner updates" in ow.json()["detail"]
+
+
+def test_7b_non_sensitive_can_be_submitted_and_self_approved():
+    # any draft may be submitted; four-eyes is enforced for SENSITIVE only,
+    # so the author may approve their own NON-sensitive submission.
+    upd = _create(ADMIN_H, STATE["horse_owned"], sensitive=False).json()
+    STATE["updates"].append(upd["id"])
+    uid = upd["id"]
+    assert requests.post(f"{API}/owner-updates/{uid}/submit", headers=ADMIN_H, timeout=30).status_code == 200
+    ap = requests.post(f"{API}/owner-updates/{uid}/approve", headers=ADMIN_H, timeout=30)
+    assert ap.status_code == 200 and ap.json()["status"] == "published"
 
 
 # --------------------------------------------------------------------------

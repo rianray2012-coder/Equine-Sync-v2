@@ -63,6 +63,12 @@ class OwnerUpdatePatch(BaseModel):
     sensitive: Optional[bool] = None
 
 
+class ReviewChangesIn(BaseModel):
+    # Phase 7B: optional reviewer note stored on the update (capped). It is
+    # surfaced internally but is NEVER written to the audit trail.
+    review_note: Optional[str] = Field(default=None, max_length=500)
+
+
 def build_router(*, db, get_current_user, list_collection, clean, new_id) -> APIRouter:
     router = APIRouter(tags=["owner-updates"])
 
@@ -95,6 +101,7 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
             "published_at": None,
             "published_by": None,
             "reviewed_by": None,
+            "review_note": None,
             "archived_at": None,
             "archived_by": None,
         })
@@ -200,6 +207,79 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
         }})
         await audit.record(
             action="owner_update.published", user=user, request=request,
+            resource_type="owner_update", resource_id=update_id,
+            metadata={"kind": doc["kind"], "visibility": doc["visibility"]},
+        )
+        return await db.owner_updates.find_one(scope, {"_id": 0})
+
+    # ---------------- Phase 7B: review workflow ----------------
+
+    @router.post("/owner-updates/{update_id}/submit")
+    async def submit_update(update_id: str, request: Request, user=Depends(get_current_user)):
+        """draft -> pending_review. Any draft may be submitted; sensitive drafts
+        MUST use this path (they cannot be published directly)."""
+        require(user, "owner_update:create")
+        scope = barn_filter(user, {"id": update_id})
+        doc = await db.owner_updates.find_one(scope, {"_id": 0})
+        if not doc:
+            raise HTTPException(404, "Owner update not found")
+        if doc["status"] != "draft":
+            raise HTTPException(409, "Only draft updates can be submitted for review")
+        now = _iso(_now_utc())
+        await db.owner_updates.update_one(scope, {"$set": {
+            "status": "pending_review", "updated_at": now,
+        }})
+        await audit.record(
+            action="owner_update.submitted", user=user, request=request,
+            resource_type="owner_update", resource_id=update_id,
+            metadata={"kind": doc["kind"], "visibility": doc["visibility"]},
+        )
+        return await db.owner_updates.find_one(scope, {"_id": 0})
+
+    @router.post("/owner-updates/{update_id}/approve")
+    async def approve_update(update_id: str, request: Request, user=Depends(get_current_user)):
+        """pending_review -> published. Four-eyes: the author of a *sensitive*
+        update cannot approve their own submission."""
+        require(user, "owner_update:review")
+        scope = barn_filter(user, {"id": update_id})
+        doc = await db.owner_updates.find_one(scope, {"_id": 0})
+        if not doc:
+            raise HTTPException(404, "Owner update not found")
+        if doc["status"] != "pending_review":
+            raise HTTPException(409, "Only updates pending review can be approved")
+        if doc.get("sensitive") and doc.get("author_user_id") == user["id"]:
+            raise HTTPException(403, "Author cannot approve their own sensitive update")
+        now = _iso(_now_utc())
+        await db.owner_updates.update_one(scope, {"$set": {
+            "status": "published", "published_at": now, "published_by": user["id"],
+            "reviewed_by": user["id"], "updated_at": now,
+        }})
+        await audit.record(
+            action="owner_update.approved", user=user, request=request,
+            resource_type="owner_update", resource_id=update_id,
+            metadata={"kind": doc["kind"], "visibility": doc["visibility"]},
+        )
+        return await db.owner_updates.find_one(scope, {"_id": 0})
+
+    @router.post("/owner-updates/{update_id}/request-changes")
+    async def request_changes(update_id: str, body: ReviewChangesIn, request: Request,
+                              user=Depends(get_current_user)):
+        """pending_review -> draft, with an optional reviewer note (stored,
+        never audited)."""
+        require(user, "owner_update:review")
+        scope = barn_filter(user, {"id": update_id})
+        doc = await db.owner_updates.find_one(scope, {"_id": 0})
+        if not doc:
+            raise HTTPException(404, "Owner update not found")
+        if doc["status"] != "pending_review":
+            raise HTTPException(409, "Only updates pending review can be sent back")
+        now = _iso(_now_utc())
+        note = (body.review_note or "").strip() or None
+        await db.owner_updates.update_one(scope, {"$set": {
+            "status": "draft", "reviewed_by": user["id"], "review_note": note, "updated_at": now,
+        }})
+        await audit.record(
+            action="owner_update.changes_requested", user=user, request=request,
             resource_type="owner_update", resource_id=update_id,
             metadata={"kind": doc["kind"], "visibility": doc["visibility"]},
         )
