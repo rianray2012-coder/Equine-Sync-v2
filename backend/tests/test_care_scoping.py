@@ -54,10 +54,9 @@ def _iso():
 
 
 # (list endpoint, collection, minimal extra fields for the other-barn doc)
-# NOTE: vet_records and farrier_history are intentionally EXCLUDED here —
-# their reads are not barn-scoped until 4B-7 (task_engine writes those rows
-# without barn_id; see routes/care.py notes). Read-exclusion tests for them
-# will be added in 4B-7.
+# NOTE: vet_records and farrier_history reads are barn-scoped as of Phase 4B-7
+# (complete). They are omitted from this parametrized list only to keep these
+# cases minimal — their isolation is covered by the Phase 4E isolation suite.
 LIST_CASES = [
     ("/owners", "owners", {"full_name": "Ghost Owner"}),
     ("/riders", "riders", {"full_name": "Ghost Rider"}),
