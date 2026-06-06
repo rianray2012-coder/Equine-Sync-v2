@@ -68,15 +68,12 @@ LIST_CASES = [
     ("/wellness", "wellness", {"horse_id": "h", "appetite": 5}),
 ]
 
-# (create endpoint, payload, collection)
+# (create endpoint, payload, collection) — Phase 6A: only the no-horse-ref
+# creates belong here now. Horse/medication-referencing creates require a real
+# barn-resident id (see test_care_create_with_real_refs_stamps_primary below).
 POST_CASES = [
     ("/owners", {"full_name": "CareOwner"}, "owners"),
     ("/riders", {"full_name": "CareRider"}, "riders"),
-    ("/medications", {"horse_id": "hX", "name": "Bute", "dosage": "1g", "frequency": "daily"}, "medications"),
-    ("/medication-logs", {"medication_id": "mX", "scheduled_time": "2026-01-01T08:00:00", "status": "given"}, "medication_logs"),
-    ("/vet-records", {"horse_id": "hX", "type": "exam", "title": "Checkup", "date": "2026-01-01"}, "vet_records"),
-    ("/injuries", {"horse_id": "hX", "title": "Strain"}, "injuries"),
-    ("/wellness", {"horse_id": "hX", "appetite": 5, "water_intake": 5, "energy": 5, "coat_quality": 5}, "wellness"),
 ]
 
 
@@ -108,6 +105,37 @@ def test_care_create_stamps_primary_barn(endpoint, payload, collection):
         db[collection].delete_many({"id": doc.get("id")})
 
 
+def test_care_create_with_real_refs_stamps_primary():
+    # Phase 6A: horse/medication-referencing creates require a real barn horse.
+    # With valid ids the create still 200s and stamps barn_id=primary.
+    db = _mongo()
+    H = _admin_headers()
+    horse = requests.post(f"{API}/horses", headers=H,
+                          json={"name": "CareScoping6A", "breed": "T", "age": 4}, timeout=30).json()
+    hid = horse["id"]
+    med = requests.post(f"{API}/medications", headers=H, json={
+        "horse_id": hid, "name": "Bute", "dosage": "1g", "frequency": "daily"}, timeout=30).json()
+    cases = [
+        ("/medications", {"horse_id": hid, "name": "B2", "dosage": "1g", "frequency": "daily"}, "medications"),
+        ("/medication-logs", {"medication_id": med["id"], "scheduled_time": "2026-01-01T08:00:00", "status": "given"}, "medication_logs"),
+        ("/vet-records", {"horse_id": hid, "type": "exam", "title": "Checkup", "date": "2026-01-01"}, "vet_records"),
+        ("/injuries", {"horse_id": hid, "title": "Strain"}, "injuries"),
+        ("/wellness", {"horse_id": hid, "appetite": 5, "water_intake": 5, "energy": 5, "coat_quality": 5}, "wellness"),
+    ]
+    created = []
+    try:
+        for endpoint, payload, collection in cases:
+            r = requests.post(f"{API}{endpoint}", headers=H, json=payload, timeout=30)
+            assert r.status_code == 200, f"{endpoint}: {r.text}"
+            assert r.json().get("barn_id") == "primary", r.json()
+            created.append((collection, r.json()["id"]))
+    finally:
+        for collection, doc_id in created:
+            db[collection].delete_many({"id": doc_id})
+        db.medications.delete_many({"id": med["id"]})
+        db.horses.delete_many({"id": hid})
+
+
 def test_feed_task_complete_other_barn_returns_404_and_no_mutation():
     db = _mongo()
     H = _admin_headers()
@@ -126,7 +154,10 @@ def test_feed_task_complete_other_barn_returns_404_and_no_mutation():
         db.feed_tasks.delete_many({"id": tid})
 
 
-def test_wellness_post_does_not_mutate_other_barn_horse_score():
+def test_wellness_post_for_other_barn_horse_404s_and_no_mutation():
+    # Phase 6A: a wellness create for a foreign/absent horse_id is now rejected
+    # with a generic 404 (no existence leak), writes NO wellness doc, and never
+    # touches the other barn's horse score.
     db = _mongo()
     H = _admin_headers()
     hid = "otherhorse_" + uuid.uuid4().hex
@@ -134,17 +165,16 @@ def test_wellness_post_does_not_mutate_other_barn_horse_score():
         "id": hid, "barn_id": "other", "name": "Ghost Horse",
         "wellness_score": 85, "created_at": _iso(),
     })
-    created_wellness = None
     try:
         r = requests.post(f"{API}/wellness", headers=H, json={
             "horse_id": hid, "appetite": 10, "water_intake": 10, "energy": 10, "coat_quality": 10,
         }, timeout=30)
-        assert r.status_code == 200, r.text
-        created_wellness = r.json()
-        assert created_wellness.get("barn_id") == "primary", created_wellness
-        # The other-barn horse's score must be untouched.
+        assert r.status_code == 404, r.text
+        assert r.json()["detail"] == "Horse not found"
+        # No wellness doc was written for the foreign horse ...
+        assert db.wellness.count_documents({"horse_id": hid}) == 0
+        # ... and the other-barn horse's score is untouched.
         assert db.horses.find_one({"id": hid})["wellness_score"] == 85
     finally:
         db.horses.delete_many({"id": hid})
-        if created_wellness:
-            db.wellness.delete_many({"id": created_wellness.get("id")})
+        db.wellness.delete_many({"horse_id": hid})

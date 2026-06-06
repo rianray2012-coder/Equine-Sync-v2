@@ -111,6 +111,21 @@ class FeedTaskIn(BaseModel):
 def build_router(*, db, get_current_user, list_collection, clean, new_id) -> APIRouter:
     router = APIRouter(tags=["care"])
 
+    # ---------------- Phase 6A: care input integrity helpers ----------------
+    # Validate that a referenced id belongs to the caller's barn BEFORE writing
+    # a care record. Cross-barn and absent ids return the same generic 404 so
+    # there is no existence leak (consistent with the 4E isolation contract).
+
+    async def _require_horse(user, horse_id: str) -> None:
+        if not await db.horses.find_one(barn_filter(user, {"id": horse_id}), {"_id": 0, "id": 1}):
+            raise HTTPException(404, "Horse not found")
+
+    async def _require_medication(user, medication_id: str) -> None:
+        if not await db.medications.find_one(
+            barn_filter(user, {"id": medication_id}), {"_id": 0, "id": 1}
+        ):
+            raise HTTPException(404, "Medication not found")
+
     # ---------------- Owners ----------------
 
     @router.get("/owners")
@@ -119,6 +134,9 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.post("/owners")
     async def create_owner(body: OwnerIn, user=Depends(get_current_user)):
+        # Phase 6A: every referenced horse must belong to the caller's barn.
+        for horse_id in (body.horses or []):
+            await _require_horse(user, horse_id)
         doc = body.model_dump()
         doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
         stamp_barn(user, doc)
@@ -133,6 +151,9 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.post("/riders")
     async def create_rider(body: RiderIn, user=Depends(get_current_user)):
+        # Phase 6A backlog (deferred): rider.trainer_id references a user/staff
+        # record (cross-domain into `users`), outside the care-records boundary.
+        # Validating trainer barn membership is tracked for a later phase.
         doc = body.model_dump()
         doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
         stamp_barn(user, doc)
@@ -148,6 +169,7 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.post("/medications")
     async def create_med(body: MedicationIn, user=Depends(get_current_user)):
+        await _require_horse(user, body.horse_id)
         doc = body.model_dump()
         doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
         stamp_barn(user, doc)
@@ -160,6 +182,7 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.post("/medication-logs")
     async def create_med_log(body: MedLogIn, user=Depends(get_current_user)):
+        await _require_medication(user, body.medication_id)
         doc = body.model_dump()
         doc.update({"id": new_id(), "completed_by": user["id"], "completed_at": _iso(_now_utc())})
         stamp_barn(user, doc)
@@ -196,6 +219,7 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.post("/vet-records")
     async def create_vet(body: VetRecordIn, user=Depends(get_current_user)):
+        await _require_horse(user, body.horse_id)
         doc = body.model_dump()
         doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
         stamp_barn(user, doc)
@@ -220,6 +244,7 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.post("/injuries")
     async def create_injury(body: InjuryIn, user=Depends(get_current_user)):
+        await _require_horse(user, body.horse_id)
         doc = body.model_dump()
         doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
         stamp_barn(user, doc)
@@ -235,6 +260,8 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.post("/wellness")
     async def create_wellness(body: WellnessIn, user=Depends(get_current_user)):
+        # Phase 6A: reject a foreign/absent horse_id up front (no record written).
+        await _require_horse(user, body.horse_id)
         doc = body.model_dump()
         doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
         stamp_barn(user, doc)
