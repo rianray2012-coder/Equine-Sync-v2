@@ -21,7 +21,9 @@ export default function OwnerBillingCard() {
   }, []);
 
   const { balance, nextDue } = useMemo(() => {
-    const open = (invoices || []).filter((i) => i.status !== "paid");
+    // Explicit allow-list of "owing" statuses (the invoice model uses open/paid/overdue).
+    const OWING = ["open", "overdue"];
+    const open = (invoices || []).filter((i) => OWING.includes(i.status));
     const bal = open.reduce((s, i) => s + (Number(i.total) || 0), 0);
     const due = open
       .map((i) => i.due_date)

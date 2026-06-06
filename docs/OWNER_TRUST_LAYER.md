@@ -208,7 +208,26 @@ Frontend only — **no backend changes**. Reviewers clear `pending_review` updat
   empty state, **logo non-regression**, zero app console errors. **Phase 7C is complete.**
 
 ## Deferred / backlog (NOT in 7A)
-- **Frontend** — Phase 7C is complete (7C-1/7C-2/7C-3). 7D (owner dashboard polish + docs/test consolidation) remains.
+- **Frontend** — Phase 7C is complete. 7D-1 (owner billing visibility) ✅ DONE. 7D-2 (owner upcoming) + 7D-3 (docs/test consolidation) remain.
+- **Test-data hygiene** — older backend suites left ~195 `TEST_owner_*` invoices in the `primary` barn (incomplete teardown). Non-blocking; candidate for a cleanup script in 7D-3.
+
+## 7D-1 — Owner billing visibility ✅
+Owner-safe, **read-only** billing on the Owner Portal + a required isolation fix.
+
+- **Backend (isolation fix):** `GET /invoices` now owner-scopes for `role==horse_owner`
+  (`{owner_id: user.id}` added to `barn_filter`) — an owner sees ONLY their own invoices.
+  Staff path unchanged (full barn-scoped list). Response shape unchanged.
+- **Frontend:** new `frontend/src/components/OwnerBillingCard.jsx` — open balance (allow-list
+  `open`/`overdue`), next-due date, and a read-only invoice list with status pills.
+  **No pay/checkout action.** Rendered on `OwnerPortal` only for `role==='horse_owner'`.
+  testids: `owner-billing-card`, `owner-balance`, `owner-next-due`, `owner-invoice-<id>`, `owner-billing-empty`.
+- **Tests:** `tests/test_owner_billing.py` (3) — owner sees only their own; staff see the full
+  barn list; other-barn invoice never leaks to the owner. Billing regression unchanged (7/7).
+- **Verified** by testing_agent (iteration_27): **100% frontend** — card + balance/next-due/list,
+  read-only (zero buttons), owner isolation end-to-end (owner=1 invoice; admin=195 across 75 owners),
+  staff don't see the card, zero console errors.
+- Demo seed (`seed_owner_demo_link.py`) extended with one owner-scoped $850 open invoice (marker
+  `owner-demo-link-7c1`, reversible via `--reset`).
 - **Frontend** (owner feed, staff composer, review queue) — **7C**.
 - Additive index on `owner_updates(barn_id, horse_id, status)` if read volume warrants.
 - `owner_update:read` split (grooms/vets read access) if needed.
