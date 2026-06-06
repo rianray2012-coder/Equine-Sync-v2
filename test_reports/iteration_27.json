@@ -1,0 +1,27 @@
+{
+  "summary": "Phase 7D-1 Owner Billing card frontend E2E verified. Owner sees read-only Billing card with seeded $850 open invoice (due Jun 30, 2026); owner isolation confirmed via API (owner sees 1 invoice with matching owner_id, admin sees 195 invoices across 75 owners in same barn); admin does NOT see the owner Billing card on /owner-portal. No console errors specific to billing.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/tmp/test_isolation.sh"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "OwnerBillingCard.jsx: balance computation uses status !== 'paid' to determine 'open' invoices; treats 'draft', 'void', or any future non-paid status as open balance. Consider explicit allow-list (e.g., ['open','overdue']) for stricter semantics if backend introduces more statuses.",
+    "OwnerBillingCard.jsx next-due sort uses lexical sort on due_date strings — works for ISO YYYY-MM-DD but will break silently if backend ever returns non-ISO formats.",
+    "Admin /api/invoices currently returns 195 invoices with 75 unique owner_ids in the 'primary' barn — many are leftover TEST_owner_* from prior backend test runs. Test data cleanup (TEST_ prefix teardown) appears to be incomplete in prior backend test suites. Not blocking 7D-1 but worth a cleanup script."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "100%"},
+  "test_credentials": "owner@equinesync.com / demo1234 (owner id d44dd810-4be7-44ca-88a6-7522ba379fcb), admin@equinesync.com / demo1234 (admin id 977dd527-0355-41a9-b641-83903782ddc6)",
+  "seed_data_creation": "No new seed data created. Used pre-seeded $850 open invoice (id 1746ee77-e2ea-4c58-9bbf-5532b0ed222f, due 2026-06-30) linked to owner@equinesync.com.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 7D-1 (Owner Billing read-only card + GET /api/invoices owner-scoping) is FULLY VERIFIED end-to-end. Frontend testids confirmed: owner-billing-card, owner-balance ($850), owner-next-due (Jun 30, 2026), owner-invoice-1746ee77-e2ea-4c58-9bbf-5532b0ed222f (status OPEN). Zero buttons rendered inside billing card (read-only confirmed). Owner isolation verified via curl: owner JWT returns 1 invoice with owner_id == owner user id; admin JWT returns 195 invoices spanning 75 unique owner_ids (full barn scope). Admin visiting /owner-portal does not render owner-billing-card. Empty state (owner-billing-empty) not exercised live because the seeded owner has 1 invoice — code path is trivially correct (invoices.length === 0 branch). Backend tests already passed per main agent (test_owner_billing.py 3/3, billing regression 7/7).",
+  "rca of the issue": "n/a — no bug found."
+}

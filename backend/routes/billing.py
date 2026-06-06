@@ -46,7 +46,10 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.get("/invoices")
     async def list_invoices(user=Depends(get_current_user)):
-        return await list_collection("invoices", barn_filter(user), sort_field="due_date")
+        # Phase 7D-1: owner-scope — a horse_owner sees ONLY their own invoices
+        # (still barn-scoped). Staff keep the full barn-scoped list (unchanged).
+        extra = {"owner_id": user["id"]} if user.get("role") == "horse_owner" else {}
+        return await list_collection("invoices", barn_filter(user, extra), sort_field="due_date")
 
     @router.post("/invoices")
     async def create_invoice(body: InvoiceIn, user=Depends(get_current_user)):

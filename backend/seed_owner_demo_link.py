@@ -76,6 +76,19 @@ async def _apply(db):
         })
         print(f"+ seeded published owner_update {uid}")
 
+    # Seed one owner-scoped invoice so the Owner Billing card shows data (7D-1).
+    if await db.invoices.find_one({"_demo_marker": MARKER}, {"_id": 0, "id": 1}):
+        print("= demo invoice already present")
+    else:
+        iid = str(uuid.uuid4())
+        await db.invoices.insert_one({
+            "id": iid, "barn_id": "primary", "owner_id": owner_id, "owner_name": OWNER_EMAIL,
+            "horse_id": existing["id"], "items": [{"label": "Monthly board", "amount": 850.0}],
+            "total": 850.0, "due_date": "2026-06-30", "status": "open",
+            "created_at": _iso(), "_demo_marker": MARKER,
+        })
+        print(f"+ seeded owner invoice {iid}")
+
 
 async def _reset(db):
     horse = await db.horses.find_one({"_demo_owner_link": MARKER}, {"_id": 0, "id": 1, "name": 1, "_demo_prev_owner_id": 1})
@@ -88,6 +101,8 @@ async def _reset(db):
         print(f"- restored horse {horse['name']} ({horse['id']}) owner_id -> {horse.get('_demo_prev_owner_id')}")
     res = await db.owner_updates.delete_many({"_demo_marker": MARKER})
     print(f"- removed {res.deleted_count} demo owner_update(s)")
+    inv = await db.invoices.delete_many({"_demo_marker": MARKER})
+    print(f"- removed {inv.deleted_count} demo invoice(s)")
 
 
 async def _preview(db):
