@@ -208,8 +208,31 @@ Frontend only — **no backend changes**. Reviewers clear `pending_review` updat
   empty state, **logo non-regression**, zero app console errors. **Phase 7C is complete.**
 
 ## Deferred / backlog (NOT in 7A)
-- **Frontend** — Phase 7C is complete. 7D-1 (owner billing visibility) ✅ DONE. 7D-2 (owner upcoming) + 7D-3 (docs/test consolidation) remain.
+- **Frontend** — Phase 7C complete; 7D-1 + 7D-2 ✅ DONE. 7D-3 (docs/test consolidation) remains.
 - **Test-data hygiene** — older backend suites left ~195 `TEST_owner_*` invoices in the `primary` barn (incomplete teardown). Non-blocking; candidate for a cleanup script in 7D-3.
+
+## 7D-2 — Owner upcoming visibility ✅
+Owner-safe, **read-only** "Looking ahead" on the Owner Portal + a new owner-scoped read.
+
+- **Backend:** new `routes/owner.py` (owner self-service reads) → `GET /api/owner/upcoming`.
+  Owner-only (`role != horse_owner` → `403 "This view is for horse owners"`), barn + owned-horse
+  scoped. Reads `tasks` (same shape as the digest) for `category ∈ {vet, farrier, rehab}`,
+  active status, `scheduled_at` within **14 days** (`UPCOMING_WINDOW_DAYS`), soonest-first.
+  **Owner-safe whitelist** `{id, category, title, scheduled_at, horse_id, horse_name}` — no
+  staffing/internal fields. Titles humanized (`_friendly_title`) so engine ids like
+  `vetfu-<uuid>` never reach owners (→ "Vet follow-up" / category label). No task-engine or
+  email/digest changes.
+- **Frontend:** new `frontend/src/components/OwnerUpcomingCard.jsx` — read-only list (category
+  icon+chip, title, horse, date) with a client-side **Today / Tomorrow / In N days** countdown;
+  loading, empty, and a distinct soft **error** state. Rendered on `OwnerPortal` only for
+  `role==='horse_owner'`, between the Updates feed and Billing. testids: `owner-upcoming-card`,
+  `owner-upcoming-item-<id>`, `owner-upcoming-countdown-<id>`, `owner-upcoming-empty`, `owner-upcoming-error`.
+- **Tests:** `tests/test_owner_upcoming.py` (3) — owned/barn scope, soonest-first, excludes
+  other horses / past / completed / non-appointment categories / out-of-window / other barn;
+  staff → 403; owner-safe whitelist keys.
+- **Verified** by testing_agent (iteration_28): **100% frontend + backend** — card renders with
+  rows + countdown, read-only, owner-only (admin 403), whitelist payload, staff don't see the card,
+  zero console errors. (Title-id leak + error-vs-empty findings fixed in this sub-phase.)
 
 ## 7D-1 — Owner billing visibility ✅
 Owner-safe, **read-only** billing on the Owner Portal + a required isolation fix.

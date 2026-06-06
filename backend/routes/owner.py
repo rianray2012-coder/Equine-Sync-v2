@@ -12,6 +12,7 @@ Owner-only, barn-scoped, owned-horse scoped, with an owner-safe field whitelist
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,9 +25,25 @@ UPCOMING_WINDOW_DAYS = 14
 UPCOMING_CATEGORIES = ["vet", "farrier", "rehab"]
 _INACTIVE = ["completed", "skipped", "cancelled"]
 
+_CAT_LABEL = {"vet": "Vet visit", "farrier": "Farrier visit", "rehab": "Rehab session"}
+# Detects engine-generated id-ish tokens (e.g. "vetfu-a257e5d9...") so owners
+# never see raw internal ids in a title.
+_ID_TOKEN = re.compile(r"[0-9a-f]{8}", re.I)
+
 
 def _iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat()
+
+
+def _friendly_title(title, category) -> str:
+    """Owner-facing title: trust human-entered text, but fall back to a clean
+    category label when the stored title is empty or leaks an internal id."""
+    label = _CAT_LABEL.get(category, (category or "Care").title())
+    text = (title or "").strip()
+    is_followup = "follow-up" in text.lower() or "followup" in text.lower()
+    if not text or _ID_TOKEN.search(text):
+        return f"{label.split(' ')[0]} follow-up" if is_followup else label
+    return text
 
 
 def build_router(*, db, get_current_user) -> APIRouter:
@@ -62,7 +79,7 @@ def build_router(*, db, get_current_user) -> APIRouter:
             out.append({
                 "id": t.get("id"),
                 "category": t.get("category"),
-                "title": t.get("title"),
+                "title": _friendly_title(t.get("title"), t.get("category")),
                 "scheduled_at": t.get("scheduled_at"),
                 "horse_id": hid,
                 "horse_name": name_by_id.get(hid),

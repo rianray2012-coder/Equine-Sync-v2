@@ -33,12 +33,13 @@ const countdown = (iso) => {
 
 export default function OwnerUpcomingCard() {
   const [items, setItems] = useState(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     api
       .get("/owner/upcoming")
       .then((r) => setItems(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setItems([]));
+      .catch(() => { setError(true); setItems([]); });
   }, []);
 
   return (
@@ -57,13 +58,19 @@ export default function OwnerUpcomingCard() {
         <div className="py-8 text-center text-equine-inkSoft text-[13px]">Checking the calendar…</div>
       )}
 
-      {items !== null && items.length === 0 && (
+      {error && items !== null && (
+        <div className="py-8 text-center text-equine-inkSoft text-[13px]" data-testid="owner-upcoming-error">
+          We couldn&apos;t load your schedule right now. Please try again shortly.
+        </div>
+      )}
+
+      {!error && items !== null && items.length === 0 && (
         <div className="py-8 text-center text-equine-inkSoft text-[13px]" data-testid="owner-upcoming-empty">
           Nothing scheduled in the coming weeks.
         </div>
       )}
 
-      {items !== null && items.length > 0 && (
+      {!error && items !== null && items.length > 0 && (
         <div className="space-y-2">
           {items.map((u) => {
             const meta = CAT_META[u.category] || { label: u.category, icon: CalendarClock };
