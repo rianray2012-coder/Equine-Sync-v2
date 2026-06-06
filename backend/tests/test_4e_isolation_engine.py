@@ -156,15 +156,22 @@ def test_staff_activity_cross_barn_returns_empty():
 # --------------------------------------------------------------------------
 def test_analytics_summary_is_barn_scoped():
     db = mongo()
+    # Compute the route's 7-day window before the calls so the DB equality check
+    # matches the endpoint's `completed_at >= since` filter (default days=7).
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     a_an = _get(WORLD.h_a, "/tasks/analytics/summary")
     b_an = _get(WORLD.h_b, "/tasks/analytics/summary")
-    # Barn B completed exactly the one task created during world build.
-    b_expected = db.task_completions.count_documents({
-        "tenant_id": "default", "barn_id": WORLD.barn_b, "voided": {"$ne": True},
-    })
-    assert b_an["completions"] == b_expected >= 1
-    # Disjoint partitions: B's completions never inflate to include A's history.
-    assert b_an["completions"] < a_an["completions"]
+
+    def _expected(barn_id):
+        return db.task_completions.count_documents({
+            "tenant_id": "default", "barn_id": barn_id, "voided": {"$ne": True},
+            "completed_at": {"$gte": since},
+        })
+
+    # Direct per-barn DB equality (no relative-size assumption): each barn's
+    # completion count equals exactly its own scoped completions.
+    assert a_an["completions"] == _expected("primary")
+    assert b_an["completions"] == _expected(WORLD.barn_b) >= 1
 
 
 # --------------------------------------------------------------------------

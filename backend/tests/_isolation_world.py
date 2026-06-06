@@ -259,3 +259,15 @@ def teardown_world(w: World):
     if a_task:
         db.task_completions.delete_many({"task_id": a_task})
         db.task_events.delete_many({"task_id": a_task})
+    # A-side TEMPLATE fan-out: the API-created A template materialized future
+    # tasks (and emitted task_events). Deleting only the template row above would
+    # leave those orphaned in the primary barn — strict teardown removes them too.
+    a_tpl_ids = w._a_registry.get("task_templates", [])
+    if a_tpl_ids:
+        mat_ids = [t["id"] for t in db.tasks.find(
+            {"template_id": {"$in": a_tpl_ids}, "barn_id": w.barn_a}, {"_id": 0, "id": 1},
+        )]
+        if mat_ids:
+            db.task_events.delete_many({"task_id": {"$in": mat_ids}})
+            db.task_completions.delete_many({"task_id": {"$in": mat_ids}})
+        db.tasks.delete_many({"template_id": {"$in": a_tpl_ids}, "barn_id": w.barn_a})
