@@ -31,12 +31,25 @@
 | Status | Critical | `#B46A6A` |
 
 ## Brand assets (saved to `docs/brand/`)
-- `06_frost_on_midnight.png` — frost-white horse on Midnight Graphite (dark sidebar/hero)
-- `07_frost_on_slate.png` — frost-white horse on Slate Navy (panels)
-- `08_midnight_on_frost.png` — dark horse on Frost White (light surfaces)
-- `04_midnight_graphite_smoky_lilac.png` · `05_slate_navy_smoky_lilac.png` — lilac-accented variants
-- `EquineSync_Icon.png` — icon mark (horse symbol only)
-- ⏳ One more logo upload pending from founder (catalog it here on arrival).
+**Icon mark — 8 official color variants** (per the contact sheet, transparent-background PNGs unless noted):
+| # | Variant | File | Use |
+|---|---|---|---|
+| 01 | Midnight Graphite | `01_midnight_graphite_transparent.png` | dark mark on light surfaces |
+| 02 | Slate Navy | `02_slate_navy_transparent.png` | navy mark on light surfaces |
+| 03 | Smoky Lilac | `03_smoky_lilac_transparent.png` | accent / soft contexts |
+| 04 | Graphite + Lilac Tech | `04_midnight_graphite_smoky_lilac.png` | graphite body, lilac circuitry |
+| 05 | Slate Navy + Lilac Tech | `05_slate_navy_smoky_lilac.png` | navy body, lilac circuitry |
+| 06 | Frost on Midnight | `06_frost_on_midnight.png` | **frost mark on Midnight Graphite block** (dark sidebar/hero) |
+| 07 | Frost on Slate | `07_frost_on_slate.png` | **frost mark on Slate Navy block** (panels) |
+| 08 | Midnight on Frost | `08_midnight_on_frost.png` | dark mark on Frost White block (light) |
+
+- `EquineSync_Icon.png` — high-res master icon mark.
+- `EquineSync_icon_color_variations_contact_sheet.png` — master reference sheet (all 8, named).
+- `22_Brand_and_Logo_Use_Guide.pdf` — official Guide 22 (source of truth).
+
+**Variant selection rule of thumb:** Frost-on-Midnight/Slate for our dark sidebar & hero surfaces;
+Midnight/Slate/Graphite-on-Frost for light surfaces; Lilac-tech and Smoky-Lilac variants for
+accent/premium touch-points. Full set received — **brand asset library is complete.**
 
 ## Logo usage & placement (per Guide 22)
 - **Primary logo** → website hero, splash, investor/print/pitch/marketing.
