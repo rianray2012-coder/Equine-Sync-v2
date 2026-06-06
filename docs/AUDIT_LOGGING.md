@@ -1,9 +1,9 @@
 # Audit Logging (Phase 5)
 
-> Status: **5A foundation + 5B (auth/session + admin/destructive) + 5C (barn/invite
-> lifecycle + service-request approve/decline + invoice paid) instrumentation COMPLETE.**
-> Remaining: the **5D** read API (`GET /api/audit-logs` + `audit:read` + auditing reads)
-> is separately gated.
+> Status: **Phase 5 audit logging COMPLETE end-to-end — 5A foundation + 5B/5C
+> write-side instrumentation + 5D read API.** Remaining items (TTL/retention,
+> tamper-evidence hash-chaining, request-id correlation, IP/user-agent on
+> `permission.denied`) are **Phase 5E / backlog** — separately gated.
 
 ## Purpose
 An immutable, append-only operational/security audit trail for accountability,
@@ -72,6 +72,8 @@ Indexes (additive, idempotent): `(barn_id, ts desc)`, `(action, ts desc)`,
 - **Access control:** `permission.denied` — emitted by `core.permissions.require()`
   for the centralized capability gates only. ✅ **5B** (fire-and-forget; behavior-identical
   403; IP/user-agent capture for denials is a future enhancement).
+- **Audit reads:** `audit_logs.view` (`success`|`denied`) — emitted once per
+  `GET /api/audit-logs` request. ✅ **5D** (see Read API below).
 - **Barn/invite lifecycle:** `invite.created` (`{role}`), `invite.resent`, `invite.revoked`,
   `invite.accepted` (`{role}`, actor = new user), `barn.settings.updated`
   (`{updated_fields:[names]}`). ✅ **5C (`routes/invites.py`, `routes/onboarding.py`)** —
@@ -83,13 +85,30 @@ Indexes (additive, idempotent): `(barn_id, ts desc)`, `(action, ts desc)`,
 - **Billing:** `invoice.paid` (`{amount}` numeric). ✅ **5C (`routes/billing.py`)**
 
 ## Explicitly OUT OF SCOPE for v1 (later phases)
-- A read/list API (`GET /api/audit-logs`) + `audit:read` capability + auditing
-  reads of the audit log itself (`audit_logs.view`) → **Phase 5D**.
 - Broad CRUD auditing (every create/update/delete across domains).
 - Generic 401/validation(422) denial auditing (only `require()` 403s in v1).
 - `auth.register` (public self-registration) and `auth.resend_verification`.
 - Tamper-evidence (hash-chaining), request-id correlation, retention/TTL,
-  archival/export, SIEM streaming → **Phase 5E / backlog**.
+  archival/export, SIEM streaming, IP/user-agent on `permission.denied`
+  → **Phase 5E / backlog**.
+
+## Read API — `GET /api/audit-logs` (Phase 5D) ✅
+- **Auth:** `audit:read` capability = `{admin, barn_manager}` (checked **inline**,
+  not via `require()`, so a denied read emits exactly one `audit_logs.view(denied)`
+  event — never a duplicate `permission.denied`). Owners/staff → 403.
+- **Barn-scoped:** query wrapped in `barn_filter(user, ...)`; `total` uses the same
+  scoped filter as `items`. No cross-barn leakage (Phase-4 isolation).
+- **Filters (allow-listed, typed — no NoSQL injection):** `action`, `outcome`,
+  `actor_user_id`, `actor_email` (lowercased), `resource_type`, `resource_id`,
+  `start`/`end` (`ts >=`/`<=`).
+- **Pagination:** `limit` (default 50, **clamped 1–200**), `offset` (≥0, negative → 422).
+  Sort: `ts` desc (newest-first, indexed).
+- **Response:** `{items:[...], total, limit, offset}` (`_id` stripped).
+- **`audit_logs.view` success metadata:** `{filters, result_count, total}` where
+  `filters` echoes only `action/actor_user_id/resource_type/resource_id/outcome/
+  from_ts/to_ts` — **`actor_email` is filterable but never echoed** (no raw emails).
+- **No recursion:** audit writes are inserts (never reads) → exactly one view event
+  per request. Read-only — the collection stays append-only.
 
 ## Privacy / security guardrails
 - Never store passwords, hashes, tokens, reset/verify tokens, payment data —

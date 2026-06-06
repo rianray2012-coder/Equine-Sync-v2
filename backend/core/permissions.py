@@ -30,6 +30,8 @@ CAPABILITIES: Dict[str, Set[str]] = {
     # Phase 4D — barn provisioning (founder/platform admin). The route ALSO
     # enforces caller-in-primary until a real superadmin role exists.
     "barn:create": {"admin"},
+    # Phase 5D — read the immutable audit trail (barn-scoped reads).
+    "audit:read": {"admin", "barn_manager"},
 }
 
 # Per-capability denial messages preserve the exact wording used by the existing
@@ -42,6 +44,7 @@ _DENY_MESSAGES: Dict[str, str] = {
     "digest:admin": "Admin/Manager only",
     "admin:access": "Admin only",
     "barn:create": "Admin access required to create barns",
+    "audit:read": "Admin/Manager access required to view audit logs",
 }
 
 
