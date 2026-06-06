@@ -10,10 +10,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 
 from core.tenancy import barn_filter, resolve_barn_id
+from core import audit
 
 
 ONBOARDING_STEPS: List[Dict[str, Any]] = [
@@ -223,13 +224,18 @@ def build_router(*, db, get_current_user, require_setup_role, roles: List[str],
         return doc
 
     @router.put("/barn")
-    async def update_barn(body: BarnSettings, user=Depends(get_current_user)):
+    async def update_barn(body: BarnSettings, request: Request, user=Depends(get_current_user)):
         require_setup_role(user)
         barn_id = resolve_barn_id(user)
         doc = body.model_dump()
         doc["id"] = barn_id
         doc["updated_at"] = _iso(_now_utc())
         await db.barn.update_one({"id": barn_id}, {"$set": doc}, upsert=True)
+        await audit.record(
+            action="barn.settings.updated", user=user, request=request,
+            resource_type="barn", resource_id=barn_id,
+            metadata={"updated_fields": sorted(body.model_dump(exclude_unset=True).keys())},
+        )
         return await db.barn.find_one({"id": barn_id}, {"_id": 0})
 
     # ---------- Locations ----------

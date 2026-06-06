@@ -14,11 +14,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from core.permissions import require
 from core.tenancy import barn_filter, stamp_barn
+from core import audit
 
 
 def _now_utc() -> datetime:
@@ -177,10 +178,10 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
         return clean(doc)
 
     @router.post("/service-requests/{sr_id}/approve")
-    async def approve_sr(sr_id: str, user=Depends(get_current_user)):
+    async def approve_sr(sr_id: str, request: Request, user=Depends(get_current_user)):
         require(user, "service_request:approve")
         scope = barn_filter(user, {"id": sr_id})
-        existing = await db.service_requests.find_one(scope, {"_id": 0, "status": 1})
+        existing = await db.service_requests.find_one(scope, {"_id": 0, "status": 1, "type": 1})
         if not existing:
             raise HTTPException(404, "Service request not found")
         if existing.get("status") != "pending":
@@ -191,10 +192,15 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
                       "approved_at": _iso(_now_utc()),
                       "approved_by_user_id": user["id"]}},
         )
+        await audit.record(
+            action="service_request.approved", user=user, request=request,
+            resource_type="service_request", resource_id=sr_id,
+            metadata={"type": existing.get("type")},
+        )
         return await db.service_requests.find_one(scope, {"_id": 0})
 
     @router.post("/service-requests/{sr_id}/decline")
-    async def decline_sr(sr_id: str, body: Optional[DeclineSRBody] = None,
+    async def decline_sr(sr_id: str, request: Request, body: Optional[DeclineSRBody] = None,
                           user=Depends(get_current_user)):
         require(user, "service_request:decline")
         scope = barn_filter(user, {"id": sr_id})
@@ -212,6 +218,11 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
                 "declined_by_user_id": user["id"],
                 "decline_reason": reason[:500],
             }},
+        )
+        await audit.record(
+            action="service_request.declined", user=user, request=request,
+            resource_type="service_request", resource_id=sr_id,
+            metadata={"reason_provided": bool(body and body.reason)},
         )
         return await db.service_requests.find_one(scope, {"_id": 0})
 

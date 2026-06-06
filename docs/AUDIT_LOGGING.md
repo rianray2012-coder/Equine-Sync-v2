@@ -1,8 +1,9 @@
 # Audit Logging (Phase 5)
 
-> Status: **5A foundation COMPLETE + 5B auth/session + admin/destructive instrumentation COMPLETE.**
-> Remaining: 5C (barn/invite lifecycle + SR approve/decline + invoice.paid) and the
-> 5D read API are separately gated.
+> Status: **5A foundation + 5B (auth/session + admin/destructive) + 5C (barn/invite
+> lifecycle + service-request approve/decline + invoice paid) instrumentation COMPLETE.**
+> Remaining: the **5D** read API (`GET /api/audit-logs` + `audit:read` + auditing reads)
+> is separately gated.
 
 ## Purpose
 An immutable, append-only operational/security audit trail for accountability,
@@ -71,10 +72,15 @@ Indexes (additive, idempotent): `(barn_id, ts desc)`, `(action, ts desc)`,
 - **Access control:** `permission.denied` — emitted by `core.permissions.require()`
   for the centralized capability gates only. ✅ **5B** (fire-and-forget; behavior-identical
   403; IP/user-agent capture for denials is a future enhancement).
-- **Barn/invite lifecycle:** `invite.created`, `invite.resent`, `invite.revoked`,
-  `invite.accepted`, `barn.settings.updated`. → **5C (pending)**
-- **Operational approvals:** `service_request.approved`, `service_request.declined`. → **5C**
-- **Billing:** `invoice.paid`. → **5C**
+- **Barn/invite lifecycle:** `invite.created` (`{role}`), `invite.resent`, `invite.revoked`,
+  `invite.accepted` (`{role}`, actor = new user), `barn.settings.updated`
+  (`{updated_fields:[names]}`). ✅ **5C (`routes/invites.py`, `routes/onboarding.py`)** —
+  invitee email omitted (joinable via invite id); barn settings store changed field
+  **names only** (no values).
+- **Operational approvals:** `service_request.approved` (`{type}`),
+  `service_request.declined` (`{reason_provided: bool}` — free-text reason never stored).
+  ✅ **5C (`routes/operations.py`)**
+- **Billing:** `invoice.paid` (`{amount}` numeric). ✅ **5C (`routes/billing.py`)**
 
 ## Explicitly OUT OF SCOPE for v1 (later phases)
 - A read/list API (`GET /api/audit-logs`) + `audit:read` capability + auditing

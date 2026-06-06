@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 
 from core.tenancy import PRIMARY_BARN_ID, barn_filter, resolve_barn_id
+from core import audit
 
 
 class InviteCreate(BaseModel):
@@ -142,6 +143,11 @@ def build_router(
         out = await db.invites.find_one(barn_filter(user, {"id": invite["id"]}), {"_id": 0, "token_hash": 0})
         if mail.get("dev"):
             out["dev_accept_url"] = accept_url
+        await audit.record(
+            action="invite.created", user=user, request=request,
+            resource_type="invite", resource_id=invite["id"],
+            metadata={"role": body.role},
+        )
         return out
 
     @router.post("/{invite_id}/resend")
@@ -189,10 +195,14 @@ def build_router(
         out = await db.invites.find_one(scope, {"_id": 0, "token_hash": 0})
         if mail.get("dev"):
             out["dev_accept_url"] = accept_url
+        await audit.record(
+            action="invite.resent", user=user, request=request,
+            resource_type="invite", resource_id=invite_id,
+        )
         return out
 
     @router.post("/{invite_id}/revoke")
-    async def revoke_invite(invite_id: str, user=Depends(get_current_user)):
+    async def revoke_invite(invite_id: str, request: Request, user=Depends(get_current_user)):
         require_setup_role(user)
         res = await db.invites.update_one(
             barn_filter(user, {"id": invite_id, "status": "pending"}),
@@ -203,6 +213,10 @@ def build_router(
         if res.matched_count == 0:
             raise HTTPException(404, "No pending invite found")
         await track("invite.revoked", {"invite_id": invite_id}, user["id"])
+        await audit.record(
+            action="invite.revoked", user=user, request=request,
+            resource_type="invite", resource_id=invite_id,
+        )
         return {"ok": True}
 
     @router.get("/verify")
@@ -295,6 +309,11 @@ def build_router(
         await track("invite.accepted",
                     {"invite_id": inv["id"], "role": inv["role"]},
                     new_user["id"])
+        await audit.record(
+            action="invite.accepted", user=new_user, request=request,
+            resource_type="invite", resource_id=inv["id"],
+            metadata={"role": inv["role"]},
+        )
         return {
             "token": token,
             "refresh_token": refresh,
