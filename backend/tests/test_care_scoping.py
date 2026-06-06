@@ -6,47 +6,13 @@ Proves per-barn isolation for routes/care.py:
 - a cross-barn feed-task complete returns 404 and does not mutate the task;
 - POST /wellness for an other-barn horse_id does not mutate that horse's score.
 """
-import os
-import pathlib
 import uuid
 from datetime import datetime, timezone
 
-import pymongo
 import pytest
 import requests
 
-from ._test_creds import ADMIN
-
-
-def _read_env(key, root_index, sub):
-    envf = pathlib.Path(__file__).resolve().parents[root_index] / sub
-    for line in envf.read_text().splitlines():
-        if line.startswith(f"{key}="):
-            return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return ""
-
-
-def _base_url():
-    v = os.environ.get("REACT_APP_BACKEND_URL")
-    if v:
-        return v.rstrip("/")
-    return _read_env("REACT_APP_BACKEND_URL", 2, "frontend/.env").rstrip("/")
-
-
-API = f"{_base_url()}/api"
-
-
-def _mongo():
-    url = os.environ.get("MONGO_URL") or _read_env("MONGO_URL", 1, ".env")
-    name = os.environ.get("DB_NAME") or _read_env("DB_NAME", 1, ".env")
-    return pymongo.MongoClient(url)[name]
-
-
-def _admin_headers():
-    r = requests.post(f"{API}/auth/login",
-                      json={"email": ADMIN["email"], "password": ADMIN["password"]}, timeout=30)
-    r.raise_for_status()
-    return {"Authorization": f"Bearer {r.json()['token']}"}
+from ._care_helpers import API, auth_headers, mongo_db
 
 
 def _iso():
@@ -78,8 +44,8 @@ POST_CASES = [
 
 @pytest.mark.parametrize("endpoint,collection,fields", LIST_CASES)
 def test_other_barn_doc_excluded_from_care_list(endpoint, collection, fields):
-    db = _mongo()
-    H = _admin_headers()
+    db = mongo_db()
+    H = auth_headers()
     doc_id = "other_" + uuid.uuid4().hex
     db[collection].insert_one({"id": doc_id, "barn_id": "other", "created_at": _iso(), **fields})
     try:
@@ -93,8 +59,8 @@ def test_other_barn_doc_excluded_from_care_list(endpoint, collection, fields):
 
 @pytest.mark.parametrize("endpoint,payload,collection", POST_CASES)
 def test_care_create_stamps_primary_barn(endpoint, payload, collection):
-    db = _mongo()
-    H = _admin_headers()
+    db = mongo_db()
+    H = auth_headers()
     r = requests.post(f"{API}{endpoint}", headers=H, json=payload, timeout=30)
     assert r.status_code == 200, r.text
     doc = r.json()
@@ -107,8 +73,8 @@ def test_care_create_stamps_primary_barn(endpoint, payload, collection):
 def test_care_create_with_real_refs_stamps_primary():
     # Phase 6A: horse/medication-referencing creates require a real barn horse.
     # With valid ids the create still 200s and stamps barn_id=primary.
-    db = _mongo()
-    H = _admin_headers()
+    db = mongo_db()
+    H = auth_headers()
     horse = requests.post(f"{API}/horses", headers=H,
                           json={"name": "CareScoping6A", "breed": "T", "age": 4}, timeout=30).json()
     hid = horse["id"]
@@ -136,8 +102,8 @@ def test_care_create_with_real_refs_stamps_primary():
 
 
 def test_feed_task_complete_other_barn_returns_404_and_no_mutation():
-    db = _mongo()
-    H = _admin_headers()
+    db = mongo_db()
+    H = auth_headers()
     tid = "otherfeed_" + uuid.uuid4().hex
     db.feed_tasks.insert_one({
         "id": tid, "barn_id": "other", "meal": "AM", "ration": "hay",
@@ -157,8 +123,8 @@ def test_wellness_post_for_other_barn_horse_404s_and_no_mutation():
     # Phase 6A: a wellness create for a foreign/absent horse_id is now rejected
     # with a generic 404 (no existence leak), writes NO wellness doc, and never
     # touches the other barn's horse score.
-    db = _mongo()
-    H = _admin_headers()
+    db = mongo_db()
+    H = auth_headers()
     hid = "otherhorse_" + uuid.uuid4().hex
     db.horses.insert_one({
         "id": hid, "barn_id": "other", "name": "Ghost Horse",

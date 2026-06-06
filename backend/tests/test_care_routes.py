@@ -3,13 +3,18 @@
 Every endpoint moved from server.py to routes/care.py is exercised here.
 Response shapes are NOT supposed to change post-refactor.
 """
-import os
 import pytest
 import requests
 
+from ._care_helpers import API as BASE_API
 from ._test_creds import ADMIN
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://barn-ops-preview.preview.emergentagent.com").rstrip("/")
+# NOTE: the 3 horse-endpoint tests below (`test_horses_requires_auth`,
+# `test_list_horses`, `test_create_get_patch_horse`) are *legacy placement* —
+# horse-profile CRUD was extracted to routes/horses.py in Phase 3C. They are
+# left here (covered by test_horses_routes.py too) and documented rather than
+# moved, to avoid churn. New horse tests belong in test_horses_routes.py.
+BASE_URL = BASE_API[:-4] if BASE_API.endswith("/api") else BASE_API
 
 
 @pytest.fixture(scope="module")

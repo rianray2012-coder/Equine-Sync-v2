@@ -13,8 +13,48 @@
 - **6C — Care Search / Filtering Polish** ✅ **DONE (2026-06-06)** — deterministic
   `created_at`-desc sort on the previously-unsorted lists + harmonized farrier read +
   opt-in barn-scoped `medication_id` filter on medication-logs.
-- **6D — Care Documentation / Test Consolidation** — docs + care-route regression
-  consolidation around the strengthened behaviors. *(planned)*
+- **6D — Care Documentation / Test Consolidation** ✅ **DONE (2026-06-06)** —
+  consolidated Care Records Contract + coverage map (below); deduped care-test
+  boilerplate into `tests/_care_helpers.py`.
+
+## Care Records Contract (authoritative reference)
+Single source of truth for the care-records HTTP surface as strengthened across
+Phases 4B / 6A / 6B / 6C. **All reads are barn-scoped** (`barn_filter`); all writes
+stamp `barn_id`. Responses are **bare arrays** (lists) — no pagination envelope.
+
+| Endpoint | List filters | Sort | Create validation (6A) | State guard (6B) |
+|---|---|---|---|---|
+| `GET/POST /owners` | barn | `created_at` desc | each `horses[]` ∈ barn → else 404 | — |
+| `GET/POST /riders` | barn | `created_at` desc | — (`trainer_id` deferred) | — |
+| `GET/POST /medications` | barn + `horse_id?` | `created_at` desc | `horse_id` ∈ barn → else 404 | — |
+| `GET/POST /medication-logs` | barn + `medication_id?` | `scheduled_time` desc | `medication_id` ∈ barn → else 404 | opt-in `client_log_id` idempotency (first-write-wins) |
+| `GET /feed-tasks` · `POST /feed-tasks/{id}/complete` | barn + `date_str?` | `created_at` desc | — | re-complete is idempotent no-op (preserves first `completed_by`/`completed_at`); foreign id → 404 |
+| `GET/POST /vet-records` | barn + `horse_id?` | `date` desc | `horse_id` ∈ barn → else 404 | — |
+| `GET /farrier-history` | barn + `horse_id?` | `date` desc | — (engine-projected, read-only here) | — |
+| `GET/POST /injuries` | barn + `horse_id?` | `created_at` desc | `horse_id` ∈ barn → else 404 | — |
+| `GET/POST /wellness` | barn + `horse_id?` | `created_at` desc | `horse_id` ∈ barn → else 404 (no record/score side-effect) | — |
+
+Notes:
+- **No existence leak:** cross-barn / absent *create* ids return a generic 404
+  (`"Horse not found"` / `"Medication not found"`).
+- **Filter ids are never 404'd:** a foreign/unknown `horse_id` / `medication_id`
+  *query filter* simply returns `[]` (barn_filter scopes it) — intentional (6C).
+- `POST /wellness` additionally bumps `horses.wellness_score` (barn-scoped update).
+
+### Care behavior → test-file coverage map
+| Behavior area | Test file |
+|---|---|
+| Base CRUD round-trips (+ 3 legacy horse tests*) | `tests/test_care_routes.py` |
+| Phase 4B barn isolation / scoping | `tests/test_care_scoping.py` |
+| Phase 6A cross-barn input validation | `tests/test_care_integrity.py` |
+| Phase 6B idempotency state guards | `tests/test_care_state_guards.py` |
+| Phase 6C ordering + `medication_id` filter | `tests/test_care_filtering.py` |
+| Shared env/mongo/login fixtures (6D dedup) | `tests/_care_helpers.py` |
+
+\* The 3 horse-endpoint tests in `test_care_routes.py` are **legacy placement** —
+horse-profile CRUD moved to `routes/horses.py` in Phase 3C (also covered by
+`test_horses_routes.py`). Left in place (documented, not moved) to avoid churn;
+new horse tests belong in `test_horses_routes.py`.
 
 ## 6A — Care Input Integrity / Cross-Barn Validation ✅
 Every care create now validates its referenced id against the caller's barn
@@ -97,6 +137,25 @@ unchanged** (no pagination envelope) and all reads stay barn-scoped.
   medications + owners/riders/injuries; barn-scoped `medication_id` filter narrows
   results and an unknown id returns `[]` (not 404). Full backend suite: **490 passed
   / 3 skipped** (one cross-test analytics-isolation flake passes in isolation).
+
+
+## 6D — Care Documentation / Test Consolidation ✅
+Docs + care-test hygiene only — **zero production code change** (`routes/care.py`
+untouched). Behavior is identical; the full care suite (38 tests) is re-verified green.
+
+- **Documentation**: added the **Care Records Contract** reference table + the
+  **behavior → test-file coverage map** (above) as the single source of truth for the
+  care surface strengthened across 4B/6A/6B/6C.
+- **Test consolidation**: extracted the env-reading / Mongo-client / API base-URL /
+  admin-login boilerplate (previously copy-pasted across 4 care test modules) into a
+  shared `tests/_care_helpers.py` (`API`, `mongo_db()`, `auth_headers()`, `read_env()`),
+  mirroring the `_test_creds.py` precedent. The 4 newer modules now import it.
+- **Tiny cleanup**: replaced the **stale hardcoded fallback URL**
+  (`barn-ops-preview.preview…`) in `tests/test_care_routes.py` with the shared
+  env-driven `API` (fail-fast like the other modules).
+- **Documented (not moved)**: the 3 horse-endpoint tests in `test_care_routes.py` are
+  legacy placement from before Phase 3C's `routes/horses.py` extraction — left in
+  place with an inline note to avoid churn.
 
 
 ## Deferred / backlog (documented, NOT implemented in Phase 6 unless re-scoped)
