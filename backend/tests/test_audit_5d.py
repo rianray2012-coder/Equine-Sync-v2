@@ -94,7 +94,10 @@ def teardown_module(module):
     db.audit_log.delete_many({"metadata.test_run": RUN})
     db.audit_log.delete_many({"action": "audit_logs.view", "ts": {"$gte": STATE["start_ts"]}})
     if STATE["invite_ids"]:
-        db.invites.delete_many({"id": {"$in": list(STATE["invite_ids"])}})
+        inv_ids = list(STATE["invite_ids"])
+        db.invites.delete_many({"id": {"$in": inv_ids}})
+        # invite lifecycle audit rows (actor = shared admin) keyed by invite id
+        db.audit_log.delete_many({"resource_id": {"$in": inv_ids}, "ts": {"$gte": STATE["start_ts"]}})
     emails = list(STATE["emails"])
     if emails:
         uids = [u["id"] for u in db.users.find({"email": {"$in": emails}}, {"_id": 0, "id": 1})]

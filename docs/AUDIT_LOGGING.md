@@ -107,6 +107,7 @@ Indexes (additive, idempotent): `(barn_id, ts desc)`, `(action, ts desc)`,
 - **`audit_logs.view` success metadata:** `{filters, result_count, total}` where
   `filters` echoes only `action/actor_user_id/resource_type/resource_id/outcome/
   from_ts/to_ts` — **`actor_email` is filterable but never echoed** (no raw emails).
+  Denied reads record `metadata={"reason":"insufficient_role"}` only (no filters).
 - **No recursion:** audit writes are inserts (never reads) → exactly one view event
   per request. Read-only — the collection stays append-only.
 

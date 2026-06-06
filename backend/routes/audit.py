@@ -57,7 +57,7 @@ def build_router(*, db, get_current_user) -> APIRouter:
             await audit.record(
                 action="audit_logs.view", user=user, request=request,
                 resource_type="audit_log", outcome="denied", status_code=403,
-                metadata={"reason": "insufficient_role", "filters": echoed},
+                metadata={"reason": "insufficient_role"},
             )
             raise HTTPException(403, _DENY_MESSAGES["audit:read"])
 
