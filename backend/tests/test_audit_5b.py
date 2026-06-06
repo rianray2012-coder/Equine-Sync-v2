@@ -2,10 +2,12 @@
 /destructive + permission.denied).
 
 Live API + Mongo. Each audited action is driven through the real endpoint and
-the resulting `audit_log` row is asserted (with a short poll, since the
-`permission.denied` event is fire-and-forget). Strict cleanup removes every
-throwaway user/barn AND the audit rows this test created, so the keep-forever
-audit collection is not polluted and other suites' counts are unaffected.
+the resulting `audit_log` row is asserted. Every poll is bounded by this run's
+start timestamp so an assertion can only pass on a row created by THIS run
+(never a stale row). Teardown deletes audit rows by the exact ids captured
+during the run (covers the anonymous `admin.seed.attempt` row and the shared
+`groom` `permission.denied` row precisely), plus a unique-throwaway-email
+backstop for the high-volume lockout failure rows.
 
 Guardrails proven here:
   * response bodies / status codes / error messages are unchanged
@@ -15,6 +17,7 @@ import os
 import pathlib
 import time
 import uuid
+from datetime import datetime, timezone
 
 import pymongo
 import requests
@@ -43,53 +46,61 @@ def mongo():
     return pymongo.MongoClient(url)[name]
 
 
-def _login(email, password):
-    r = requests.post(f"{API}/auth/login", json={"email": email, "password": password}, timeout=30)
-    r.raise_for_status()
-    return r.json()
-
-
 def _headers(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-# Track throwaway identities so teardown can purge their audit rows.
-STATE = {"emails": set(), "barn_ids": set(), "start_ts": None}
+# Run-scoped state so teardown can purge exactly what this run created.
+STATE = {"emails": set(), "barn_ids": set(), "audit_ids": set(), "start_ts": None}
 
 
 def setup_module(module):
-    STATE["start_ts"] = "2026-01-01T00:00:00+00:00"  # everything in this run is after this
+    # Real run start: every audit assertion is bounded by ts >= start_ts so it
+    # can only match rows created by this run.
+    STATE["start_ts"] = datetime.now(timezone.utc).isoformat()
 
 
 def teardown_module(module):
     db = mongo()
+    # Primary, precise cleanup: delete by the exact ids captured this run.
+    ids = list(STATE["audit_ids"])
+    if ids:
+        db.audit_log.delete_many({"id": {"$in": ids}})
     emails = list(STATE["emails"])
     if emails:
         db.users.delete_many({"email": {"$in": emails}})
-        db.audit_log.delete_many({"actor_email": {"$in": emails}})
         db.login_attempts.delete_many({"email": {"$in": emails}})
+        # Backstop for high-volume rows not individually captured (lockout
+        # failures). Safe: these emails are unique to this test run.
+        db.audit_log.delete_many({"actor_email": {"$in": emails}, "ts": {"$gte": STATE["start_ts"]}})
     for bid in STATE["barn_ids"]:
         db.barn.delete_many({"id": bid})
         db.users.delete_many({"barn_id": bid})
-        db.audit_log.delete_many({"resource_id": bid})
-    # Purge the groom-driven permission.denied rows this test created.
-    db.audit_log.delete_many({
-        "action": "permission.denied",
-        "actor_email": GROOM["email"],
-        "resource_id": "admin:access",
-        "ts": {"$gte": STATE["start_ts"]},
-    })
 
 
-def _poll_audit(query, timeout=5.0):
+def _capture(query, timeout=6.0):
+    """Poll for a fresh audit row (ts >= run start), record its id for teardown."""
+    q = dict(query)
+    q["ts"] = {"$gte": STATE["start_ts"]}
     db = mongo()
     deadline = time.time() + timeout
     while time.time() < deadline:
-        doc = db.audit_log.find_one(query, sort=[("ts", -1)])
+        doc = db.audit_log.find_one(q, sort=[("ts", -1)])
         if doc:
+            STATE["audit_ids"].add(doc["id"])
             return doc
-        time.sleep(0.25)
+        time.sleep(0.2)
     return None
+
+
+def _login(email, password):
+    r = requests.post(f"{API}/auth/login", json={"email": email, "password": password}, timeout=30)
+    r.raise_for_status()
+    out = r.json()
+    # Capture the success row this login produced (covers shared admin/groom
+    # logins too, so they're deleted by id in teardown).
+    _capture({"action": "auth.login.success", "actor_email": email.lower()})
+    return out
 
 
 def _register_throwaway():
@@ -107,10 +118,9 @@ def _register_throwaway():
 def test_login_success_and_failure_are_audited():
     email, reg = _register_throwaway()
 
-    # success
     out = _login(email, PW)
     assert "token" in out
-    row = _poll_audit({"action": "auth.login.success", "actor_email": email})
+    row = _capture({"action": "auth.login.success", "actor_email": email})
     assert row and row["outcome"] == "success"
     assert row["resource_type"] == "session" and row["actor_user_id"] == out["user"]["id"]
     assert "password" not in str(row["metadata"]).lower()
@@ -118,77 +128,95 @@ def test_login_success_and_failure_are_audited():
     # failure — response/status unchanged (401 + "Invalid credentials")
     r = requests.post(f"{API}/auth/login", json={"email": email, "password": "wrong-pass"}, timeout=30)
     assert r.status_code == 401 and r.json()["detail"] == "Invalid credentials"
-    frow = _poll_audit({"action": "auth.login.failure", "actor_email": email})
+    frow = _capture({"action": "auth.login.failure", "actor_email": email})
     assert frow and frow["outcome"] == "failure" and frow["status_code"] == 401
     assert frow["metadata"] == {"reason": "invalid_credentials"}
+
+
+def test_login_locked_is_audited():
+    email, _ = _register_throwaway()
+    locked = False
+    for _ in range(12):
+        r = requests.post(f"{API}/auth/login", json={"email": email, "password": "wrong"}, timeout=30)
+        if r.status_code == 423:
+            locked = True
+            assert "temporarily locked" in r.json()["detail"]
+            break
+        assert r.status_code == 401 and r.json()["detail"] == "Invalid credentials"
+    assert locked, "account did not lock within the attempt budget"
+    row = _capture({"action": "auth.login.locked", "actor_email": email})
+    assert row and row["outcome"] == "denied" and row["status_code"] == 423
+    assert row["metadata"]["reason"] == "account_locked"
+    assert "retry_after_minutes" in row["metadata"]
 
 
 def test_refresh_and_logout_are_audited():
     email, _ = _register_throwaway()
     out = _login(email, PW)
-    # refresh
     rr = requests.post(f"{API}/auth/refresh", json={"refresh_token": out["refresh_token"]}, timeout=30)
     assert rr.status_code == 200
-    assert _poll_audit({"action": "auth.token.refreshed", "actor_email": email})
-    # logout (uses the rotated refresh token + new bearer)
+    assert _capture({"action": "auth.token.refreshed", "actor_email": email})
     new = rr.json()
     lo = requests.post(f"{API}/auth/logout", json={"refresh_token": new["refresh_token"]},
                        headers=_headers(new["token"]), timeout=30)
     assert lo.status_code == 200 and lo.json() == {"ok": True}
-    assert _poll_audit({"action": "auth.logout", "actor_email": email})
+    assert _capture({"action": "auth.logout", "actor_email": email})
+
+
+def test_logout_all_is_audited():
+    email, _ = _register_throwaway()
+    out = _login(email, PW)
+    r = requests.post(f"{API}/auth/logout-all", headers=_headers(out["token"]), timeout=30)
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    row = _capture({"action": "auth.logout_all", "actor_email": email})
+    assert row and row["resource_type"] == "session"
+    assert row["metadata"] == {"scope": "all_sessions"}
 
 
 def test_password_reset_request_complete_and_email_verify_audited():
     email, reg = _register_throwaway()
 
-    # forgot-password (account exists) -> requested + email_dispatched true
     fr = requests.post(f"{API}/auth/forgot-password", json={"email": email}, timeout=30)
     assert fr.status_code == 200
-    req_row = _poll_audit({"action": "auth.password_reset.requested", "actor_email": email})
+    req_row = _capture({"action": "auth.password_reset.requested", "actor_email": email})
     assert req_row and req_row["metadata"] == {"email_dispatched": True}
     dev_token = fr.json().get("dev_token")
-    assert dev_token  # dev convenience token (non-production)
+    assert dev_token
 
-    # reset-password with the dev token -> completed; no token/url leaks in metadata
     rp = requests.post(f"{API}/auth/reset-password",
                        json={"token": dev_token, "new_password": "NewPassw0rd!"}, timeout=30)
     assert rp.status_code == 200
-    comp = _poll_audit({"action": "auth.password_reset.completed", "actor_email": email})
+    comp = _capture({"action": "auth.password_reset.completed", "actor_email": email})
     assert comp and comp["metadata"] == {"sessions_revoked": True}
     blob = str(comp).lower()
     assert dev_token.lower() not in blob and "new_password" not in blob
 
-    # verify-email with the registration dev verification token
     raw_verify = reg.get("dev_verification_token")
     assert raw_verify
     ve = requests.post(f"{API}/auth/verify-email", json={"token": raw_verify}, timeout=30)
     assert ve.status_code == 200
-    assert _poll_audit({"action": "auth.email.verified", "actor_email": email})
+    assert _capture({"action": "auth.email.verified", "actor_email": email})
 
 
 # --------------------------------------------------------------------------
 # Admin / destructive + permission.denied
 # --------------------------------------------------------------------------
 def test_seed_attempt_denied_is_audited():
-    # No creds -> seed is disabled/blocked; the attempt is still recorded.
     r = requests.post(f"{API}/seed", timeout=30)
     assert r.status_code in (403, 404)
-    row = _poll_audit({"action": "admin.seed.attempt", "resource_id": "seed", "outcome": "denied"})
+    row = _capture({"action": "admin.seed.attempt", "resource_id": "seed", "outcome": "denied"})
     assert row and row["status_code"] in (403, 404)
     assert "confirm_ok" in row["metadata"]  # flag present, no token/secret stored
 
 
 def test_permission_denied_on_tenant_reset_gate_is_audited():
-    # A groom (non-admin) hitting the destructive route is denied at the gate —
-    # the wipe never runs, the 403 message is unchanged, and a permission.denied
-    # row is written for the admin:access capability.
     groom = _login(GROOM["email"], GROOM["password"])
     r = requests.post(f"{API}/admin/tenant-reset",
                       json={"scope": "onboarding", "confirm": "RESET"},
                       headers=_headers(groom["token"]), timeout=30)
     assert r.status_code == 403 and r.json()["detail"] == "Admin only"
-    row = _poll_audit({"action": "permission.denied", "actor_email": GROOM["email"],
-                       "resource_id": "admin:access", "ts": {"$gte": STATE["start_ts"]}})
+    row = _capture({"action": "permission.denied", "actor_email": GROOM["email"],
+                    "resource_id": "admin:access"})
     assert row and row["outcome"] == "denied" and row["status_code"] == 403
     assert row["metadata"]["capability"] == "admin:access"
 
@@ -205,6 +233,6 @@ def test_barn_created_is_audited():
     assert r.status_code in (200, 201), r.text
     barn_id = r.json()["barn"]["id"]
     STATE["barn_ids"].add(barn_id)
-    row = _poll_audit({"action": "barn.created", "resource_id": barn_id})
+    row = _capture({"action": "barn.created", "resource_id": barn_id})
     assert row and row["resource_type"] == "barn"
     assert row["metadata"]["new_admin_user_id"] and "admin_password" not in str(row["metadata"]).lower()
