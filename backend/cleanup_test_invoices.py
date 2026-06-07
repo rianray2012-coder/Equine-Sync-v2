@@ -5,7 +5,8 @@ that older suites created without teardown (synthetic owner_ids like
 `TEST_owner_*`, `owner-test`, `ownerX`, `o`). It is conservative by design:
 
   * Only touches invoices in barn_id == "primary".
-  * Only matches known test owner_id / owner_name patterns.
+  * Only matches known test owner_id patterns (owner_name is NEVER used):
+    owner_id.startswith("TEST_") / "owner-test" / "ownerX", or owner_id == "o".
   * DOUBLE GUARD: never deletes an invoice whose owner_id maps to a real user id
     or a real roster-owner id (so legitimate seed invoices are always preserved).
   * Dry-run by DEFAULT — requires --apply to actually delete.
