@@ -20,9 +20,9 @@ import os
 import pymongo
 
 TARGET_BARN = "primary"
-# Exact synthetic owner_ids used by older billing/owner tests.
-_SYNTHETIC_EXACT = {"owner-test", "ownerX", "o"}
-# Prefixes that unambiguously denote test fixtures.
+# Exact synthetic owner_id used by older tests.
+_SYNTHETIC_EXACT = {"o"}
+# Prefixes that unambiguously denote test-fixture owner_ids.
 _SYNTHETIC_PREFIXES = ("TEST_", "owner-test", "ownerX")
 
 
@@ -31,10 +31,8 @@ def _db():
 
 
 def _looks_like_test(inv) -> bool:
+    # Candidate selection is based on owner_id ONLY (owner_name is ignored).
     oid = str(inv.get("owner_id") or "")
-    name = str(inv.get("owner_name") or "")
-    if name.startswith("TEST_"):
-        return True
     if oid in _SYNTHETIC_EXACT:
         return True
     return any(oid.startswith(p) for p in _SYNTHETIC_PREFIXES)
