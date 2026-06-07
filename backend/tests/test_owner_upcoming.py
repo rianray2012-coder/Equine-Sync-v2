@@ -15,7 +15,7 @@ from datetime import datetime, timezone, timedelta
 
 import requests
 
-from ._care_helpers import API, auth_headers, mongo_db
+from ._owner_helpers import API, auth_headers, mongo_db
 from ._test_creds import ADMIN, OWNER
 
 OWNER_H = auth_headers(OWNER)

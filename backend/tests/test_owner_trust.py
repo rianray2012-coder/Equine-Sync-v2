@@ -1,28 +1,21 @@
 """Phase-C: Owner Trust Loop tests."""
-import os
 import uuid
 import requests
 import pytest
 from datetime import datetime, timezone, timedelta
 
+from ._owner_helpers import API, auth_headers
 from ._test_creds import ADMIN, OWNER
-
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://barn-ops-preview.preview.emergentagent.com").rstrip("/")
-API = f"{BASE_URL}/api"
 
 
 @pytest.fixture(scope="module")
 def admin_h():
-    r = requests.post(f"{API}/auth/login", json=ADMIN, timeout=30)
-    assert r.status_code == 200
-    return {"Authorization": f"Bearer {r.json()['token']}"}
+    return auth_headers(ADMIN)
 
 
 @pytest.fixture(scope="module")
 def owner_h():
-    r = requests.post(f"{API}/auth/login", json=OWNER, timeout=30)
-    assert r.status_code == 200
-    return {"Authorization": f"Bearer {r.json()['token']}"}
+    return auth_headers(OWNER)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

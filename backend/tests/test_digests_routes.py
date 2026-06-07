@@ -4,28 +4,11 @@ Covers route registration, auth/role gates, and basic response shape for the
 6 owner digest/recap HTTP routes. Intentionally NOT a digest-content suite
 (content logic lives in owner_digest.py and is unchanged by 3E).
 """
-import os
-import pathlib
-
 import pytest
 import requests
 
+from ._owner_helpers import API, BASE, auth_headers as _h
 from ._test_creds import ADMIN, OWNER, GROOM
-
-
-def _base_url():
-    v = os.environ.get("REACT_APP_BACKEND_URL")
-    if v:
-        return v.rstrip("/")
-    env = pathlib.Path(__file__).resolve().parents[2] / "frontend" / ".env"
-    for line in env.read_text().splitlines():
-        if line.startswith("REACT_APP_BACKEND_URL="):
-            return line.split("=", 1)[1].strip().rstrip("/")
-    raise RuntimeError("REACT_APP_BACKEND_URL not configured")
-
-
-BASE = _base_url()
-API = f"{BASE}/api"
 
 DIGEST_PATHS = [
     "/api/notifications/digest/preview",
@@ -48,16 +31,6 @@ ADMIN_RUN_PATHS = [
     "/admin/digest/run-now",
     "/admin/weekly-recap/run-now",
 ]
-
-
-def _token(creds):
-    r = requests.post(f"{API}/auth/login", json=creds, timeout=30)
-    assert r.status_code == 200, r.text
-    return r.json()["token"]
-
-
-def _h(creds):
-    return {"Authorization": f"Bearer {_token(creds)}"}
 
 
 def test_digest_routes_registered():

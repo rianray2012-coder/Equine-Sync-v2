@@ -7,10 +7,34 @@ in routes/operations.py. No payment-processor behavior exists or is tested.
 import os
 import pathlib
 
+import pymongo
 import pytest
 import requests
 
 from ._test_creds import ADMIN
+
+_CREATED = []  # invoice ids created by this module — cleaned up in teardown
+
+
+def _mongo():
+    url = os.environ.get("MONGO_URL")
+    name = os.environ.get("DB_NAME")
+    if not url or not name:
+        env = pathlib.Path(__file__).resolve().parents[1] / ".env"
+        for line in env.read_text().splitlines():
+            if line.startswith("MONGO_URL=") and not url:
+                url = line.split("=", 1)[1].strip().strip('"').strip("'")
+            if line.startswith("DB_NAME=") and not name:
+                name = line.split("=", 1)[1].strip().strip('"').strip("'")
+    return pymongo.MongoClient(url)[name]
+
+
+def teardown_module(module):
+    db = _mongo()
+    if _CREATED:
+        db.invoices.delete_many({"id": {"$in": _CREATED}})
+    # safety sweep of this module's synthetic owner_id in case of interrupted runs
+    db.invoices.delete_many({"barn_id": "primary", "owner_id": "owner-test"})
 
 
 def _base_url():
@@ -72,6 +96,7 @@ def test_invoice_create_list_pay_roundtrip():
     assert r.status_code == 200, r.text
     created = r.json()
     iid = created["id"]
+    _CREATED.append(iid)
     assert created["status"] == "open"
     assert "created_at" in created
     assert created["total"] == 1200

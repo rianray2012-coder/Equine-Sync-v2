@@ -52,6 +52,12 @@ def _iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+def teardown_module(module):
+    # Per-test teardown already deletes created invoices; this is a safety sweep
+    # of this module's synthetic owner_id in case of an interrupted run.
+    _mongo().invoices.delete_many({"barn_id": "primary", "owner_id": "ownerX"})
+
+
 def _invoice_payload():
     return {
         "owner_id": "ownerX",

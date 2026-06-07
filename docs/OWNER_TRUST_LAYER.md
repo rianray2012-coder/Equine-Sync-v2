@@ -207,9 +207,44 @@ Frontend only — **no backend changes**. Reviewers clear `pending_review` updat
   second-reviewer (trainer) approve, request-changes modal (optional note), instant badge refresh,
   empty state, **logo non-regression**, zero app console errors. **Phase 7C is complete.**
 
+## Framework → Implementation → Tests map (Phase 7D-3)
+Authoritative cross-reference of `OWNER_TRUST_FRAMEWORK.md` layers → what shipped → endpoints → tests.
+
+| Framework area | Shipped feature | Endpoint(s) | Test file(s) |
+|---|---|---|---|
+| Layer 1 — Care Confidence | Curated owner timeline | `GET /horses/{id}/timeline?owner_view=true` | `test_owner_trust.py` |
+| Layer 1/2 — Care & Wellness | Daily digest | `GET /notifications/digest/preview` · `POST /notifications/digest/send-me` · `POST /admin/digest/run-now` | `test_owner_trust.py`, `test_owner_trust_edges.py`, `test_digests_routes.py` |
+| Layer 1–3 — Weekly Recap (signature) | Weekly recap compose/send | `GET /notifications/weekly-recap/preview` · `POST /notifications/weekly-recap/send-me` · `POST /admin/weekly-recap/run-now` | `test_weekly_recap.py`, `test_digests_routes.py` |
+| Layer 3 — Training Progress / Owner Updates | Owner Update lifecycle (7A) + sensitive review (7B) | `POST/GET/PATCH /owner-updates` · `/{id}/publish\|submit\|approve\|request-changes\|archive` | `test_owner_updates.py` |
+| Owner Update controls (frontend) | Owner feed (7C-1) · staff composer (7C-2) · review queue (7C-3) | (consumes the `/owner-updates` API) | iteration_24 / 25 / 26 (frontend) |
+| Layer 4 — Financial Trust | Owner billing visibility (7D-1) | `GET /invoices` (owner-scoped for horse_owner) | `test_owner_billing.py` |
+| Layer 1 — Looking ahead | Owner upcoming (7D-2) | `GET /owner/upcoming` | `test_owner_upcoming.py` |
+| Layer 5 — Relationship Trust | Service requests + decline reasons | `/service-requests/*` | `test_owner_trust.py`, `test_owner_trust_edges.py` |
+| Accountability (Phase 5) | Audit of publish/approve/archive | `core/audit.py` → `owner_update.*` | `test_owner_updates.py` |
+
+### Owner-feature → test-file coverage map
+| Area | Test file |
+|---|---|
+| Digest + curated timeline + service requests | `tests/test_owner_trust.py` |
+| Digest/recap role-gating edge cases | `tests/test_owner_trust_edges.py` |
+| Digest/recap route registration + auth | `tests/test_digests_routes.py` |
+| Weekly recap compose/idempotency | `tests/test_weekly_recap.py` |
+| Owner Update lifecycle + review (7A/7B) | `tests/test_owner_updates.py` |
+| Owner billing visibility (7D-1) | `tests/test_owner_billing.py` |
+| Owner upcoming visibility (7D-2) | `tests/test_owner_upcoming.py` |
+| Shared owner-test fixtures (7D-3) | `tests/_owner_helpers.py` |
+
+> **Test hygiene (7D-3):** all owner suites now share `tests/_owner_helpers.py`
+> (self-contained env/login/Mongo; `_care_helpers.py` untouched) — the stale
+> `barn-ops-preview.preview…` fallbacks were removed (tests fail clearly if the API
+> env is unset). Older billing suites (`test_billing_routes.py`, `test_billing_scoping.py`)
+> now teardown the synthetic invoices they create. `backend/cleanup_test_invoices.py`
+> (dry-run default, double-guarded) removes pre-existing `TEST_owner_*` leftovers — run
+> later with `python -m cleanup_test_invoices --apply`.
+
 ## Deferred / backlog (NOT in 7A)
-- **Frontend** — Phase 7C complete; 7D-1 + 7D-2 ✅ DONE. 7D-3 (docs/test consolidation) remains.
-- **Test-data hygiene** — older backend suites left ~195 `TEST_owner_*` invoices in the `primary` barn (incomplete teardown). Non-blocking; candidate for a cleanup script in 7D-3.
+- **Phase 7 (Owner Trust Layer) is COMPLETE** — 7A, 7B, 7C-1/2/3, 7D-1/2/3 all shipped.
+- Future: published-update → digest/email roll-in; owner self-pay; upcoming-task de-duplication/grouping; `owner_update:read` split for grooms/vets; `horses.owner_id`/`invoice.owner_id` seed-linkage reconciliation; analytics-isolation flake stability sweep.
 
 ## 7D-2 — Owner upcoming visibility ✅
 Owner-safe, **read-only** "Looking ahead" on the Owner Portal + a new owner-scoped read.

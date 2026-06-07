@@ -1,5 +1,4 @@
 """Phase-C+: Weekly recap tests — calm, lightweight, idempotent."""
-import os
 import requests
 import pytest
 from datetime import datetime, timezone
@@ -11,27 +10,18 @@ from owner_digest import (
     render_weekly_recap_text,
 )
 
+from ._owner_helpers import API, auth_headers
 from ._test_creds import ADMIN, OWNER, GROOM
-
-
-BASE_URL = os.environ.get(
-    "REACT_APP_BACKEND_URL", "https://barn-ops-preview.preview.emergentagent.com"
-).rstrip("/")
-API = f"{BASE_URL}/api"
 
 
 @pytest.fixture(scope="module")
 def owner_h():
-    r = requests.post(f"{API}/auth/login", json=OWNER, timeout=30)
-    assert r.status_code == 200
-    return {"Authorization": f"Bearer {r.json()['token']}"}
+    return auth_headers(OWNER)
 
 
 @pytest.fixture(scope="module")
 def admin_h():
-    r = requests.post(f"{API}/auth/login", json=ADMIN, timeout=30)
-    assert r.status_code == 200
-    return {"Authorization": f"Bearer {r.json()['token']}"}
+    return auth_headers(ADMIN)
 
 
 # -------- Pure composition (no DB) --------
@@ -156,9 +146,7 @@ def test_weekly_send_me_owner_ok(owner_h):
 
 
 def test_weekly_send_me_non_owner_forbidden():
-    r = requests.post(f"{API}/auth/login", json=GROOM, timeout=30)
-    assert r.status_code == 200
-    h = {"Authorization": f"Bearer {r.json()['token']}"}
+    h = auth_headers(GROOM)
     r2 = requests.post(f"{API}/notifications/weekly-recap/send-me", headers=h, timeout=30)
     assert r2.status_code == 403
 

@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 import requests
 
-from ._care_helpers import API, auth_headers, mongo_db
+from ._owner_helpers import API, auth_headers, mongo_db
 from ._test_creds import ADMIN, GROOM, OWNER
 
 TRAINER = {"email": "trainer@equinesync.com", "password": "demo1234"}
@@ -167,10 +167,13 @@ def test_owner_sees_only_published_owner_facing_for_own_horses():
     ids = [u["id"] for u in lst.json()]
     assert v["id"] in ids
     assert d["id"] not in ids and i["id"] not in ids and n["id"] not in ids
-    # every visible row is published + owner_facing + an owned horse
+    # every visible row is published + owner_facing (the owner may also own other
+    # horses — e.g. a demo-linked horse — whose published updates appear too)
     for u in lst.json():
         assert u["status"] == "published" and u["visibility"] == "owner_facing"
-        assert u["horse_id"] == STATE["horse_owned"]
+    # the specific update we published is attributed to our owned test horse
+    v_row = next(u for u in lst.json() if u["id"] == v["id"])
+    assert v_row["horse_id"] == STATE["horse_owned"]
 
     # GET-one: owner can fetch the visible one, but not a draft/internal/foreign (404)
     assert requests.get(f"{API}/owner-updates/{v['id']}", headers=OWNER_H, timeout=30).status_code == 200
