@@ -1,113 +1,138 @@
 {
-  "project_name": "EquineSync",
-  "theme": "dark",
-  "archetype": "Archetype 5: Jewel & Luxury",
-  "brand_personality": "Sophisticated, quiet luxury, trustworthy, professional, modern, organized, high-end equestrian, operationally intelligent",
-  "typography": {
-    "heading_font": "Cormorant Garamond",
-    "body_font": "Inter",
-    "rules": {
-      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight leading-none text-[#F5F2EC] font-light",
-      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight leading-tight text-[#F5F2EC] font-light",
-      "h3": "text-xl sm:text-2xl tracking-normal text-[#C0C0C0] font-medium",
-      "body": "text-base leading-relaxed text-[#D9D9D9] font-normal",
-      "labels": "text-xs tracking-[0.2em] uppercase text-[#4D4D4D] font-semibold",
-      "notes": "E1 ANTI-DEFAULT RULE: Headings must use Cormorant Garamond to establish equestrian heritage. Body uses Inter for modern software clarity."
+  "project": "Equine-Sync",
+  "phase": "8A",
+  "document_purpose": "BRAND PRESENCE / LOGO INTEGRATION BLUEPRINT",
+  "instructions_to_main_agent": "Implement the logo integration incrementally based on this blueprint. STRICTLY adhere to the additive brand presence rule (no layout/IA restructuring) and color preservation rule (do not rewrite existing Tailwind palettes; apply logo styling on top). Use the specified assets exactly as described.",
+  "component_path": "components/Logo.jsx",
+  "hard_constraints": [
+    "ADDITIVE BRAND PRESENCE ONLY: No full redesign, no navigation/IA changes, preserve all existing functionality and backend tests.",
+    "PALETTE RECONCILIATION OUT OF SCOPE: Keep current app colors stable (icy-blue/lavender). Guide 22 palette is for LOGO COLOR CORRECTNESS only on top of existing surfaces.",
+    "RESPECT GUIDE 22: Do not stretch, distort, skew, rotate. No shadows, glows, gradients, or effects on the mark. No recolor outside palette. Detailed icon MUST be >=48px. Clear space = height of capital 'E'."
+  ],
+  "brand_guide": {
+    "product_name": "Equine-Sync",
+    "tagline": "Every Horse. Every Task. In Sync.",
+    "typography": {
+      "display": "Cormorant Garamond",
+      "ui": "Inter"
+    },
+    "color_application": {
+      "light_surface": {
+        "horse": "Midnight/Slate",
+        "tech_lines": "Smoky Lilac (#B8AECF)",
+        "wordmark_equine": "Rich Charcoal/Midnight",
+        "wordmark_sync": "Smoky Lilac (#B8AECF)",
+        "tagline": "Muted Slate"
+      },
+      "dark_surface": {
+        "horse": "Frost White",
+        "tech_lines": "Smoky Lilac (#B8AECF)",
+        "wordmark_equine": "Frost White",
+        "wordmark_sync": "Smoky Lilac (#B8AECF)",
+        "tagline": "Frost White/Glacier Silver Blue"
+      }
     }
   },
-  "colors": {
-    "background": {
-      "primary": "#111111", 
-      "secondary": "#1E1E1E",
-      "tertiary": "#2A2A2A"
-    },
-    "text": {
-      "primary": "#F5F2EC",
-      "secondary": "#D9D9D9",
-      "muted": "#C0C0C0"
-    },
-    "border": {
-      "default": "#4D4D4D",
-      "subtle": "#2A2A2A"
-    },
-    "accent": {
-      "primary": "#BFC5CC",
-      "secondary": "#52667A",
-      "hover": "#D9D9D9"
-    },
-    "status": {
-      "success": "#6E8B74",
-      "warning": "#C6924B",
-      "critical": "#A85C4B",
-      "info": "#708090"
-    },
-    "rules": "Avoid neon or bright saturations. All colors must remain matte and restrained. Backgrounds should feel deep and architectural."
-  },
-  "layout_and_spacing": {
-    "grid_system": "The Control Room Grid",
-    "dashboard_rules": {
-      "desktop": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
-      "tablet": "grid-cols-1 md:grid-cols-2 gap-4 (For 'Today's Barn Board')",
-      "mobile": "grid-cols-1 gap-4"
-    },
-    "spacing_scale": "Use generous internal padding. Cards must use p-6 or p-8 to allow data to breathe.",
-    "alignment": "Strict left-alignment for data and lists. Optical alignment for icons inside buttons."
-  },
-  "components": {
-    "cards": {
-      "style": "Rounded modern cards (rounded-2xl). Background bg-[#1E1E1E]. Border 1px solid border-[#4D4D4D]. Soft ambient shadow.",
-      "glassmorphism": "Used only for sticky headers and modals: backdrop-blur-xl bg-[#111111]/70 border-b border-[#4D4D4D]/50."
-    },
-    "buttons": {
-      "primary": "bg-[#BFC5CC] text-[#111111] font-medium rounded-full px-6 py-2.5 hover:bg-[#F5F2EC] transition-colors",
-      "secondary": "bg-transparent border border-[#4D4D4D] text-[#F5F2EC] rounded-full px-6 py-2.5 hover:bg-[#1E1E1E] transition-colors",
-      "quick_action": "Large touch targets (min 44px height) for tablet usability in the barn."
-    },
-    "navigation": {
-      "sidebar": "Dark matte sidebar (bg-[#111111]) with thin right border. Icons should be highly legible line-art. Selected state uses steel-blue (#52667A) subtle background with soft-ivory (#F5F2EC) text."
-    },
-    "dividers": "Hairline dividers (1px bg-[#2A2A2A]) used to segment lists without visual clutter."
-  },
-  "motion_and_interactions": {
-    "hover_states": "Subtle brightness increase on cards (hover:bg-[#2A2A2A]).",
-    "transitions": "Smooth and deliberate. transition-all duration-300 ease-in-out.",
-    "microinteractions": "Buttons scale down slightly on active (active:scale-95). Tabs slide indicator."
-  },
-  "media": {
-    "image_urls": {
-      "logo": {
-        "url": "https://static.prod-images.emergentagent.com/jobs/137f7c6b-a2e1-41c0-9c38-96d2409d644a/images/29b907cf4a080e1f325ad7b224ad58ab70ac92998a6b2464c96036a0fea55d7e.png",
-        "description": "EquineSync minimal luxury logo - ES monogram with horse head outline on black"
+  "deliverables": {
+    "A_Logo_Brand_Component": {
+      "file": "components/Logo.jsx",
+      "props_api": {
+        "size": "Number or string (e.g., standard sizing, mapped to height). Detailed icon MUST be >= 48px.",
+        "withText": "Boolean. If true, renders the wordmark alongside the icon.",
+        "onNavy": "Boolean. Maintains backwards compatibility. Determines if the surface is dark.",
+        "variant": "String ('horizontal', 'stacked', 'icon-only', 'wordmark-only')",
+        "tone": "String ('light', 'dark'). Optional explicitly passed tone to override onNavy if necessary."
       },
-      "login_background": {
-        "url": "https://static.prod-images.emergentagent.com/jobs/137f7c6b-a2e1-41c0-9c38-96d2409d644a/images/3ca3908290d52bc07be0b5f45e2f358fac3cee0e8034aa339d3b62ddac3b3403.png",
-        "description": "Cinematic wide background of an immaculate luxury equestrian indoor riding arena at dawn"
-      },
-      "dashboard_hero": {
-        "url": "https://images.unsplash.com/photo-1639570830431-6c2d0100d37b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODB8MHwxfHNlYXJjaHwzfHxibGFjayUyMGhvcnNlJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc4OTk1NzgwfDA&ixlib=rb-4.1.0&q=85",
-        "description": "Elegant black horse portrait for empty states or dashboard welcome headers"
-      },
-      "barn_profile": {
-        "url": "https://images.unsplash.com/photo-1694885143306-3dfea504b032?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHw0fHxsdXh1cnklMjBob3JzZSUyMHN0YWJsZXxlbnwwfHx8fDE3Nzg5OTU3ODB8MA&ixlib=rb-4.1.0&q=85",
-        "description": "Luxury horse barn interior for stable settings and facility overviews"
+      "wordmark_composition": "CSS composition replacing the placeholder. Example: <span className=\"font-display text-[#1E2128] dark:text-[#F7F8FA]\">Equine-</span><span className=\"font-display text-[#B8AECF]\">Sync</span>",
+      "asset_mapping": {
+        "on_light": "04 Graphite body + lilac circuitry OR 05 Slate-navy body + lilac circuitry (Transparent).",
+        "on_dark": "06 Frost-white horse on Midnight block (Framed) OR future exported frost-on-transparent icon."
       }
     },
-    "rules": "All images must be darkened or overlaid with black/50 when text is placed on top to maintain contrast and the moody luxury aesthetic."
-  },
-  "iconography": {
-    "library": "lucide-react",
-    "style": "Use thin stroke widths (strokeWidth={1.5}) to match the luxury minimalist aesthetic. Icons should feel like precision instruments."
-  },
-  "testing": {
-    "rules": "All interactive and key informational elements MUST include a data-testid attribute in kebab-case."
-  },
-  "instructions_to_main_agent": [
-    "Install lucide-react and configure Tailwind with the custom color palette provided.",
-    "Implement the 'Control Room Grid' for the dashboard with responsive adjustments for tablets.",
-    "Use 'Today's Barn Board' as the primary operational view with large touch-friendly cards.",
-    "Do NOT use pure white. Use the Soft Ivory and Light Silver for text.",
-    "Ensure all cards have a 1px #4D4D4D border and #1E1E1E background.",
-    "Override generic font families in Tailwind config: display uses Cormorant Garamond, sans uses Inter.",
-    "Never use placeholder image URLs. Rely entirely on the provided media URLs."
-  ]
+    "B_Sidebar_First_Spec": {
+      "surface_type": "Dark",
+      "asset_gap_resolution": {
+        "immediate_shippable": "Use '06 Frost-white horse on Midnight #232734 block'. Frame this baked block as a contained rounded tile (e.g., rounded-xl overflow-hidden) so the block edges look like an intentional premium tile against the existing dark sidebar.",
+        "long_term": "Export a true frost-on-transparent icon to allow seamless, borderless integration."
+      },
+      "expanded_lockup": "Horizontal. Framed icon block on left + composed 'Equine-Sync' wordmark on right.",
+      "collapsed_lockup": "Icon-only. Framed '06' icon block >= 48px.",
+      "clear_space": "Padding equal to the height of the capital 'E' in the 'Equine' wordmark.",
+      "accessibility": "alt='Equine-Sync Logo', Focus state must be visible (e.g., focus-visible:ring-2 focus-visible:ring-[#B8AECF] rounded-md).",
+      "testing": "All interactive instances MUST use data-testid='sidebar-logo'"
+    },
+    "C_Surface_Placement_Spec": {
+      "login": {
+        "asset_variant": "04 or 05 Transparent. Horizontal or Stacked.",
+        "surface_tone": "Light",
+        "size": "Primary Horizontal >= 160px",
+        "tagline": "Included below wordmark ('Every Horse. Every Task. In Sync.').",
+        "testing": "data-testid='login-logo'"
+      },
+      "onboarding_setup": {
+        "asset_variant": "04 or 05 Transparent. Horizontal lockup.",
+        "surface_tone": "Light",
+        "size": "Primary Horizontal >= 160px",
+        "tagline": "Included.",
+        "testing": "data-testid='onboarding-logo'"
+      },
+      "dashboard_home": {
+        "asset_variant": "04 or 05 Transparent. Horizontal lockup.",
+        "surface_tone": "Light",
+        "size": "Standard UI scale (icon >= 48px)",
+        "tagline": "Omitted to save vertical space.",
+        "testing": "data-testid='dashboard-logo'"
+      },
+      "reports_insights": {
+        "asset_variant": "04 or 05 Transparent. Horizontal lockup.",
+        "surface_tone": "Light",
+        "size": "Standard UI scale (icon >= 48px)",
+        "tagline": "Omitted."
+      },
+      "billing_invoices": {
+        "asset_variant": "04 or 05 Transparent. Horizontal lockup.",
+        "surface_tone": "Light",
+        "size": "Standard UI scale (icon >= 48px)",
+        "tagline": "Omitted."
+      },
+      "owner_summaries_recaps": {
+        "asset_variant": "04 or 05 Transparent. Horizontal lockup.",
+        "surface_tone": "Light",
+        "size": "Standard UI scale (icon >= 48px)",
+        "tagline": "Omitted."
+      },
+      "empty_loading_states": {
+        "asset_variant": "04 or 05 Transparent. Icon-only.",
+        "surface_tone": "Light",
+        "size": "Icon >= 48px",
+        "tagline": "Included sparingly as accompanying text if needed."
+      }
+    },
+    "D_Favicon_App_Icon": {
+      "recommendation": "The detailed icon cannot be used below 48px. Export Guide 22 section 9D 'E-S' monogram OR 9B Horse Head as a simplified SVG/PNG for tiny formats.",
+      "export_sizes": "16x16, 32x32, 48x48 (Favicon), 180x180 (Apple Touch), 512x512 (Android)."
+    },
+    "E_Asset_Prep_Checklist": {
+      "shippable_now": [
+        "Light surfaces (Login, Onboarding, Dashboard) using transparent 04/05 assets.",
+        "Sidebar surface using the framed/rounded '06' baked block asset.",
+        "Composed wordmark using CSS styling (Cormorant Garamond font)."
+      ],
+      "blocked_needs_export": [
+        "Frost-on-transparent icon (needed for seamless dark surface usage).",
+        "Simplified SVG Favicon/App Icon (needed for <48px marks).",
+        "Square-cropped raster PNGs (current bounds are 798x568, requiring CSS object-fit/cropping for center alignment)."
+      ]
+    },
+    "F_Incremental_Sequence": {
+      "phase_8B": "Foundation & Logo Component Updates + Sidebar First Rollout (Shippable increment using the framed '06' block).",
+      "phase_8C": "Surface Rollout (Login, Onboarding, Dashboard, Reports, Billing on light surfaces using '04' or '05').",
+      "phase_8D": "Emails & External touchpoints (Wait for optimized/square-cropped asset exports if necessary)."
+    },
+    "G_Micro_Interactions": {
+      "guidance": "Interactions must feel calm, premium, and subtle.",
+      "hover_state": "Subtle opacity transition only ('transition-opacity duration-300 hover:opacity-80'). DO NOT use scaling, bouncing, or drop-shadow changes.",
+      "loading_state": "Smooth, slow opacity pulse ('animate-pulse' adjusted to a slower custom duration like 2s or 3s) on the icon-only variant."
+    }
+  }
 }
