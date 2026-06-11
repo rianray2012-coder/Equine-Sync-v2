@@ -113,6 +113,33 @@ def test_bad_horse_ref_404():
     _create(_payload(horse_id="nope-not-a-horse"), expect=404)
 
 
+def test_horse_of_different_owner_rejected():
+    # A same-barn horse owned by a DIFFERENT owner must be rejected, and no
+    # recurring charge may be created as a side effect.
+    other = DB.horses.find_one(
+        {"barn_id": "primary", "owner_id": {"$nin": [OWNER_ID, None]}}, {"_id": 0, "id": 1}
+    )
+    if not other:
+        import pytest
+        pytest.skip("no second-owner horse in seed data")
+    before = DB.recurring_charges.count_documents({})
+    _create(_payload(owner_id=OWNER_ID, horse_id=other["id"]), expect=404)
+    assert DB.recurring_charges.count_documents({}) == before  # nothing created
+
+
+def test_create_audit_includes_cadence_and_amount():
+    body = _create(_payload(
+        items=[{"description": "Board", "amount": 1000}], discount=100, tax_rate=10,
+    ))
+    entry = DB.audit_log.find_one(
+        {"action": "recurring_charge.created", "resource_id": body["id"]}
+    )
+    assert entry is not None, "audit entry missing"
+    md = entry.get("metadata") or {}
+    assert md.get("cadence") == "monthly"
+    assert md.get("amount") == 990.0  # (1000-100) + (900*10%) = 990
+
+
 # ---------------------------------------------------------------- template/cadence validation
 
 def test_bad_cadence_422():

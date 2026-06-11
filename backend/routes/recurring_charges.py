@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from core.tenancy import barn_filter, stamp_barn
 from core.permissions import require
 from core import audit
-from routes.billing import LineItem, _normalize_line  # reuse 9A line-item shape + validation
+from routes.billing import LineItem, _normalize_line, _money  # reuse 9A line-item shape + math
 
 
 def _now_utc() -> datetime:
@@ -89,6 +89,15 @@ def _validate_items(items):
     return [_normalize_line(li) for li in items]
 
 
+def _template_total(items, discount, tax_rate):
+    """Charge total after discount/tax using the same normalized 9A item math.
+    Non-sensitive scalar — safe for audit metadata. (9B-2 will reuse this.)"""
+    subtotal = _money(sum(float(li["amount"]) for li in items))
+    disc = _money(min(float(discount or 0), subtotal))
+    tax_amt = _money((subtotal - disc) * float(tax_rate or 0) / 100.0)
+    return _money(subtotal - disc + tax_amt)
+
+
 def build_router(*, db, get_current_user, clean, new_id) -> APIRouter:
     router = APIRouter(tags=["billing"])
 
@@ -99,7 +108,11 @@ def build_router(*, db, get_current_user, clean, new_id) -> APIRouter:
         if not owner:
             raise HTTPException(404, "Owner not found in this barn")
         if horse_id:
-            horse = await db.horses.find_one(barn_filter(user, {"id": horse_id}), {"_id": 0, "id": 1})
+            # Bind the horse to the selected owner — a same-barn horse owned by a
+            # different owner must be rejected (generic 404, no existence leak).
+            horse = await db.horses.find_one(
+                barn_filter(user, {"id": horse_id, "owner_id": owner_id}), {"_id": 0, "id": 1}
+            )
             if not horse:
                 raise HTTPException(404, "Horse not found in this barn")
 
@@ -135,7 +148,7 @@ def build_router(*, db, get_current_user, clean, new_id) -> APIRouter:
         await audit.record(
             action="recurring_charge.created", user=user, request=request,
             resource_type="recurring_charge", resource_id=doc["id"],
-            metadata={"cadence": doc["cadence"]},
+            metadata={"cadence": doc["cadence"], "amount": _template_total(items, body.discount, body.tax_rate)},
         )
         return clean(doc)
 
