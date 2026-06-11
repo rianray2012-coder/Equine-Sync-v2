@@ -54,8 +54,10 @@ HORSE_ID = _horse["id"] if _horse else None
 
 def teardown_module(module):
     if _CREATED:
+        DB.invoices.delete_many({"recurring_charge_id": {"$in": _CREATED}})
         DB.recurring_charges.delete_many({"id": {"$in": _CREATED}})
     DB.recurring_charges.delete_many({"id": _FOREIGN_ID})
+    DB.invoices.delete_many({"recurring_charge_id": _FOREIGN_ID})
 
 
 def _payload(**over):
@@ -236,3 +238,134 @@ def test_barn_isolation_hides_foreign_barn_doc():
     assert _FOREIGN_ID not in {x["id"] for x in listed}
     got = requests.get(f"{API}/recurring-charges/{_FOREIGN_ID}", headers=H, timeout=30)
     assert got.status_code == 404
+
+
+# ---------------------------------------------------------------- 9B-2: date validation
+
+def test_create_rejects_end_before_start():
+    _create(_payload(start_date="2026-07-01", end_date="2026-06-01"), expect=422)
+
+
+def test_create_rejects_non_iso_start_date():
+    _create(_payload(start_date="07/01/2026"), expect=422)
+
+
+def test_update_rejects_end_before_start():
+    rc = _create(_payload(start_date="2026-07-01", end_date=None))
+    r = requests.patch(
+        f"{API}/recurring-charges/{rc['id']}", headers=H,
+        json={"end_date": "2026-06-01"}, timeout=30,
+    )
+    assert r.status_code == 422, r.text
+
+
+# ---------------------------------------------------------------- 9B-2: materializer
+
+def _run(period=None, expect=200):
+    body = {} if period is None else {"period": period}
+    r = requests.post(f"{API}/admin/recurring-charges/run", headers=H, json=body, timeout=60)
+    assert r.status_code == expect, r.text
+    return r.json() if expect == 200 else r
+
+
+def test_materialize_generates_invoice_with_9a_totals():
+    rc = _create(_payload(
+        start_date="2026-05-01", day_of_month=1, due_days=14, tax_rate=10,
+        items=[{"description": "Board", "quantity": 1, "unit_amount": 1200}],
+    ))
+    res = _run(period="2026-08")
+    assert res["period"] == "2026-08"
+    assert res["generated_count"] >= 1
+    inv = DB.invoices.find_one(
+        {"recurring_charge_id": rc["id"], "period_key": "2026-08"}, {"_id": 0}
+    )
+    assert inv is not None
+    assert inv["source"] == "recurring"
+    assert inv["subtotal"] == 1200.0
+    assert inv["tax_amount"] == 120.0
+    assert inv["total"] == 1320.0
+    assert inv["status"] == "open"
+    assert inv["due_date"] == "2026-08-15"  # day_of_month 1 + 14 due_days
+    # last_run_period stamped on the charge
+    fresh = requests.get(f"{API}/recurring-charges/{rc['id']}", headers=H, timeout=30).json()
+    assert fresh["last_run_period"] == "2026-08"
+
+
+def test_materialize_is_idempotent_no_duplicate():
+    rc = _create(_payload(start_date="2026-05-01", description="Idempotent board"))
+    first = _run(period="2026-09")
+    assert first["generated_count"] >= 1
+    count_after_first = DB.invoices.count_documents(
+        {"recurring_charge_id": rc["id"], "period_key": "2026-09"}
+    )
+    assert count_after_first == 1
+    second = _run(period="2026-09")
+    # the just-created charge must now be counted as skipped, never re-generated
+    count_after_second = DB.invoices.count_documents(
+        {"recurring_charge_id": rc["id"], "period_key": "2026-09"}
+    )
+    assert count_after_second == 1
+    assert second["skipped_count"] >= 1
+
+
+def test_materialize_skips_inactive_charge():
+    rc = _create(_payload(start_date="2026-05-01", description="Inactive board"))
+    requests.post(f"{API}/recurring-charges/{rc['id']}/deactivate", headers=H, json={}, timeout=30)
+    _run(period="2026-10")
+    inv = DB.invoices.find_one({"recurring_charge_id": rc["id"], "period_key": "2026-10"})
+    assert inv is None  # inactive => skipped, no invoice generated
+
+
+def test_materialize_skips_not_yet_started_and_ended():
+    not_started = _create(_payload(start_date="2027-01-01", description="Future board"))
+    ended = _create(_payload(start_date="2025-01-01", end_date="2025-12-31", description="Ended board"))
+    _run(period="2026-11")
+    assert DB.invoices.find_one({"recurring_charge_id": not_started["id"], "period_key": "2026-11"}) is None
+    assert DB.invoices.find_one({"recurring_charge_id": ended["id"], "period_key": "2026-11"}) is None
+
+
+def test_materialize_within_end_window_generates():
+    rc = _create(_payload(start_date="2026-01-01", end_date="2026-12-31", description="Windowed board"))
+    _run(period="2026-12")
+    assert DB.invoices.find_one({"recurring_charge_id": rc["id"], "period_key": "2026-12"}) is not None
+
+
+def test_materialize_bad_period_422():
+    _run(period="2026-13", expect=422)
+    _run(period="not-a-period", expect=422)
+
+
+def test_materialize_non_manager_403():
+    r = requests.post(f"{API}/admin/recurring-charges/run", headers=H_OWNER, json={}, timeout=30)
+    assert r.status_code == 403
+
+
+def test_materialize_audit_event_recorded():
+    rc = _create(_payload(start_date="2026-05-01", description="Audit board"))
+    _run(period="2027-03")
+    entry = DB.audit_log.find_one(
+        {"action": "recurring_charges.materialized", "metadata.month": "2027-03"},
+        sort=[("ts", -1)],
+    )
+    assert entry is not None
+    md = entry.get("metadata") or {}
+    assert "generated_count" in md and "skipped_count" in md
+    assert md["month"] == "2027-03"
+
+
+def test_materialize_does_not_touch_foreign_barn_charge():
+    # A recurring charge in another barn must never produce an invoice via the
+    # primary-barn admin's run.
+    foreign_id = "rc-foreign-9b2-run"
+    DB.recurring_charges.insert_one({
+        "id": foreign_id, "barn_id": "some-other-barn", "owner_id": "x",
+        "description": "foreign", "items": [{"description": "x", "amount": 1}],
+        "cadence": "monthly", "active": True, "start_date": "2026-01-01",
+        "day_of_month": 1, "due_days": 14, "created_at": "2026-01-01T00:00:00+00:00",
+    })
+    try:
+        _run(period="2026-06")
+        assert DB.invoices.find_one({"recurring_charge_id": foreign_id}) is None
+    finally:
+        DB.recurring_charges.delete_one({"id": foreign_id})
+        DB.invoices.delete_many({"recurring_charge_id": foreign_id})

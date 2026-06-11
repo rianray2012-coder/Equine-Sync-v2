@@ -86,21 +86,49 @@ def _normalize_line(li: LineItem) -> dict:
     return d
 
 
+def compute_money(items, discount, tax_rate):
+    """Pure, server-authoritative money math over already-normalized line items.
+
+    Shared by the invoice create path (9A) and the recurring-charge materializer
+    (9B-2) so both compute identical numbers. ``items`` is a list of dicts each
+    carrying a numeric ``amount``. Returns
+    ``(subtotal, discount, tax_rate, tax_amount, total)``.
+    """
+    if discount is not None and float(discount) < 0:
+        raise HTTPException(422, "Discount cannot be negative")
+    if tax_rate is not None and float(tax_rate) < 0:
+        raise HTTPException(422, "Tax rate cannot be negative")
+    subtotal = _money(sum(float(li["amount"]) for li in items))
+    disc = _money(min(float(discount or 0), subtotal))  # clamp 0..subtotal
+    rate = float(tax_rate or 0)
+    tax_amount = _money((subtotal - disc) * rate / 100.0)
+    total = _money(subtotal - disc + tax_amount)
+    return subtotal, disc, rate, tax_amount, total
+
+
 def _compute_invoice(body: InvoiceIn):
     """Server-authoritative totals. Returns (items, subtotal, discount, tax_rate, tax_amount, total)."""
     items = [_normalize_line(li) for li in body.items]
     if not items:
         raise HTTPException(422, "An invoice needs at least one line item")
-    if body.discount < 0:
-        raise HTTPException(422, "Discount cannot be negative")
-    if body.tax_rate < 0:
-        raise HTTPException(422, "Tax rate cannot be negative")
-    subtotal = _money(sum(li["amount"] for li in items))
-    discount = _money(min(float(body.discount), subtotal))  # clamp 0..subtotal
-    tax_rate = float(body.tax_rate)
-    tax_amount = _money((subtotal - discount) * tax_rate / 100.0)
-    total = _money(subtotal - discount + tax_amount)
+    subtotal, discount, tax_rate, tax_amount, total = compute_money(items, body.discount, body.tax_rate)
     return items, subtotal, discount, tax_rate, tax_amount, total
+
+
+async def ensure_billing_indexes(db) -> None:
+    """Phase 9B-2: partial unique index preventing duplicate recurring invoices.
+
+    Enforces one invoice per ``(barn_id, recurring_charge_id, period_key)`` for
+    materializer-generated invoices only (``source="recurring"``). Additive and
+    idempotent — legacy/manual invoices have no ``source`` field and are excluded
+    by the partial filter, so they never conflict.
+    """
+    await db.invoices.create_index(
+        [("barn_id", 1), ("recurring_charge_id", 1), ("period_key", 1)],
+        name="uniq_recurring_invoice_period",
+        unique=True,
+        partialFilterExpression={"source": "recurring"},
+    )
 
 
 def build_router(*, db, get_current_user, list_collection, clean, new_id) -> APIRouter:

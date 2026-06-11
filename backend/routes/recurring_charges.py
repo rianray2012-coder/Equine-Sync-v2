@@ -12,16 +12,18 @@ caller's barn. Emits light, non-sensitive Phase 5 audit events (fail-open).
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import re
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from pymongo.errors import DuplicateKeyError
 
 from core.tenancy import barn_filter, stamp_barn
 from core.permissions import require
 from core import audit
-from routes.billing import LineItem, _normalize_line, _money  # reuse 9A line-item shape + math
+from routes.billing import LineItem, _normalize_line, compute_money  # reuse 9A line-item shape + math
 
 
 def _now_utc() -> datetime:
@@ -66,6 +68,68 @@ class DeactivateIn(BaseModel):
     reason: Optional[str] = None
 
 
+class MaterializeIn(BaseModel):
+    # Optional explicit billing period; defaults to the current UTC month.
+    period: Optional[str] = None  # YYYY-MM
+
+
+def _parse_iso_date(value, field):
+    try:
+        return date.fromisoformat(value)
+    except (ValueError, TypeError):
+        raise HTTPException(422, f"{field} must be an ISO date (YYYY-MM-DD)")
+
+
+def _validate_date_window(start_date, end_date):
+    """Tighten 9B-1 dates: ISO `YYYY-MM-DD`, and `end_date >= start_date`."""
+    sd = _parse_iso_date(start_date, "start_date")
+    if end_date is not None:
+        ed = _parse_iso_date(end_date, "end_date")
+        if ed < sd:
+            raise HTTPException(422, "end_date must be on or after start_date")
+
+
+def _current_period() -> str:
+    now = _now_utc()
+    return f"{now.year:04d}-{now.month:02d}"
+
+
+def _parse_period(period_key):
+    m = re.fullmatch(r"(\d{4})-(\d{2})", period_key or "")
+    if not m:
+        raise HTTPException(422, "period must be in YYYY-MM format")
+    year, month = int(m.group(1)), int(m.group(2))
+    if not (1 <= month <= 12):
+        raise HTTPException(422, "period month must be 01-12")
+    return year, month
+
+
+def _eligible_for_period(rc, year, month) -> bool:
+    """A recurring charge is eligible for `year-month` iff it is active, monthly,
+    has valid ISO dates, has started on/before the period, and has not ended
+    before it. Anything else is skipped *defensively* (never fails the run)."""
+    if not rc.get("active"):
+        return False
+    if rc.get("cadence") != "monthly":
+        return False
+    try:
+        sd = date.fromisoformat(rc.get("start_date"))
+    except (ValueError, TypeError):
+        return False  # invalid/legacy start_date — skip defensively
+    period_first = date(year, month, 1)
+    if date(sd.year, sd.month, 1) > period_first:
+        return False  # not yet started
+    end_raw = rc.get("end_date")
+    if end_raw is not None:
+        try:
+            ed = date.fromisoformat(end_raw)
+        except (ValueError, TypeError):
+            return False  # invalid/legacy end_date — skip defensively
+        if date(ed.year, ed.month, 1) < period_first:
+            return False  # already ended
+    return True
+
+
 def _validate_cadence(cadence):
     if cadence is not None and cadence not in _VALID_CADENCE:
         raise HTTPException(422, f"Unsupported cadence; only {sorted(_VALID_CADENCE)} supported")
@@ -90,12 +154,10 @@ def _validate_items(items):
 
 
 def _template_total(items, discount, tax_rate):
-    """Charge total after discount/tax using the same normalized 9A item math.
-    Non-sensitive scalar — safe for audit metadata. (9B-2 will reuse this.)"""
-    subtotal = _money(sum(float(li["amount"]) for li in items))
-    disc = _money(min(float(discount or 0), subtotal))
-    tax_amt = _money((subtotal - disc) * float(tax_rate or 0) / 100.0)
-    return _money(subtotal - disc + tax_amt)
+    """Charge total after discount/tax using the same shared 9A money math.
+    Non-sensitive scalar — safe for audit metadata."""
+    _, _, _, _, total = compute_money(items, discount, tax_rate)
+    return total
 
 
 def build_router(*, db, get_current_user, clean, new_id) -> APIRouter:
@@ -121,6 +183,7 @@ def build_router(*, db, get_current_user, clean, new_id) -> APIRouter:
         require(user, "recurring_charge:manage")
         _validate_cadence(body.cadence)
         _validate_scalars(body.discount, body.tax_rate, body.day_of_month, body.due_days)
+        _validate_date_window(body.start_date, body.end_date)
         items = _validate_items(body.items)
         await _validate_refs(user, body.owner_id, body.horse_id)
         now = _iso(_now_utc())
@@ -179,7 +242,7 @@ def build_router(*, db, get_current_user, clean, new_id) -> APIRouter:
     ):
         require(user, "recurring_charge:manage")
         scope = barn_filter(user, {"id": rc_id})
-        existing = await db.recurring_charges.find_one(scope, {"_id": 0, "id": 1})
+        existing = await db.recurring_charges.find_one(scope, {"_id": 0, "id": 1, "start_date": 1, "end_date": 1})
         if not existing:
             raise HTTPException(404, "Recurring charge not found")
 
@@ -191,6 +254,10 @@ def build_router(*, db, get_current_user, clean, new_id) -> APIRouter:
             fields.get("discount"), fields.get("tax_rate"),
             fields.get("day_of_month"), fields.get("due_days"),
         )
+        if "start_date" in fields or "end_date" in fields:
+            eff_start = fields.get("start_date", existing.get("start_date"))
+            eff_end = fields.get("end_date", existing.get("end_date"))
+            _validate_date_window(eff_start, eff_end)
         updates = dict(fields)
         if "items" in fields:
             updates["items"] = _validate_items(body.items)
@@ -221,5 +288,82 @@ def build_router(*, db, get_current_user, clean, new_id) -> APIRouter:
             metadata={"reason_provided": bool(body.reason)},  # no free-text reason stored in audit
         )
         return await db.recurring_charges.find_one(scope, {"_id": 0})
+
+    @router.post("/admin/recurring-charges/run")
+    async def run_materializer(body: MaterializeIn, request: Request, user=Depends(get_current_user)):
+        """Phase 9B-2 — manual, idempotent materializer (no scheduler).
+
+        Scans every recurring charge in the caller's barn and, for the target
+        month, generates a 9A-structured invoice for each *eligible* charge that
+        does not already have one for that period. Everything else (inactive,
+        non-monthly, not-yet-started, ended, invalid legacy dates, or already
+        generated) is skipped defensively and counted in `skipped_count` —
+        never a run failure.
+        """
+        require(user, "recurring_charge:manage")
+        period_key = body.period or _current_period()
+        year, month = _parse_period(period_key)
+
+        generated = 0
+        skipped = 0
+        cur = db.recurring_charges.find(barn_filter(user, {}), {"_id": 0})
+        async for rc in cur:
+            if not _eligible_for_period(rc, year, month):
+                skipped += 1
+                continue
+            # Dedup: one invoice per (barn, recurring_charge, period). Skip — never update.
+            existing_inv = await db.invoices.find_one(
+                barn_filter(user, {
+                    "recurring_charge_id": rc["id"], "period_key": period_key, "source": "recurring",
+                }),
+                {"_id": 0, "id": 1},
+            )
+            if existing_inv:
+                skipped += 1
+                continue
+
+            items = rc.get("items") or []
+            subtotal, disc, rate, tax_amount, total = compute_money(
+                items, rc.get("discount"), rc.get("tax_rate")
+            )
+            issue = date(year, month, int(rc.get("day_of_month") or 1))
+            due = issue + timedelta(days=int(rc.get("due_days") or 0))
+            doc = {
+                "id": new_id(),
+                "owner_id": rc["owner_id"],
+                "horse_id": rc.get("horse_id"),
+                "items": items,
+                "subtotal": subtotal,
+                "discount": disc,
+                "tax_rate": rate,
+                "tax_amount": tax_amount,
+                "total": total,
+                "due_date": due.isoformat(),
+                "status": "open",
+                "notes": rc.get("description"),
+                "recurring_charge_id": rc["id"],
+                "period_key": period_key,
+                "source": "recurring",
+                "created_at": _iso(_now_utc()),
+            }
+            stamp_barn(user, doc)
+            try:
+                await db.invoices.insert_one(doc)
+            except DuplicateKeyError:
+                # Lost a race against a concurrent run — treat as skipped.
+                skipped += 1
+                continue
+            await db.recurring_charges.update_one(
+                barn_filter(user, {"id": rc["id"]}),
+                {"$set": {"last_run_period": period_key}},
+            )
+            generated += 1
+
+        await audit.record(
+            action="recurring_charges.materialized", user=user, request=request,
+            resource_type="recurring_charge", resource_id=None,
+            metadata={"month": period_key, "generated_count": generated, "skipped_count": skipped},
+        )
+        return {"period": period_key, "generated_count": generated, "skipped_count": skipped}
 
     return router
