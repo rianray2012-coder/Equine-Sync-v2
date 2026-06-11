@@ -18,7 +18,7 @@ export default function Billing() {
 
   return (
     <div data-testid="billing-page">
-      <div className="mb-4"><Logo size={26} /></div>
+      <div className="mb-4"><Logo size={68} /></div>
       <PageHeader eyebrow="Finance" title="Billing & Revenue" subtitle="Invoice status, overdue alerts and revenue per owner and horse." />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">

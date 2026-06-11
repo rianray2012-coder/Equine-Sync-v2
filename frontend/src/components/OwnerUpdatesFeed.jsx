@@ -66,7 +66,7 @@ export default function OwnerUpdatesFeed({ horses = [] }) {
 
       {items !== null && items.length === 0 && (
         <div className="py-10 text-center" data-testid="owner-updates-empty">
-          <div className="opacity-60 flex justify-center mb-2"><Logo variant="icon" size={32} /></div>
+          <div className="opacity-60 flex justify-center mb-2"><Logo variant="icon" size={80} /></div>
           <div className="text-[13.5px] text-equine-ink">No new updates from the barn just yet.</div>
           <div className="text-[12px] text-equine-inkMuted mt-1">
             When your team shares a note about your horse, it will appear here.

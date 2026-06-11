@@ -107,7 +107,7 @@ export default function Onboarding() {
 
   return (
     <div data-testid="onboarding-page" className="max-w-7xl">
-      <div className="mb-5"><Logo size={28} /></div>
+      <div className="mb-5"><Logo size={68} /></div>
       <PageHeader
         eyebrow="Setup Concierge"
         title="Welcome to your barn"

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { Card, PageHeader, StatusPill } from "../components/Primitives";
-import { Logo } from "../components/Logo";
 import { BrandLoader } from "../components/BrandLoader";
 import { Sparkles, Send, Clock, TrendingUp, CheckCircle2, Mail, AlertTriangle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -48,7 +47,6 @@ export default function Reports() {
 
   return (
     <div data-testid="reports-page">
-      <div className="mb-4"><Logo variant="icon" size={26} /></div>
       <PageHeader
         eyebrow="Operations · Setup Health"
         title="Onboarding Reports"

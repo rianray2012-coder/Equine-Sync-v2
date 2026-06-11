@@ -75,7 +75,7 @@ export default function OwnerPortal() {
 
   return (
     <div data-testid="owner-portal-page">
-      <div className="mb-5"><Logo size={28} /></div>
+      <div className="mb-5"><Logo size={68} /></div>
       <PageHeader
         eyebrow="Concierge"
         title="Owner Portal"
