@@ -205,8 +205,8 @@ export default function QuickAddSheet({
         className="absolute inset-0 bg-equine-black/70 backdrop-blur-sm animate-in fade-in-0 duration-200"
         onClick={onClose}
       />
-      <div className="relative h-full w-full max-w-md bg-equine-navy border-l border-white/10 shadow-2xl overflow-y-auto scrollbar-luxe animate-in slide-in-from-right-4 duration-300">
-        <div className="sticky top-0 z-10 bg-equine-navy/95 backdrop-blur-md border-b border-white/[0.06] px-6 py-5 flex items-start justify-between gap-3">
+      <div className="relative h-full w-full max-w-md bg-equine-card border-l border-equine-hairline shadow-2xl overflow-y-auto scrollbar-luxe animate-in slide-in-from-right-4 duration-300">
+        <div className="sticky top-0 z-10 bg-equine-card/95 backdrop-blur-md border-b border-equine-hairline px-6 py-5 flex items-start justify-between gap-3">
           <div>
             {eyebrow && <div className="label-eyebrow mb-1">{eyebrow}</div>}
             <h2 className="font-display text-2xl text-equine-ivory">{title}</h2>
@@ -291,7 +291,7 @@ export default function QuickAddSheet({
             prefix,
           })}
 
-          <div className="sticky bottom-0 -mx-6 px-6 pt-3 pb-1 mt-4 bg-equine-navy/95 backdrop-blur-md border-t border-white/[0.06] flex items-center justify-end gap-2">
+          <div className="sticky bottom-0 -mx-6 px-6 pt-3 pb-1 mt-4 bg-equine-card/95 backdrop-blur-md border-t border-equine-hairline flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
