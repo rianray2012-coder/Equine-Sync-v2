@@ -12,10 +12,10 @@ separate, explicitly-scoped feature (not part of Phase 3 modularization).
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from core.tenancy import barn_filter, stamp_barn
 from core import audit
@@ -29,14 +29,74 @@ def _iso(dt: datetime) -> str:
     return dt.isoformat()
 
 
+class LineItem(BaseModel):
+    # extra="allow" preserves any legacy keys (e.g. a bare {"label","amount"})
+    model_config = ConfigDict(extra="allow")
+    description: Optional[str] = None
+    label: Optional[str] = None        # legacy alias for description
+    quantity: Optional[float] = None
+    unit_amount: Optional[float] = None
+    amount: Optional[float] = None
+
+
 class InvoiceIn(BaseModel):
     owner_id: str
     horse_id: Optional[str] = None
-    items: List[Dict[str, Any]]
-    total: float
+    items: List[LineItem]
+    # Accepted for backward-compatibility but IGNORED — the server computes the
+    # authoritative total from the line items (Phase 9A).
+    total: Optional[float] = None
     due_date: str
     status: str = "open"  # open, paid, overdue
     notes: Optional[str] = None
+    discount: float = 0.0   # absolute amount, clamped to 0..subtotal
+    tax_rate: float = 0.0   # percentage applied to (subtotal - discount)
+
+
+_VALID_STATUS = {"open", "paid", "overdue"}
+
+
+def _money(x) -> float:
+    return round(float(x) + 0.0, 2)
+
+
+def _line_amount(li: LineItem) -> float:
+    """Resolve a single line's amount; legacy {amount} wins, else quantity×unit_amount."""
+    for name, val in (("quantity", li.quantity), ("unit_amount", li.unit_amount), ("amount", li.amount)):
+        if val is not None and float(val) < 0:
+            raise HTTPException(422, f"Line item {name} cannot be negative")
+    if li.amount is not None:
+        amt = float(li.amount)
+    elif li.quantity is not None and li.unit_amount is not None:
+        amt = float(li.quantity) * float(li.unit_amount)
+    else:
+        raise HTTPException(422, "Each line item needs 'amount', or both 'quantity' and 'unit_amount'")
+    return _money(amt)
+
+
+def _normalize_line(li: LineItem) -> dict:
+    d = li.model_dump(exclude_none=True)  # keeps legacy/extra keys
+    d["amount"] = _line_amount(li)
+    if d.get("description") is None and d.get("label") is not None:
+        d["description"] = d["label"]  # mirror for clarity; original key preserved
+    return d
+
+
+def _compute_invoice(body: InvoiceIn):
+    """Server-authoritative totals. Returns (items, subtotal, discount, tax_rate, tax_amount, total)."""
+    items = [_normalize_line(li) for li in body.items]
+    if not items:
+        raise HTTPException(422, "An invoice needs at least one line item")
+    if body.discount < 0:
+        raise HTTPException(422, "Discount cannot be negative")
+    if body.tax_rate < 0:
+        raise HTTPException(422, "Tax rate cannot be negative")
+    subtotal = _money(sum(li["amount"] for li in items))
+    discount = _money(min(float(body.discount), subtotal))  # clamp 0..subtotal
+    tax_rate = float(body.tax_rate)
+    tax_amount = _money((subtotal - discount) * tax_rate / 100.0)
+    total = _money(subtotal - discount + tax_amount)
+    return items, subtotal, discount, tax_rate, tax_amount, total
 
 
 def build_router(*, db, get_current_user, list_collection, clean, new_id) -> APIRouter:
@@ -53,8 +113,24 @@ def build_router(*, db, get_current_user, list_collection, clean, new_id) -> API
 
     @router.post("/invoices")
     async def create_invoice(body: InvoiceIn, user=Depends(get_current_user)):
-        doc = body.model_dump()
-        doc.update({"id": new_id(), "created_at": _iso(_now_utc())})
+        if body.status not in _VALID_STATUS:
+            raise HTTPException(422, f"Invalid status; must be one of {sorted(_VALID_STATUS)}")
+        items, subtotal, discount, tax_rate, tax_amount, total = _compute_invoice(body)
+        doc = {
+            "id": new_id(),
+            "owner_id": body.owner_id,
+            "horse_id": body.horse_id,
+            "items": items,
+            "subtotal": subtotal,
+            "discount": discount,
+            "tax_rate": tax_rate,
+            "tax_amount": tax_amount,
+            "total": total,  # server-computed; client-supplied total ignored
+            "due_date": body.due_date,
+            "status": body.status,
+            "notes": body.notes,
+            "created_at": _iso(_now_utc()),
+        }
         stamp_barn(user, doc)
         await db.invoices.insert_one(doc)
         return clean(doc)
