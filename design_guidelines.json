@@ -46,20 +46,21 @@
       "wordmark_composition": "CSS composition replacing the placeholder. Example: <span className=\"font-display text-[#1E2128] dark:text-[#F7F8FA]\">Equine-</span><span className=\"font-display text-[#B8AECF]\">Sync</span>",
       "asset_mapping": {
         "on_light": "04 Graphite body + lilac circuitry OR 05 Slate-navy body + lilac circuitry (Transparent).",
-        "on_dark": "06 Frost-white horse on Midnight block (Framed) OR future exported frost-on-transparent icon."
+        "on_dark": "Native frost-on-transparent icon (icon_horse_frost.png, exported from 04). Framed 06 Frost-on-Midnight block is FALLBACK ONLY."
       }
     },
     "B_Sidebar_First_Spec": {
       "surface_type": "Dark",
+      "chosen_8B_solution": "Native frost-on-transparent mark. Use 'icon_horse_frost.png' (frost-white horse + Smoky-Lilac circuitry, fully transparent background) sitting directly on the dark sidebar surface — NO box, NO baked block. This is the SHIPPED 8B path.",
       "asset_gap_resolution": {
-        "immediate_shippable": "Use '06 Frost-white horse on Midnight #232734 block'. Frame this baked block as a contained rounded tile (e.g., rounded-xl overflow-hidden) so the block edges look like an intentional premium tile against the existing dark sidebar.",
-        "long_term": "Export a true frost-on-transparent icon to allow seamless, borderless integration."
+        "chosen": "Frost-on-transparent icon exported from asset '04' (graphite recolored to Frost White #F7F8FA, lilac circuitry preserved, alpha edges intact). File: frontend/src/assets/brand/icon_horse_frost.png (+ icon_horse_frost_square.png for icon-only/collapsed).",
+        "fallback_only": "Framing the baked '06 Frost-on-Midnight' block as a rounded tile is a FALLBACK ONLY — to be used solely if the transparent export ever fails. It was NOT chosen for 8B. Do not follow this path."
       },
-      "expanded_lockup": "Horizontal. Framed icon block on left + composed 'Equine-Sync' wordmark on right.",
-      "collapsed_lockup": "Icon-only. Framed '06' icon block >= 48px.",
+      "expanded_lockup": "Horizontal. Native transparent frost icon on left + composed 'Equine-Sync' wordmark on right (Sync in Smoky Lilac).",
+      "collapsed_lockup": "Icon-only. Native transparent frost icon (square variant) >= 48px.",
       "clear_space": "Padding equal to the height of the capital 'E' in the 'Equine' wordmark.",
-      "accessibility": "alt='Equine-Sync Logo', Focus state must be visible (e.g., focus-visible:ring-2 focus-visible:ring-[#B8AECF] rounded-md).",
-      "testing": "All interactive instances MUST use data-testid='sidebar-logo'"
+      "accessibility": "alt='Equine-Sync', Focus state must be visible.",
+      "testing": "Logo instances use data-testid='logo'"
     },
     "C_Surface_Placement_Spec": {
       "login": {
@@ -114,18 +115,18 @@
     },
     "E_Asset_Prep_Checklist": {
       "shippable_now": [
+        "Sidebar (dark) using the NATIVE frost-on-transparent icon (icon_horse_frost.png) — DONE in 8B.",
         "Light surfaces (Login, Onboarding, Dashboard) using transparent 04/05 assets.",
-        "Sidebar surface using the framed/rounded '06' baked block asset.",
-        "Composed wordmark using CSS styling (Cormorant Garamond font)."
+        "Composed wordmark using CSS styling (Cormorant Garamond font).",
+        "Favicon/app-icon set (E-S monogram for <=48px, frost-horse tile for >=180px) — DONE in 8B."
       ],
       "blocked_needs_export": [
-        "Frost-on-transparent icon (needed for seamless dark surface usage).",
-        "Simplified SVG Favicon/App Icon (needed for <48px marks).",
-        "Square-cropped raster PNGs (current bounds are 798x568, requiring CSS object-fit/cropping for center alignment)."
+        "Simplified SVG marks for infinitely-scalable usage (current assets are raster PNG).",
+        "Square-cropped raster PNGs for any additional center-aligned tile needs (frost + dark squares already produced in 8B)."
       ]
     },
     "F_Incremental_Sequence": {
-      "phase_8B": "Foundation & Logo Component Updates + Sidebar First Rollout (Shippable increment using the framed '06' block).",
+      "phase_8B": "Foundation & Logo Component + Sidebar First Rollout — SHIPPED using the NATIVE frost-on-transparent mark (icon_horse_frost.png) directly on the dark sidebar (no box). Framed '06' block was NOT used.",
       "phase_8C": "Surface Rollout (Login, Onboarding, Dashboard, Reports, Billing on light surfaces using '04' or '05').",
       "phase_8D": "Emails & External touchpoints (Wait for optimized/square-cropped asset exports if necessary)."
     },
