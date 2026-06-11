@@ -72,10 +72,10 @@ export default function Login() {
               Quiet precision.<br/>Operational mastery.
             </h2>
             <p className="mt-6 text-equine-silver/85 text-[15px] leading-relaxed">
-              EquineSync unites horse care, training, billing, and owner communication in one elegant platform — built for elite show barns, rehab facilities, and luxury private operations.
+              Equine-Sync unites horse care, training, billing, and owner communication in one elegant platform — built for elite show barns, rehab facilities, and luxury private operations.
             </p>
           </div>
-          <div className="text-[11px] tracking-[0.22em] uppercase text-equine-brassLight/55">© EquineSync · Crafted for elite equestrian operations</div>
+          <div className="text-[11px] tracking-[0.22em] uppercase text-equine-brassLight/55">© Equine-Sync · Crafted for elite equestrian operations</div>
         </div>
       </div>
 

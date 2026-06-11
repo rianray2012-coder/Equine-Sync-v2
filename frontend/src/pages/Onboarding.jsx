@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, track } from "../lib/api";
 import { Card, PageHeader, StatusPill } from "../components/Primitives";
+import { Logo } from "../components/Logo";
+import { BrandLoader } from "../components/BrandLoader";
 import { Check, ChevronRight, ChevronLeft, Rocket, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -70,7 +72,7 @@ export default function Onboarding() {
   };
 
   if (loading || !progress) {
-    return <div className="text-equine-platinum/60">Loading concierge…</div>;
+    return <BrandLoader label="Loading concierge…" />;
   }
 
   const stepIndex = steps.findIndex((s) => s.id === currentId);
@@ -105,6 +107,7 @@ export default function Onboarding() {
 
   return (
     <div data-testid="onboarding-page" className="max-w-7xl">
+      <div className="mb-5"><Logo size={28} /></div>
       <PageHeader
         eyebrow="Setup Concierge"
         title="Welcome to your barn"

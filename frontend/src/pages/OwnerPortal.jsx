@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api, fmtDate } from "../lib/api";
 import { Card, PageHeader, StatusPill } from "../components/Primitives";
+import { Logo } from "../components/Logo";
 import CuratedTimeline from "../components/CuratedTimeline";
 import OwnerDigestCard from "../components/OwnerDigestCard";
 import OwnerUpdatesFeed from "../components/OwnerUpdatesFeed";
@@ -74,6 +75,7 @@ export default function OwnerPortal() {
 
   return (
     <div data-testid="owner-portal-page">
+      <div className="mb-5"><Logo size={28} /></div>
       <PageHeader
         eyebrow="Concierge"
         title="Owner Portal"

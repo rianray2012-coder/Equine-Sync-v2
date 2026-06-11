@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { api, fmtDate } from "../lib/api";
 import { Card } from "./Primitives";
-import { Megaphone, Sparkles } from "lucide-react";
+import { Megaphone } from "lucide-react";
+import { Logo } from "./Logo";
 
 /**
  * Phase 7C-1 — owner-facing "Updates from your barn" feed.
@@ -65,7 +66,7 @@ export default function OwnerUpdatesFeed({ horses = [] }) {
 
       {items !== null && items.length === 0 && (
         <div className="py-10 text-center" data-testid="owner-updates-empty">
-          <Sparkles className="w-6 h-6 text-equine-brassLight mx-auto mb-2" />
+          <div className="opacity-60 flex justify-center mb-2"><Logo variant="icon" size={32} /></div>
           <div className="text-[13.5px] text-equine-ink">No new updates from the barn just yet.</div>
           <div className="text-[12px] text-equine-inkMuted mt-1">
             When your team shares a note about your horse, it will appear here.

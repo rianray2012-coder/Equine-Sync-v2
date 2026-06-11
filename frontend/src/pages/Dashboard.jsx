@@ -14,6 +14,7 @@ import AlertsCard from "../components/dashboard/AlertsCard";
 import { OperationsCard, UpcomingCareCard } from "../components/dashboard/SmallCards";
 import FounderWalkthrough, { walkthroughSeen } from "../components/FounderWalkthrough";
 import LastSyncedBadge from "../components/today/LastSyncedBadge";
+import { BrandLoader } from "../components/BrandLoader";
 
 /**
  * Stable Command — operational glance, not an analytics board.
@@ -78,6 +79,14 @@ export default function Dashboard() {
   const firstName = user?.full_name?.split(" ")[0] || "there";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
+  if (!summary) {
+    return (
+      <div data-testid="dashboard-page" className="pb-20 lg:pb-8">
+        <BrandLoader label="Loading your barn…" />
+      </div>
+    );
+  }
 
   return (
     <div data-testid="dashboard-page" className="pb-20 lg:pb-8">
