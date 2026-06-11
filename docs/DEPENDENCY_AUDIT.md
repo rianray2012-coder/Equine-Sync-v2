@@ -34,13 +34,16 @@
 |---|---|---|
 | `react-hook-form` | Imported **only** by `src/components/ui/form.jsx`, which is **not consumed by any page/component**. | If forms use plain controlled inputs (current pattern), `react-hook-form` + `ui/form.jsx` + `@hookform/resolvers` + `zod` form a removable cluster. Confirm no upcoming form-heavy feature before pruning. |
 
-## Confirmed keep
+## Confirmed keep (directly imported in `src/`)
 - All `@radix-ui/*` (28), `axios`, `class-variance-authority`, `clsx`, `cmdk`,
   `embla-carousel-react`, `input-otp`, `lucide-react`, `next-themes`, `react`,
   `react-dom`, `react-day-picker`, `react-resizable-panels`, `react-router-dom`,
-  `recharts`*, `sonner`, `tailwind-merge`, `vaul` — directly imported.
-  *(`recharts` listed as a candidate above.)*
-- Tooling/config: `react-scripts`, `cra-template`, `tailwindcss-animate`.
+  `sonner`, `tailwind-merge`, `vaul`.
+- Tooling/config (kept, not `src/` imports): `react-scripts`, `cra-template`,
+  `tailwindcss-animate`.
+
+> `recharts` is **not** in this list — it has no `src/` import and is a removal
+> candidate (see the table above).
 
 ## Proposed (gated) follow-up
 A single optional pruning PR could drop the cluster

@@ -20,9 +20,10 @@ def base_url() -> str:
     if v:
         return v.rstrip("/")
     env = pathlib.Path(__file__).resolve().parents[2] / "frontend" / ".env"
-    for line in env.read_text().splitlines():
-        if line.startswith("REACT_APP_BACKEND_URL="):
-            return line.split("=", 1)[1].strip().rstrip("/")
+    if env.is_file():
+        for line in env.read_text().splitlines():
+            if line.startswith("REACT_APP_BACKEND_URL="):
+                return line.split("=", 1)[1].strip().rstrip("/")
     raise RuntimeError("REACT_APP_BACKEND_URL not configured")
 
 
