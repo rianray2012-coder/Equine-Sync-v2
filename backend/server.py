@@ -78,9 +78,8 @@ from routes.owner_updates import build_router as build_owner_updates_router
 from routes.owner import build_router as build_owner_router
 from seed_data import run_seed
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 # Phase 10A: centralized structured logging + request-correlation filters
-# (replaces the basicConfig above for the root logger; JSON in prod, plain in dev).
+# (JSON in prod, plain in dev; configures the root logger).
 configure_logging()
 logger = logging.getLogger(__name__)
 
