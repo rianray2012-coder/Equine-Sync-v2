@@ -17,6 +17,7 @@ from core.config import JWT_SECRET, JWT_ALG, user_verification_ok
 from core.db import db
 from core.permissions import require
 from core.tenancy import resolve_barn_id
+from core.logging_config import set_user_context
 from auth_security import JWT_EXP_HOURS
 
 security = HTTPBearer(auto_error=False)
@@ -57,6 +58,8 @@ async def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depen
     # Phase 4A: attach the authoritative barn scope from the user doc
     # (source of truth — never the JWT claim; missing => primary, legacy-safe).
     user["barn_id"] = resolve_barn_id(user)
+    # Phase 10A: best-effort log correlation (opaque ids only; never affects auth).
+    set_user_context(user_id=user.get("id"), barn_id=user.get("barn_id"))
     return user
 
 

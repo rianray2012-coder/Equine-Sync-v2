@@ -91,3 +91,11 @@ Goals:
 - Improve logging
 - Add monitoring
 - Prepare deployment checklist
+
+**Status: In Progress** — sub-phased 10A → 10D, each gated separately.
+- **10A — ✅ Complete (2026-06-11):** Structured logging & request correlation. New `core/logging_config.py` (contextvars + `ContextFilter` + `RedactionFilter` + JSON/plain formatters) and **pure-ASGI** `core/middleware.py` (`RequestContextMiddleware`): additive `X-Request-ID` header, one request-completion log per request, best-effort `user_id`/`barn_id` correlation set in `get_current_user` (exception-safe, no auth change). `LOG_FORMAT` json(prod)/plain(dev) with override; secrets/headers/bodies/query never logged. **No response/status/auth/CORS/frontend changes.** See [`OBSERVABILITY.md`](./OBSERVABILITY.md). Suite **575 passed / 3 skipped**.
+- **10B — Planned:** Health/observability hardening (liveness vs readiness).
+- **10C — Planned:** Release-checklist enforcement + deploy readiness (`deployment_agent` scan, `PRODUCTION_READINESS.md`).
+- **10D — Planned:** Phase 10 docs/test consolidation + dependency audit.
+
+**Deferred (separately gated):** P1 localStorage→httpOnly cookie auth migration (own phase); P2 palette reconciliation (Tech Debt #11); Phase 5E audit backlog.

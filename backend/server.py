@@ -44,6 +44,8 @@ from core.analytics import _track
 from core.urls import _base_url
 from core.constants import ROLES, ROLE_LABELS
 from core.lifespan import register_lifecycle
+from core.logging_config import configure_logging
+from core.middleware import RequestContextMiddleware
 
 from auth_security import (
     JWT_EXP_HOURS,
@@ -77,6 +79,9 @@ from routes.owner import build_router as build_owner_router
 from seed_data import run_seed
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Phase 10A: centralized structured logging + request-correlation filters
+# (replaces the basicConfig above for the root logger; JSON in prod, plain in dev).
+configure_logging()
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="EquineSync API")
@@ -238,6 +243,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(SecurityHeadersMiddleware)
+# Phase 10A: outermost — assigns request_id + emits the request-completion log.
+# Pure ASGI (contextvar-safe); additive X-Request-ID header only.
+app.add_middleware(RequestContextMiddleware)
 
 # ---------------- Lifecycle (startup/shutdown + background loops) ----------------
 register_lifecycle(app, send_nudges=_send_nudges)

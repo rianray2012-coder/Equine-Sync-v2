@@ -17,6 +17,7 @@ This folder (`/app/docs`, i.e. the project-root `/docs`) contains the **governin
 - [`DATA_MODEL.md`](./DATA_MODEL.md)
 - [`API_CONTRACTS.md`](./API_CONTRACTS.md)
 - [`BILLING_REFERENCE.md`](./BILLING_REFERENCE.md)
+- [`OBSERVABILITY.md`](./OBSERVABILITY.md)
 - [`SCHEMA_CHANGE_POLICY.md`](./SCHEMA_CHANGE_POLICY.md)
 - [`API_VERSIONING.md`](./API_VERSIONING.md)
 
