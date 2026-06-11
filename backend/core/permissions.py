@@ -39,6 +39,9 @@ CAPABILITIES: Dict[str, Set[str]] = {
     "owner_update:archive": {"admin", "barn_manager", "trainer"},
     # Phase 7B — review gate for the sensitive-update approval flow.
     "owner_update:review": {"admin", "barn_manager", "trainer"},
+    # Phase 9B-1 — recurring charge (billing template) management. Additive;
+    # scoped to the new /recurring-charges routes only.
+    "recurring_charge:manage": {"admin", "barn_manager"},
 }
 
 # Per-capability denial messages preserve the exact wording used by the existing
@@ -56,6 +59,7 @@ _DENY_MESSAGES: Dict[str, str] = {
     "owner_update:publish": "Insufficient role to publish owner updates",
     "owner_update:archive": "Insufficient role to archive owner updates",
     "owner_update:review": "Insufficient role to review owner updates",
+    "recurring_charge:manage": "Insufficient role to manage recurring charges",
 }
 
 
