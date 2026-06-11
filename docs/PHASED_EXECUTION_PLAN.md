@@ -94,7 +94,7 @@ Goals:
 
 **Status: In Progress** — sub-phased 10A → 10D, each gated separately.
 - **10A — ✅ Complete (2026-06-11):** Structured logging & request correlation. New `core/logging_config.py` (contextvars + `ContextFilter` + `RedactionFilter` + JSON/plain formatters) and **pure-ASGI** `core/middleware.py` (`RequestContextMiddleware`): additive `X-Request-ID` header, one request-completion log per request, best-effort `user_id`/`barn_id` correlation set in `get_current_user` (exception-safe, no auth change). `LOG_FORMAT` json(prod)/plain(dev) with override; secrets/headers/bodies/query never logged. **No response/status/auth/CORS/frontend changes.** See [`OBSERVABILITY.md`](./OBSERVABILITY.md). Suite **575 passed / 3 skipped**.
-- **10B — Planned:** Health/observability hardening (liveness vs readiness).
+- **10B — ✅ Complete (2026-06-11):** Health/observability hardening. New `GET /api/health/live` (no DB, always 200) + `GET /api/health/ready` (DB ping + additive `started_at`/`uptime_seconds`/`indexes_ensured`); `GET /api/health` kept byte-compatible (no additive fields). `core/runtime_state.py` (process state, no secrets); booleans-only `startup complete` + `shutting down` lifecycle logs. See [`OBSERVABILITY.md`](./OBSERVABILITY.md). Suite **582 passed / 3 skipped**.
 - **10C — Planned:** Release-checklist enforcement + deploy readiness (`deployment_agent` scan, `PRODUCTION_READINESS.md`).
 - **10D — Planned:** Phase 10 docs/test consolidation + dependency audit.
 

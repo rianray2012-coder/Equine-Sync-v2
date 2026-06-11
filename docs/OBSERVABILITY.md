@@ -60,6 +60,28 @@ the test. The `X-Request-ID` header is independently removable.
 
 ---
 
+## Health Probes (Phase 10B)
+Three endpoints (`routes/system.py`); orchestration-grade liveness vs readiness.
+
+| Endpoint | Touches Mongo? | Status | Body |
+|---|---|---|---|
+| `GET /api/health` | yes (ping) | 200 / 503 | **legacy, byte-compatible:** `status, service, version, database, config{}, dependencies{}` — no additive fields |
+| `GET /api/health/live` | **no** | always 200 | `{status:"alive", service}` — process-up only (won't flap on a DB blip) |
+| `GET /api/health/ready` | yes (ping) | 200 / 503 | `/health` body **+ additive** `started_at`, `uptime_seconds`, `indexes_ensured` |
+
+- Shared `_build_health()` returns a fresh dict per call; `/health/ready`
+  **copies** it before adding the additive fields, so `/health` can never
+  inherit them by mutation.
+- Additive readiness fields come from `core/runtime_state.py` (pure process
+  state: no DB, no secrets) — `started_at`/uptime from `mark_started()`,
+  `indexes_ensured` set after the startup index-ensure block.
+- **Lifecycle logging:** `core/lifespan.py` emits a booleans-only
+  `startup complete: env=… db_ok=… indexes_ensured=… <loops>` INFO line and a
+  `shutting down` line — logs only, no flow change, no secrets.
+- No metrics/Prometheus endpoint in 10B (deferred observability enhancement).
+
+---
+
 ## Phase 10 backlog (deferred, separately gated)
 - **P1 — localStorage → httpOnly cookie auth migration.** Touches runtime auth,
   frontend request behavior, refresh/logout flows, CSRF posture, and test setup.

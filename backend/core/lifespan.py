@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from core.config import auto_seed_enabled
 from core.db import client, db
 from core.analytics import _track
+from core import runtime_state
 from seed_data import run_seed
 from task_engine import TaskEngine, seed_demo_templates
 from auth_security import ensure_refresh_indexes
@@ -85,6 +86,8 @@ def register_lifecycle(app, *, send_nudges):
 
     @app.on_event("startup")
     async def on_startup():
+        # Phase 10B: mark process start for the readiness probe (no DB, no secrets).
+        runtime_state.mark_started()
         # Auto-seed if empty — but NEVER in production (Security Patch 2E hardening),
         # so a fresh production DB never silently creates demo accounts.
         if auto_seed_enabled() and await db.users.count_documents({}) == 0:
@@ -105,6 +108,8 @@ def register_lifecycle(app, *, send_nudges):
             await ensure_audit_indexes(db)
             # Phase 9B-2: partial unique index for recurring-invoice dedup.
             await ensure_billing_indexes(db)
+            # Phase 10B: indexes ensured — surfaced on /api/health/ready.
+            runtime_state.mark_indexes_ensured()
             # Safe migration (Phase 2C): backfill email_verified=True for any pre-existing
             # users missing the field so verification rollout never locks them out.
             backfill = await db.users.update_many(
@@ -224,6 +229,32 @@ def register_lifecycle(app, *, send_nudges):
         if os.environ.get("DISABLE_AUTO_NUDGES", "").lower() not in ("1", "true", "yes"):
             asyncio.create_task(_nudge_loop())
 
+        # Phase 10B: structured startup-complete log — booleans/strings only,
+        # no secrets/URLs/keys. Mirrors the /api/health/ready posture.
+        def _enabled(flag: str) -> bool:
+            return os.environ.get(flag, "").lower() not in ("1", "true", "yes")
+
+        db_ok = True
+        try:
+            await db.command("ping")
+        except Exception:
+            db_ok = False
+        snap = runtime_state.snapshot()
+        logger.info(
+            "startup complete: env=%s db_ok=%s indexes_ensured=%s "
+            "task_materializer=%s notifications=%s owner_digest=%s "
+            "weekly_recap=%s auto_nudges=%s",
+            "production" if os.environ.get("APP_ENV", "").lower() == "production" else "development",
+            db_ok,
+            snap["indexes_ensured"],
+            _enabled("DISABLE_TASK_MATERIALIZER"),
+            _enabled("DISABLE_NOTIFICATIONS"),
+            _enabled("DISABLE_OWNER_DIGEST"),
+            _enabled("DISABLE_OWNER_WEEKLY_RECAP"),
+            _enabled("DISABLE_AUTO_NUDGES"),
+        )
+
     @app.on_event("shutdown")
     async def shutdown_db_client():
+        logger.info("shutting down: closing database client")
         client.close()

@@ -19,8 +19,11 @@ from core.config import (
     auto_seed_enabled,
     allow_seed_route,
 )
+from core import runtime_state
 
 logger = logging.getLogger(__name__)
+
+SERVICE_NAME = "equinesync-api"
 
 
 def dependencies_snapshot(env=None) -> dict:
@@ -44,16 +47,11 @@ def dependencies_snapshot(env=None) -> dict:
 def build_router(db) -> APIRouter:
     router = APIRouter(tags=["system"])
 
-    @router.get("/")
-    async def root():
-        return {"app": "EquineSync", "status": "ok"}
+    async def _build_health():
+        """Shared readiness body + status (Mongo ping + booleans-only posture).
 
-    @router.get("/health")
-    async def health():
-        """Lightweight readiness probe. Reports config validity + DB connectivity.
-
-        Never exposes secret values — only booleans/derived status. The
-        ``dependencies`` block reports posture of cross-cutting subsystems.
+        Returns a freshly-built dict each call so callers can safely extend
+        their own copy without mutating anyone else's response.
         """
         db_ok = False
         try:
@@ -64,7 +62,7 @@ def build_router(db) -> APIRouter:
 
         body = {
             "status": "ok" if db_ok else "degraded",
-            "service": "equinesync-api",
+            "service": SERVICE_NAME,
             "version": os.environ.get("APP_VERSION", "0.1.0"),
             "database": "connected" if db_ok else "unreachable",
             "config": {
@@ -75,6 +73,36 @@ def build_router(db) -> APIRouter:
             # Additive (Phase 3B): booleans only — no secrets/URLs/keys/values.
             "dependencies": dependencies_snapshot(),
         }
-        return JSONResponse(body, status_code=200 if db_ok else 503)
+        return body, (200 if db_ok else 503)
+
+    @router.get("/")
+    async def root():
+        return {"app": "EquineSync", "status": "ok"}
+
+    @router.get("/health")
+    async def health():
+        """Legacy readiness probe (Phase 3B) — kept byte-compatible.
+
+        Reports config validity + DB connectivity. Never exposes secret values.
+        """
+        body, status = await _build_health()
+        return JSONResponse(body, status_code=status)
+
+    @router.get("/health/live")
+    async def health_live():
+        """Liveness probe (Phase 10B). Process-up only — NEVER touches Mongo or
+        any external service. Always 200 so a transient DB blip can't trigger a
+        restart of an otherwise-healthy process."""
+        return {"status": "alive", "service": SERVICE_NAME}
+
+    @router.get("/health/ready")
+    async def health_ready():
+        """Readiness probe (Phase 10B). Same dependency check as /health, plus
+        additive, no-secret runtime fields. A defensive copy is made so /health
+        can never inherit these by mutation."""
+        body, status = await _build_health()
+        ready_body = dict(body)  # copy before extending — /health stays clean
+        ready_body.update(runtime_state.snapshot())
+        return JSONResponse(ready_body, status_code=status)
 
     return router
