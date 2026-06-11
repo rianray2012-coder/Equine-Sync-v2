@@ -16,6 +16,8 @@ from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from typing import List, Dict, Optional
 
+from routes.owner import _friendly_title  # DRY: shared owner-facing title humanizer (added in 7D-2)
+
 logger = logging.getLogger(__name__)
 
 OWNER_DIGEST_CATEGORIES = {"medication", "farrier", "vet", "rehab", "feed"}
@@ -120,10 +122,17 @@ def _upcoming_phrase(tasks: List[dict], horse_name: str) -> Optional[str]:
     if by_cat.get("vet"):
         next_v = by_cat["vet"][0]
         when = _parse(next_v["scheduled_at"])
-        title = (next_v.get("payload") or {}).get("title") or next_v.get("title") or "vet appointment"
-        # use task title (which already says "Spring Vaccines" etc) — humanize
-        title_h = next_v.get("title") or title
-        lines.append(f"{title_h} are scheduled for {_fmt_date(when)}.")
+        # Humanize the title so an engine token (e.g. "Follow-up: vetfu-<uuid>")
+        # never reaches an owner. _friendly_title returns the human-entered text
+        # verbatim, or a clean category/follow-up label when it's empty/id-like.
+        raw_title = (next_v.get("title") or (next_v.get("payload") or {}).get("title") or "").strip()
+        friendly = _friendly_title(raw_title, "vet")
+        if friendly == raw_title and raw_title:
+            # Genuine human title (e.g. "Spring Vaccines") — keep natural plural phrasing.
+            lines.append(f"{friendly} are scheduled for {_fmt_date(when)}.")
+        else:
+            # Sanitized/label fallback — calm singular phrasing, no raw id.
+            lines.append(f"A {friendly.lower()} is scheduled for {_fmt_date(when)}.")
     if by_cat.get("farrier"):
         next_f = by_cat["farrier"][0]
         when = _parse(next_f["scheduled_at"])
@@ -296,13 +305,38 @@ DIGEST_CSS = """
   p { margin:6px 0; font-size:15.5px; line-height:1.55; color:#2a2730; }
   .footer { margin-top:32px; padding-top:18px; border-top:1px solid #eae3d4; font-size:11.5px; color:#857d6f; font-family:ui-sans-serif,system-ui,sans-serif; }
   a.prefs { color:#857d6f; text-decoration:underline; }
+  /* ---- Phase 8D brand presence (additive; warm calm bg preserved) ---- */
+  .brandhead { margin-bottom:14px; }
+  .brand-mark { display:block; width:44px; height:44px; border:0; margin-bottom:10px; }
+  .brand { font-family:'Cormorant Garamond','Georgia',serif; font-size:25px; line-height:1; letter-spacing:.005em; }
+  .brand .eq { color:#232734; }
+  .brand .sync { color:#6E5A99; }
+  .tagline { font-family:ui-sans-serif,system-ui,sans-serif; letter-spacing:.18em; text-transform:uppercase; font-size:9px; color:#667085; margin-top:7px; }
+  .signoff { font-family:'Cormorant Garamond','Georgia',serif; font-size:16px; color:#232734; margin-bottom:5px; }
+  .signoff .sync { color:#6E5A99; }
 """
+
+
+def _brand_header_html(app_base_url: str, section_label: str) -> str:
+    """Email-safe brand lockup: hosted horse mark when PUBLIC_APP_URL is set,
+    always followed by the CSS wordmark + tagline (renders even if images are blocked)."""
+    base = (app_base_url or "").rstrip("/")
+    mark = (
+        f'<img class="brand-mark" src="{base}/icon-192.png" width="44" height="44" alt="Equine-Sync" />'
+        if base else ""
+    )
+    return (
+        f'<div class="brandhead">{mark}'
+        f'<div class="brand"><span class="eq">Equine-</span><span class="sync">Sync</span></div>'
+        f'<div class="tagline">Every Horse. Every Task. In Sync.</div></div>'
+        f'<div class="eyebrow">{section_label}</div>'
+    )
 
 
 def render_digest_html(payload: dict, app_base_url: str = "") -> str:
     parts = ['<!DOCTYPE html><html><head><meta charset="utf-8"><style>',
              DIGEST_CSS, '</style></head><body><div class="wrap">']
-    parts.append('<div class="eyebrow">EquineSync · Daily Care</div>')
+    parts.append(_brand_header_html(app_base_url, "Daily Care"))
     parts.append('<h1>Today at the barn</h1>')
     for sec in payload["sections"]:
         parts.append('<div class="horse">')
@@ -313,6 +347,7 @@ def render_digest_html(payload: dict, app_base_url: str = "") -> str:
     settings_url = (app_base_url.rstrip("/") + "/settings") if app_base_url else "/settings"
     parts.append(
         f'<div class="footer">'
+        f'<div class="signoff">Equine-<span class="sync">Sync</span></div>'
         f'You receive this digest because your horse is in care at the barn. '
         f'<a class="prefs" href="{settings_url}">Manage preferences</a>.'
         f'</div></div></body></html>'
@@ -321,7 +356,8 @@ def render_digest_html(payload: dict, app_base_url: str = "") -> str:
 
 
 def render_digest_text(payload: dict) -> str:
-    out = ["EquineSync — Today at the barn", "=" * 32, ""]
+    out = ["Equine-Sync", "Every Horse. Every Task. In Sync.", "",
+           "Today at the barn", "=" * 32, ""]
     for sec in payload["sections"]:
         out.append(sec["horse_name"].upper())
         for line in sec["lines"]:
@@ -348,7 +384,7 @@ async def send_digest_to_owner(db, mailer, owner_user_id: str,
     text = render_digest_text(payload)
     if dry_run:
         return {"sent": False, "reason": "dry_run", "preview": {"html": html, "text": text, "payload": payload}}
-    subject = f"EquineSync · Today's update on {'your horses' if payload['horse_count'] > 1 else payload['sections'][0]['horse_name']}"
+    subject = f"Equine-Sync · Today's update on {'your horses' if payload['horse_count'] > 1 else payload['sections'][0]['horse_name']}"
     try:
         send_res = mailer["send"](to=owner["email"], subject=subject, html=html, text=text)
         await db.notification_digest_log.insert_one({
@@ -540,7 +576,7 @@ def render_weekly_recap_html(payload: dict, app_base_url: str = "") -> str:
     """Render the weekly recap with the same calm visual language as the daily digest."""
     parts = ['<!DOCTYPE html><html><head><meta charset="utf-8"><style>',
              DIGEST_CSS, '</style></head><body><div class="wrap">']
-    parts.append('<div class="eyebrow">EquineSync · Weekly Recap</div>')
+    parts.append(_brand_header_html(app_base_url, "Weekly Recap"))
     parts.append('<h1>This week at the barn</h1>')
     for sec in payload["sections"]:
         parts.append('<div class="horse">')
@@ -560,6 +596,7 @@ def render_weekly_recap_html(payload: dict, app_base_url: str = "") -> str:
     settings_url = (app_base_url.rstrip("/") + "/settings") if app_base_url else "/settings"
     parts.append(
         f'<div class="footer">'
+        f'<div class="signoff">Equine-<span class="sync">Sync</span></div>'
         f'A short Sunday update from the barn. '
         f'<a class="prefs" href="{settings_url}">Manage preferences</a>.'
         f'</div></div></body></html>'
@@ -568,7 +605,8 @@ def render_weekly_recap_html(payload: dict, app_base_url: str = "") -> str:
 
 
 def render_weekly_recap_text(payload: dict) -> str:
-    out = ["EquineSync — This week at the barn", "=" * 36, ""]
+    out = ["Equine-Sync", "Every Horse. Every Task. In Sync.", "",
+           "This week at the barn", "=" * 36, ""]
     for sec in payload["sections"]:
         out.append(sec["horse_name"].upper())
         for line in sec["lines"]:
@@ -605,7 +643,7 @@ async def send_weekly_recap_to_owner(db, mailer, owner_user_id: str,
     if dry_run:
         return {"sent": False, "reason": "dry_run",
                 "preview": {"html": html, "text": text, "payload": payload}}
-    subject = "EquineSync · This week at the barn"
+    subject = "Equine-Sync · This week at the barn"
     try:
         send_res = mailer["send"](to=owner["email"], subject=subject, html=html, text=text)
         await db.notification_digest_log.insert_one({

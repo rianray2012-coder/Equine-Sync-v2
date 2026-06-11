@@ -149,13 +149,19 @@ async def _deliver_email(db, recipient_user_id: str, event: dict, mailer):
     if not user:
         return
     try:
-        subject = f"EquineSync · {_summarize(event)}"
-        body_text = f"Hi {user.get('full_name','there')},\n\n{_summarize(event)}\n\n— EquineSync"
+        subject = f"Equine-Sync · {_summarize(event)}"
+        body_text = f"Hi {user.get('full_name','there')},\n\n{_summarize(event)}\n\n— Equine-Sync"
         # Use the existing render+send pipeline; fall back to plain text body.
         mailer["send"](
             to=user["email"],
             subject=subject,
-            html=f"<p>Hi {user.get('full_name','there')},</p><p>{_summarize(event)}</p><p>— EquineSync</p>",
+            html=(
+                f"<p>Hi {user.get('full_name','there')},</p>"
+                f"<p>{_summarize(event)}</p>"
+                f'<p style="font-family:Georgia,serif">— '
+                f'<span style="color:#232734">Equine-</span>'
+                f'<span style="color:#6E5A99">Sync</span></p>'
+            ),
             text=body_text,
         )
     except Exception:
