@@ -1,9 +1,11 @@
-"""routes/recurring_charges.py — Phase 9B-1: recurring charge definitions (CRUD).
+"""routes/recurring_charges.py — Phase 9B: recurring billing.
 
-A *recurring charge* is a per-owner (optionally per-horse) billing template that
-the 9B-2 materializer will turn into invoices on a monthly cadence using the
-**9A line-item structure + server-computed totals**. 9B-1 is the data contract
-only: create / list / get / update / deactivate. **No invoice generation here.**
+A *recurring charge* is a per-owner (optionally per-horse) billing template. 9B-1
+defines the data contract (create / list / get / update / deactivate). **9B-2**
+adds a manual, idempotent materializer (`POST /admin/recurring-charges/run`) that
+turns eligible charges into invoices on a monthly cadence using the **9A
+line-item structure + server-computed totals**. No scheduler, no payment
+processor.
 
 Backend-only. Management is gated to {admin, barn_manager} via the additive
 `recurring_charge:manage` capability. All reads/writes are barn-scoped
@@ -24,6 +26,9 @@ from core.tenancy import barn_filter, stamp_barn
 from core.permissions import require
 from core import audit
 from routes.billing import LineItem, _normalize_line, compute_money  # reuse 9A line-item shape + math
+
+
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _now_utc() -> datetime:
@@ -74,6 +79,9 @@ class MaterializeIn(BaseModel):
 
 
 def _parse_iso_date(value, field):
+    # Strict YYYY-MM-DD only (date.fromisoformat accepts other ISO forms).
+    if not isinstance(value, str) or not _ISO_DATE_RE.match(value):
+        raise HTTPException(422, f"{field} must be an ISO date (YYYY-MM-DD)")
     try:
         return date.fromisoformat(value)
     except (ValueError, TypeError):
@@ -104,6 +112,16 @@ def _parse_period(period_key):
     return year, month
 
 
+def _safe_iso(value):
+    """Strict YYYY-MM-DD parse → date, or None (for defensive materialization skips)."""
+    if not isinstance(value, str) or not _ISO_DATE_RE.match(value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except (ValueError, TypeError):
+        return None
+
+
 def _eligible_for_period(rc, year, month) -> bool:
     """A recurring charge is eligible for `year-month` iff it is active, monthly,
     has valid ISO dates, has started on/before the period, and has not ended
@@ -112,18 +130,16 @@ def _eligible_for_period(rc, year, month) -> bool:
         return False
     if rc.get("cadence") != "monthly":
         return False
-    try:
-        sd = date.fromisoformat(rc.get("start_date"))
-    except (ValueError, TypeError):
+    sd = _safe_iso(rc.get("start_date"))
+    if sd is None:
         return False  # invalid/legacy start_date — skip defensively
     period_first = date(year, month, 1)
     if date(sd.year, sd.month, 1) > period_first:
         return False  # not yet started
     end_raw = rc.get("end_date")
     if end_raw is not None:
-        try:
-            ed = date.fromisoformat(end_raw)
-        except (ValueError, TypeError):
+        ed = _safe_iso(end_raw)
+        if ed is None:
             return False  # invalid/legacy end_date — skip defensively
         if date(ed.year, ed.month, 1) < period_first:
             return False  # already ended
@@ -306,6 +322,7 @@ def build_router(*, db, get_current_user, clean, new_id) -> APIRouter:
 
         generated = 0
         skipped = 0
+        generated_invoice_ids = []
         cur = db.recurring_charges.find(barn_filter(user, {}), {"_id": 0})
         async for rc in cur:
             if not _eligible_for_period(rc, year, month):
@@ -353,17 +370,27 @@ def build_router(*, db, get_current_user, clean, new_id) -> APIRouter:
                 # Lost a race against a concurrent run — treat as skipped.
                 skipped += 1
                 continue
+            # Advance last_run_period monotonically — an older backfill run
+            # (e.g. "2026-08" after "2026-10") must never regress it. Period keys
+            # are zero-padded YYYY-MM, so lexical max == chronological max.
+            new_last = max(rc.get("last_run_period") or "", period_key)
             await db.recurring_charges.update_one(
                 barn_filter(user, {"id": rc["id"]}),
-                {"$set": {"last_run_period": period_key}},
+                {"$set": {"last_run_period": new_last}},
             )
             generated += 1
+            generated_invoice_ids.append(doc["id"])
 
         await audit.record(
             action="recurring_charges.materialized", user=user, request=request,
-            resource_type="recurring_charge", resource_id=None,
+            resource_type="billing_run", resource_id=period_key,
             metadata={"month": period_key, "generated_count": generated, "skipped_count": skipped},
         )
-        return {"period": period_key, "generated_count": generated, "skipped_count": skipped}
+        return {
+            "period": period_key,
+            "generated_count": generated,
+            "skipped_count": skipped,
+            "generated_invoice_ids": generated_invoice_ids,
+        }
 
     return router

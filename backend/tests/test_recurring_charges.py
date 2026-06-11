@@ -348,9 +348,42 @@ def test_materialize_audit_event_recorded():
         sort=[("ts", -1)],
     )
     assert entry is not None
+    assert entry.get("resource_type") == "billing_run"
+    assert entry.get("resource_id") == "2027-03"
     md = entry.get("metadata") or {}
     assert "generated_count" in md and "skipped_count" in md
     assert md["month"] == "2027-03"
+
+
+def test_materialize_response_includes_generated_invoice_ids():
+    rc = _create(_payload(start_date="2026-05-01", description="Ids board"))
+    res = _run(period="2027-05")
+    assert "generated_invoice_ids" in res
+    inv = DB.invoices.find_one(
+        {"recurring_charge_id": rc["id"], "period_key": "2027-05"}, {"_id": 0, "id": 1}
+    )
+    assert inv is not None
+    assert inv["id"] in res["generated_invoice_ids"]
+
+
+def test_materialize_older_backfill_does_not_regress_last_run_period():
+    rc = _create(_payload(start_date="2026-01-01", description="Monotonic board"))
+    # Run a later month first, then an earlier (backfill) month.
+    _run(period="2027-10")
+    after_later = requests.get(f"{API}/recurring-charges/{rc['id']}", headers=H, timeout=30).json()
+    assert after_later["last_run_period"] == "2027-10"
+    _run(period="2027-08")  # older backfill — generates its invoice but must NOT regress the field
+    after_backfill = requests.get(f"{API}/recurring-charges/{rc['id']}", headers=H, timeout=30).json()
+    assert after_backfill["last_run_period"] == "2027-10"  # unchanged (max kept)
+    # The earlier-period invoice was still generated.
+    assert DB.invoices.find_one({"recurring_charge_id": rc["id"], "period_key": "2027-08"}) is not None
+
+
+def test_create_rejects_loose_iso_dates():
+    # date.fromisoformat is permissive; the contract is strictly YYYY-MM-DD.
+    _create(_payload(start_date="2026-7-1"), expect=422)        # unpadded
+    _create(_payload(start_date="2026-07-01T00:00:00"), expect=422)  # datetime form
+    _create(_payload(start_date="20260701"), expect=422)        # no separators
 
 
 def test_materialize_does_not_touch_foreign_barn_charge():
