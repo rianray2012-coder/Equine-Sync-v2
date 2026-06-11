@@ -78,12 +78,12 @@ Goals:
 - Support recurring charges
 - Improve owner billing visibility
 
-**Status: In Progress** — see [`BILLING_REFERENCE.md`](./BILLING_REFERENCE.md) for the consolidated Phase 9 billing reference.
+**Status: ✅ Complete (2026-06-11)** — see [`BILLING_REFERENCE.md`](./BILLING_REFERENCE.md) for the consolidated Phase 9 billing reference.
 - **9A — ✅:** Invoice line-item integrity & server-computed totals (`compute_money`, client total ignored).
 - **9B-1 — ✅:** Recurring charge model + CRUD (barn-scoped, `recurring_charge:manage`).
 - **9B-2 — ✅:** Manual idempotent materializer (`POST /admin/recurring-charges/run`), partial unique index, monotonic `last_run_period`, `billing_run` audit.
 - **9C — ✅:** Invoice clarity UI (staff accordions + owner read-only breakdown).
-- **9D — In Progress:** Billing docs/test consolidation — `BILLING_REFERENCE.md`, shared `tests/_billing_helpers.py`, and API-env fallback fixes in `test_operations_routes.py` / `test_onboarding.py` / `test_invites_and_analytics.py` (docs + tests only; no product code change).
+- **9D — ✅ Complete:** Billing docs/test consolidation — `BILLING_REFERENCE.md`, shared `tests/_billing_helpers.py`, and API-env fallback fixes in `test_operations_routes.py` / `test_onboarding.py` / `test_invites_and_analytics.py` (docs + tests only; no product code change).
 
 ## Phase 10: Production Readiness
 Goals:
