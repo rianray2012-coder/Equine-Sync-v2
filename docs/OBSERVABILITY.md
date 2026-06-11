@@ -6,6 +6,11 @@ ephemeral stdout diagnostics (captured by supervisor). It does **not** persist
 anything, does **not** write the `audit_log` collection, and emits **no** audit
 events — `core/audit.py` remains the sole compliance trail.
 
+> **Phase 10 (Production Readiness) doc set:** logging + health probes here ·
+> deployment evidence in [`PRODUCTION_READINESS.md`](./PRODUCTION_READINESS.md) ·
+> dependency audit in [`DEPENDENCY_AUDIT.md`](./DEPENDENCY_AUDIT.md) ·
+> phase status in [`PHASED_EXECUTION_PLAN.md`](./PHASED_EXECUTION_PLAN.md).
+
 ## Components
 - `core/logging_config.py` — contextvars (`request_id`, `user_id`, `barn_id`),
   `ContextFilter`, `RedactionFilter`, `JsonFormatter` / `PlainFormatter`,

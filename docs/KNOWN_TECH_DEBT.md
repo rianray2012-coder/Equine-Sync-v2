@@ -76,6 +76,7 @@
 ## 14. Dependency Bloat — **Severity: Low**
 - **Observed:** Frontend dependency stack not yet audited for overlap.
 - **Recommended Action:** Audit and consolidate where possible. **(Phase 10)**
+- **Audited (Phase 10D, 2026-06-11):** Report-first static import scan completed → [`DEPENDENCY_AUDIT.md`](./DEPENDENCY_AUDIT.md). 38/43 runtime deps directly imported; 3 tooling/config keeps; **removable cluster identified** (`recharts`, `date-fns`, `zod`, `@hookform/resolvers`, and `react-hook-form` — the last imported only by the unused `ui/form.jsx`). **No pruning performed** — removal/upgrade remains a separate, per-item gated follow-up.
 
 ## 15. Documentation Gaps — **Severity: Medium (now largely addressed)**
 - **Observed:** Governance docs now materialized in `/app/docs` (this pass). Ongoing: keep `ARCHITECTURE.md`, `API_CONTRACTS.md`, `DATA_MODEL.md`, `FEATURE_ROADMAP.md` current with each change.

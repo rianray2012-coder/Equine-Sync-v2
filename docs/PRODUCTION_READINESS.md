@@ -7,6 +7,10 @@
 > `RELEASE_CHECKLIST.md` remains the stable operator checklist; this file is the
 > Phase 10C evidence layer that references it. No product/runtime/config/security
 > code was changed in 10C.
+>
+> **Phase 10 doc set:** [`OBSERVABILITY.md`](./OBSERVABILITY.md) (logging + health probes) ·
+> this file (deployment evidence) · [`DEPENDENCY_AUDIT.md`](./DEPENDENCY_AUDIT.md) (10D dependency audit) ·
+> [`PHASED_EXECUTION_PLAN.md`](./PHASED_EXECUTION_PLAN.md) (phase status).
 
 ## Launch status — ✅ READY (no deployment blockers)
 - **Static deploy scan (`deployment_agent`): PASS, `findings: []`.** Compilation OK; env files OK; frontend API URLs read from `REACT_APP_BACKEND_URL` only; backend DB from `MONGO_URL`/`DB_NAME` only; no hardcoded secrets/URLs; all backend routes under `/api`; supervisor config valid (backend `0.0.0.0:8001`, frontend `3000`); no `load_dotenv(override=True)`; CORS `*` in dev (auto-tightened at deploy / prod-rejected in code).

@@ -11,11 +11,11 @@ byte-compatible (no additive fields), and that no secret leaks into any payload.
 import asyncio
 import json
 import os
-import pathlib
 
 import requests
 
 from routes.system import build_router
+from ._api_helpers import API
 
 _HEALTH_KEYS = {"status", "service", "version", "database", "config", "dependencies"}
 _ADDITIVE_KEYS = {"started_at", "uptime_seconds", "indexes_ensured"}
@@ -55,18 +55,6 @@ def test_health_does_not_inherit_additive_fields_unit():
 
 # ----------------------------------------------------------------- live integration
 
-def _base_url():
-    v = os.environ.get("REACT_APP_BACKEND_URL")
-    if v:
-        return v.rstrip("/")
-    env = pathlib.Path(__file__).resolve().parents[2] / "frontend" / ".env"
-    for line in env.read_text().splitlines():
-        if line.startswith("REACT_APP_BACKEND_URL="):
-            return line.split("=", 1)[1].strip().rstrip("/")
-    raise RuntimeError("REACT_APP_BACKEND_URL not configured")
-
-
-API = f"{_base_url()}/api"
 _SECRET_VALUES = [
     v for v in (os.environ.get("MONGO_URL"), os.environ.get("JWT_SECRET")) if v
 ]

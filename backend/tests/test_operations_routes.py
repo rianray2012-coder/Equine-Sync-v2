@@ -5,29 +5,13 @@ service-requests, incidents) respond identically after extraction from
 server.py to routes/operations.py. Also validates role gating + 409 guard
 on service-request approve / decline.
 """
-import os
-import pathlib
 import uuid
 
 import pytest
 import requests
 
+from ._api_helpers import API, BASE as BASE_URL
 from ._test_creds import DEMO_PASSWORD, ADMIN, OWNER, GROOM
-
-
-def _base_url():
-    v = os.environ.get("REACT_APP_BACKEND_URL")
-    if v:
-        return v.rstrip("/")
-    env = pathlib.Path(__file__).resolve().parents[2] / "frontend" / ".env"
-    for line in env.read_text().splitlines():
-        if line.startswith("REACT_APP_BACKEND_URL="):
-            return line.split("=", 1)[1].strip().rstrip("/")
-    raise RuntimeError("REACT_APP_BACKEND_URL not configured")
-
-
-BASE_URL = _base_url()
-API = f"{BASE_URL}/api"
 
 CREDS = {
     "admin":   (ADMIN["email"],   DEMO_PASSWORD),
