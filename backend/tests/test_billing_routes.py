@@ -4,64 +4,27 @@ Covers route registration, auth, and the invoice create/list/pay round-trip
 (now served by routes/billing.py). Behavior is unchanged from when these lived
 in routes/operations.py. No payment-processor behavior exists or is tested.
 """
-import os
-import pathlib
-
-import pymongo
 import pytest
 import requests
 
-from ._test_creds import ADMIN
+from ._billing_helpers import API, BASE, auth_headers, mongo_db
 
 _CREATED = []  # invoice ids created by this module — cleaned up in teardown
 
 
-def _mongo():
-    url = os.environ.get("MONGO_URL")
-    name = os.environ.get("DB_NAME")
-    if not url or not name:
-        env = pathlib.Path(__file__).resolve().parents[1] / ".env"
-        for line in env.read_text().splitlines():
-            if line.startswith("MONGO_URL=") and not url:
-                url = line.split("=", 1)[1].strip().strip('"').strip("'")
-            if line.startswith("DB_NAME=") and not name:
-                name = line.split("=", 1)[1].strip().strip('"').strip("'")
-    return pymongo.MongoClient(url)[name]
-
-
 def teardown_module(module):
-    db = _mongo()
+    db = mongo_db()
     if _CREATED:
         db.invoices.delete_many({"id": {"$in": _CREATED}})
     # safety sweep of this module's synthetic owner_id in case of interrupted runs
     db.invoices.delete_many({"barn_id": "primary", "owner_id": "owner-test"})
 
 
-def _base_url():
-    v = os.environ.get("REACT_APP_BACKEND_URL")
-    if v:
-        return v.rstrip("/")
-    env = pathlib.Path(__file__).resolve().parents[2] / "frontend" / ".env"
-    for line in env.read_text().splitlines():
-        if line.startswith("REACT_APP_BACKEND_URL="):
-            return line.split("=", 1)[1].strip().rstrip("/")
-    raise RuntimeError("REACT_APP_BACKEND_URL not configured")
-
-
-BASE = _base_url()
-API = f"{BASE}/api"
-
 INVOICE_PATHS = ["/api/invoices", "/api/invoices/{invoice_id}/pay"]
 
 
-def _token():
-    r = requests.post(f"{API}/auth/login", json=ADMIN, timeout=30)
-    assert r.status_code == 200, r.text
-    return r.json()["token"]
-
-
 def _auth():
-    return {"Authorization": f"Bearer {_token()}"}
+    return auth_headers()
 
 
 def test_invoice_routes_registered():

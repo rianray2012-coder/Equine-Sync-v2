@@ -6,44 +6,17 @@ validation, list filtering, update, deactivate, permission gating (non-manager
 
 Captured-id teardown. Backend-only.
 """
-import os
-import pathlib
-
-import pymongo
 import requests
 
+from ._billing_helpers import API, auth_headers, mongo_db
 from ._test_creds import ADMIN, OWNER
 
 _CREATED = []
 _FOREIGN_ID = "rc-foreign-9b1-test"
 
-
-def _read_env(key, root_index, sub):
-    envf = pathlib.Path(__file__).resolve().parents[root_index] / sub
-    for line in envf.read_text().splitlines():
-        if line.startswith(f"{key}="):
-            return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return ""
-
-
-API = f"{(os.environ.get('REACT_APP_BACKEND_URL') or _read_env('REACT_APP_BACKEND_URL', 2, 'frontend/.env')).rstrip('/')}/api"
-
-
-def _mongo():
-    url = os.environ.get("MONGO_URL") or _read_env("MONGO_URL", 1, ".env")
-    name = os.environ.get("DB_NAME") or _read_env("DB_NAME", 1, ".env")
-    return pymongo.MongoClient(url)[name]
-
-
-def _token(creds):
-    r = requests.post(f"{API}/auth/login", json=creds, timeout=30)
-    r.raise_for_status()
-    return r.json()["token"]
-
-
-DB = _mongo()
-H = {"Authorization": f"Bearer {_token(ADMIN)}"}
-H_OWNER = {"Authorization": f"Bearer {_token(OWNER)}"}
+DB = mongo_db()
+H = auth_headers(ADMIN)
+H_OWNER = auth_headers(OWNER)
 
 # Real owner/horse ids in the primary barn (for ref validation).
 _owner = DB.users.find_one({"role": "horse_owner", "barn_id": "primary"}, {"_id": 0, "id": 1})

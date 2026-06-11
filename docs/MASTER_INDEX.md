@@ -16,6 +16,7 @@ This folder (`/app/docs`, i.e. the project-root `/docs`) contains the **governin
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md)
 - [`DATA_MODEL.md`](./DATA_MODEL.md)
 - [`API_CONTRACTS.md`](./API_CONTRACTS.md)
+- [`BILLING_REFERENCE.md`](./BILLING_REFERENCE.md)
 - [`SCHEMA_CHANGE_POLICY.md`](./SCHEMA_CHANGE_POLICY.md)
 - [`API_VERSIONING.md`](./API_VERSIONING.md)
 
@@ -77,6 +78,7 @@ This folder (`/app/docs`, i.e. the project-root `/docs`) contains the **governin
 - `UI_SYSTEM.md`
 
 ## Billing Work
+- `BILLING_REFERENCE.md`
 - `DATA_MODEL.md`
 - `API_CONTRACTS.md`
 - `ROLE_PERMISSION_MATRIX.md`

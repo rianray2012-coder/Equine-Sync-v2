@@ -6,46 +6,20 @@ Proves per-barn isolation for routes/billing.py:
 - POST /invoices/{id}/pay on a cross-barn invoice returns 404 with no mutation;
 - the same-barn pay happy path still works end to end.
 """
-import os
-import pathlib
 import uuid
 from datetime import datetime, timezone
 
-import pymongo
 import requests
 
-from ._test_creds import ADMIN
-
-
-def _read_env(key, root_index, sub):
-    envf = pathlib.Path(__file__).resolve().parents[root_index] / sub
-    for line in envf.read_text().splitlines():
-        if line.startswith(f"{key}="):
-            return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return ""
-
-
-def _base_url():
-    v = os.environ.get("REACT_APP_BACKEND_URL")
-    if v:
-        return v.rstrip("/")
-    return _read_env("REACT_APP_BACKEND_URL", 2, "frontend/.env").rstrip("/")
-
-
-API = f"{_base_url()}/api"
+from ._billing_helpers import API, auth_headers, mongo_db
 
 
 def _mongo():
-    url = os.environ.get("MONGO_URL") or _read_env("MONGO_URL", 1, ".env")
-    name = os.environ.get("DB_NAME") or _read_env("DB_NAME", 1, ".env")
-    return pymongo.MongoClient(url)[name]
+    return mongo_db()
 
 
 def _admin_headers():
-    r = requests.post(f"{API}/auth/login",
-                      json={"email": ADMIN["email"], "password": ADMIN["password"]}, timeout=30)
-    r.raise_for_status()
-    return {"Authorization": f"Bearer {r.json()['token']}"}
+    return auth_headers()
 
 
 def _iso():

@@ -1,11 +1,24 @@
 """EquineSync Onboarding/Barn Setup backend tests."""
 import os
+import pathlib
 import requests
 import pytest
 
 from ._test_creds import ADMIN
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
+
+def _base_url():
+    v = os.environ.get("REACT_APP_BACKEND_URL")
+    if v:
+        return v.rstrip("/")
+    env = pathlib.Path(__file__).resolve().parents[2] / "frontend" / ".env"
+    for line in env.read_text().splitlines():
+        if line.startswith("REACT_APP_BACKEND_URL="):
+            return line.split("=", 1)[1].strip().rstrip("/")
+    raise RuntimeError("REACT_APP_BACKEND_URL not configured")
+
+
+BASE_URL = _base_url()
 API = f"{BASE_URL}/api"
 
 EXPECTED_STEP_IDS = {

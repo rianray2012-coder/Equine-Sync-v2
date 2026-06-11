@@ -9,50 +9,17 @@ Proves the 9A contract on routes/billing.py create path:
 
 Backend-only. Captured-id teardown (cleanup_test_invoices.py covers strays).
 """
-import os
-import pathlib
-
-import pymongo
 import requests
 
-from ._test_creds import ADMIN
+from ._billing_helpers import API, auth_headers, mongo_db
 
 _CREATED = []
 
-
-def _read_env(key, root_index, sub):
-    envf = pathlib.Path(__file__).resolve().parents[root_index] / sub
-    for line in envf.read_text().splitlines():
-        if line.startswith(f"{key}="):
-            return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return ""
-
-
-def _base_url():
-    v = os.environ.get("REACT_APP_BACKEND_URL")
-    return (v or _read_env("REACT_APP_BACKEND_URL", 2, "frontend/.env")).rstrip("/")
-
-
-API = f"{_base_url()}/api"
-
-
-def _mongo():
-    url = os.environ.get("MONGO_URL") or _read_env("MONGO_URL", 1, ".env")
-    name = os.environ.get("DB_NAME") or _read_env("DB_NAME", 1, ".env")
-    return pymongo.MongoClient(url)[name]
-
-
-def _auth():
-    r = requests.post(f"{API}/auth/login", json=ADMIN, timeout=30)
-    r.raise_for_status()
-    return {"Authorization": f"Bearer {r.json()['token']}"}
-
-
-H = _auth()
+H = auth_headers()
 
 
 def teardown_module(module):
-    db = _mongo()
+    db = mongo_db()
     if _CREATED:
         db.invoices.delete_many({"id": {"$in": _CREATED}})
     db.invoices.delete_many({"barn_id": "primary", "owner_id": "ownerX"})
