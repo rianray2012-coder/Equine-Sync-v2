@@ -138,6 +138,17 @@ def test_overdue_status_accepted():
     assert body["status"] == "overdue"
 
 
+def test_omitted_client_total_succeeds_and_computes():
+    # Server is authoritative: a payload with valid items and NO 'total' field
+    # must succeed and return the computed total (locks in the 9A contract).
+    payload = {"owner_id": "ownerX", "due_date": "2026-07-01",
+               "items": [{"description": "Board", "quantity": 3, "unit_amount": 400}]}
+    assert "total" not in payload
+    body = _create(payload)
+    assert body["subtotal"] == 1200.0
+    assert body["total"] == 1200.0
+
+
 # ---------------------------------------------------------------- rejections (422)
 
 def test_invalid_status_rejected():

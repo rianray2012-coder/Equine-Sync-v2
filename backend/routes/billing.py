@@ -1,13 +1,17 @@
 """routes/billing.py — invoice bookkeeping.
 
-Extracted from routes/operations.py (Phase 3F). Invoice list/create + a
-mark-as-paid status flip. Behavior is identical to the previous inline handlers
-(pure lift-and-shift).
+Extracted from routes/operations.py (Phase 3F) as a lift-and-shift of invoice
+list/create + a mark-as-paid status flip.
+
+Phase 9A update: invoice **create** now uses typed/normalized line items and is
+server-authoritative on money — it computes `subtotal`/`discount`/`tax_rate`/
+`tax_amount`/`total` from the line items and **ignores any client-supplied
+total**. `/invoices/{id}/pay` remains bookkeeping-only (a status flip to
+"paid"); list/scoping/audit behavior is unchanged.
 
 Scope note: billing is intentionally **invoice bookkeeping only** — there is NO
-payment processor (no Stripe/charges/subscriptions). `/invoices/{id}/pay` simply
-sets the invoice status to "paid". A real payments integration would be a
-separate, explicitly-scoped feature (not part of Phase 3 modularization).
+payment processor (no Stripe/charges/subscriptions). A real payments integration
+would be a separate, explicitly-scoped feature.
 """
 from __future__ import annotations
 
