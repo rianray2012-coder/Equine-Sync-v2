@@ -307,7 +307,7 @@ DIGEST_CSS = """
   a.prefs { color:#857d6f; text-decoration:underline; }
   /* ---- Phase 8D brand presence (additive; warm calm bg preserved) ---- */
   .brandhead { margin-bottom:14px; }
-  .brand-mark { display:block; width:44px; height:44px; border:0; margin-bottom:10px; }
+  .brand-mark { display:block; width:48px; height:48px; border:0; margin-bottom:10px; }
   .brand { font-family:'Cormorant Garamond','Georgia',serif; font-size:25px; line-height:1; letter-spacing:.005em; }
   .brand .eq { color:#232734; }
   .brand .sync { color:#6E5A99; }
@@ -322,7 +322,7 @@ def _brand_header_html(app_base_url: str, section_label: str) -> str:
     always followed by the CSS wordmark + tagline (renders even if images are blocked)."""
     base = (app_base_url or "").rstrip("/")
     mark = (
-        f'<img class="brand-mark" src="{base}/icon-192.png" width="44" height="44" alt="Equine-Sync" />'
+        f'<img class="brand-mark" src="{base}/icon-192.png" width="48" height="48" alt="Equine-Sync" />'
         if base else ""
     )
     return (
