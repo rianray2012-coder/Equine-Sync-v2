@@ -34,6 +34,7 @@ This folder (`/app/docs`, i.e. the project-root `/docs`) contains the **governin
 
 ## Operations
 - [`RELEASE_CHECKLIST.md`](./RELEASE_CHECKLIST.md)
+- [`PRODUCTION_READINESS.md`](./PRODUCTION_READINESS.md)
 - [`INCIDENT_RESPONSE.md`](./INCIDENT_RESPONSE.md)
 - [`ONBOARDING_GUIDE.md`](./ONBOARDING_GUIDE.md)
 
