@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api, fmtDate, money } from "../lib/api";
 import { Card, StatusPill } from "./Primitives";
-import { Wallet } from "lucide-react";
+import { Wallet, ChevronDown } from "lucide-react";
+import { InvoiceLineItems } from "./InvoiceLineItems";
+import { InvoiceBreakdown } from "./InvoiceBreakdown";
+import { normalizeInvoiceForDisplay, isPastDue, statusTone } from "../lib/invoices";
 
 /**
  * Phase 7D-1 — owner-facing, READ-ONLY billing summary.
@@ -10,6 +13,40 @@ import { Wallet } from "lucide-react";
  * invoices, barn-scoped), so this component simply summarizes what it receives.
  * No payment action — purely informational.
  */
+function OwnerInvoiceRow({ inv }) {
+  const [open, setOpen] = useState(false);
+  const d = normalizeInvoiceForDisplay(inv);
+  const pastDue = isPastDue(inv);
+  return (
+    <div className="hairline" data-testid={`owner-invoice-${inv.id}`}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        data-testid={`invoice-expand-${inv.id}`}
+        aria-expanded={open}
+        className="w-full flex items-center gap-3 py-2.5 text-left"
+      >
+        <ChevronDown
+          strokeWidth={1.5}
+          className={`w-4 h-4 shrink-0 text-equine-inkSoft transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        />
+        <div className="flex-1 min-w-[140px]">
+          <div className="text-[13.5px] text-equine-ink">{money(d.total)}</div>
+          <div className={`text-[12px] ${pastDue ? "text-equine-clay font-medium" : "text-equine-inkMuted"}`}>
+            Due {inv.due_date ? fmtDate(inv.due_date) : "—"}{pastDue ? " · Past due" : ""}
+          </div>
+        </div>
+        <StatusPill tone={statusTone(inv.status)}>{inv.status}</StatusPill>
+      </button>
+      {open && (
+        <div className="pb-3 pl-7 pr-1" data-testid={`owner-invoice-detail-${inv.id}`}>
+          <InvoiceLineItems invoiceId={inv.id} lines={d.lines} />
+          <InvoiceBreakdown invoiceId={inv.id} {...d} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OwnerBillingCard() {
   const [invoices, setInvoices] = useState(null);
 
@@ -31,9 +68,6 @@ export default function OwnerBillingCard() {
       .sort()[0] || null;
     return { balance: bal, nextDue: due };
   }, [invoices]);
-
-  const toneFor = (s) =>
-    s === "paid" ? "success" : s === "overdue" ? "warning" : "neutral";
 
   return (
     <Card className="mb-8" data-testid="owner-billing-card">
@@ -70,19 +104,9 @@ export default function OwnerBillingCard() {
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1">
             {invoices.map((inv) => (
-              <div
-                key={inv.id}
-                data-testid={`owner-invoice-${inv.id}`}
-                className="flex items-center gap-3 py-2.5 hairline flex-wrap"
-              >
-                <div className="flex-1 min-w-[160px]">
-                  <div className="text-[13.5px] text-equine-ink">{money(inv.total)}</div>
-                  <div className="text-[12px] text-equine-inkMuted">Due {inv.due_date ? fmtDate(inv.due_date) : "—"}</div>
-                </div>
-                <StatusPill tone={toneFor(inv.status)}>{inv.status}</StatusPill>
-              </div>
+              <OwnerInvoiceRow key={inv.id} inv={inv} />
             ))}
           </div>
         </>

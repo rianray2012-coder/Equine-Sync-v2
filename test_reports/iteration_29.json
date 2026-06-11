@@ -1,0 +1,44 @@
+{
+  "summary": "Phase 9C Invoice Clarity UI — frontend-only validation (staff /billing + owner /owner-portal). All five spec items pass: structured invoice accordion shows line-item table + full breakdown, staff Mark Paid mutates and refetches, owner view is strictly read-only (no pay control / no 'Mark Paid' text), and legacy single-line invoices render safely with em-dashes and a collapsed breakdown (Subtotal==Total, no discount/tax rows).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_flows": [
+    "STAFF: Found $1,539 invoice owned by owner@equinesync.com, clicked invoice-expand-{id}, invoice-lines-{id} table rendered 3 rows: ['Monthly board','1','$1,200','$1,200'], ['Farrier visit','1','$185','$185'], ['Supplements','2','$45','$90']. invoice-breakdown-{id} shows Subtotal $1,475 / Discount −$50 / Tax (8%) $114 / Total $1,539. invoice-total-{id} == '$1,539'. Collapse hides invoice-detail-{id}.",
+    "STAFF: pay-{id} button visible on OPEN structured invoice ($1,539). Clicking it POSTs /invoices/{id}/pay, list refetches, status pill flips OPEN→PAID, pay-{id} disappears.",
+    "OWNER: Login owner@equinesync.com/demo1234 → /owner-portal renders owner-billing-card with owner-balance and owner-next-due tiles. owner-invoice-{id} row expandable via invoice-expand-{id} → owner-invoice-detail-{id} reveals InvoiceLineItems + InvoiceBreakdown + invoice-total-{id}. Body contains zero elements with data-testid starting 'pay-' and the literal string 'Mark Paid' is absent — guardrail upheld.",
+    "LEGACY safety: an admin TEST invoice with one label-only line (no qty/unit, no subtotal/discount/tax) renders without errors — qty & unit columns show '—', InvoiceBreakdown collapses to just Subtotal $100 + Total $100 (Discount/Tax rows hidden as designed by InvoiceBreakdown's `>0` guards). Same component reused on owner side rendered the legacy $850 'Monthly board' invoice identically."
+  ],
+  "data_testid_coverage": {
+    "invoice-row-{id}": "present (staff)",
+    "invoice-expand-{id}": "present (staff + owner)",
+    "invoice-detail-{id}": "present (staff)",
+    "owner-invoice-{id}": "present (owner)",
+    "owner-invoice-detail-{id}": "present (owner)",
+    "invoice-lines-{id}": "present",
+    "invoice-line-{id}-{n}": "present",
+    "invoice-breakdown-{id}": "present",
+    "invoice-total-{id}": "present",
+    "pay-{id}": "present on staff non-paid invoices; ABSENT on owner page (verified)"
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "InvoiceBreakdown discount/tax hiding uses `> 0` — correct, and tolerant to undefined/null thanks to normalizeInvoiceForDisplay defaulting to 0.",
+    "normalizeInvoiceForDisplay defensively handles legacy invoices (subtotal falls back to total when missing) — verified live with a TEST $100 invoice that has no subtotal field.",
+    "isPastDue only fires when status==='open' AND due_date<today — does NOT mutate status; this matches the 9C 'purely visual hint' guardrail.",
+    "Side-effect observed: during Mark Paid verification the $1,539 OPEN structured invoice was paid (irreversible via UI). Subsequent runs that look for an OPEN $1,539 invoice will need fresh seed data. Not a bug, just a tester note.",
+    "Owner page only shows the legacy $850 invoice and not the newly-paid $1,539 one — this is a backend owner-scoping concern (different owner_id linkage on the structured invoice), explicitly out of scope for 9C per the request. Worth confirming in 9A scope if owners should see structured invoices created against an email/owner_id rather than their user_id."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (skipped per request)", "frontend": "100%" },
+  "test_credentials": "admin@equinesync.com / demo1234 ; owner@equinesync.com / demo1234",
+  "seed_data_creation": "None created. Marked one pre-existing OPEN invoice ($1,539 structured invoice id 5a0c9a3e-038f-4ee2-8bd6-816c06edbc43) as PAID via the legitimate Mark Paid flow.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 9C UI shipped clean — accordion expand, line items, money breakdown, staff Mark Paid, owner read-only, legacy safety all verified. The $1,539 structured invoice is now PAID; reseed if a future test needs it OPEN. Watch the owner-scoping note above: structured invoices created against owner@equinesync.com did not surface in owner@equinesync.com's /owner-portal list (only the legacy $850 did). That is a 9A/owner-mapping question, not a 9C UI defect.",
+  "rca_of_the_issue": "n/a — no defects found in 9C scope."
+}
